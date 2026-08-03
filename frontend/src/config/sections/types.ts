@@ -17,8 +17,13 @@ export type SectionConfig = {
    * Section pages pass this into SpreadMatrix so they never edit the component.
    */
   venues: readonly string[];
-  /** Venue slugs to hide (still may appear in raw API data). */
+  /** Venue slugs to hide for every asset (still may appear in raw API data). */
   hiddenVenues?: readonly string[];
+  /**
+   * Per-asset venue hide list (merged with section-level `hiddenVenues`).
+   * Used e.g. to drop EVM AMM rows for SOL (WHI-798 §3.1 / WHI-809).
+   */
+  hiddenVenuesByAsset?: Readonly<Record<string, readonly string[]>>;
   /** Notional tiers to show as columns. */
   notionals: readonly string[];
   /** Default side / round-trip view. */
@@ -30,4 +35,24 @@ export type SectionConfig = {
   cellMetric: RankMetric;
   /** Show TopOfBookRow under the matrix when TOB data exists. */
   showTopOfBook: boolean;
+  /**
+   * Auto-poll interval for live quotes (ms). Section pages pass this into
+   * `useQuotesMatrix`; omit to use the hook default.
+   */
+  pollIntervalMs?: number;
+};
+
+/** Venue class used for label / instrument annotations (mirrors backend VenueClass). */
+export type VenueClass =
+  | "cex"
+  | "perp_dex"
+  | "amm_dex"
+  | "prop_amm"
+  | "mock";
+
+export type VenueMeta = {
+  displayName: string;
+  venueClass: VenueClass;
+  /** Stablecoin quote leg for UI annotation (WHI-798 §7.1). */
+  quoteCurrency: "USDT" | "USDC";
 };

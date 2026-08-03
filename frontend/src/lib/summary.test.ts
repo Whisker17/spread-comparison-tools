@@ -4,6 +4,7 @@ import type { SizeQuotePair } from "@/lib/api";
 import {
   bestVenueMap,
   bestVenuePerTier,
+  formatSnapshotSummary,
   metricForPair,
 } from "@/lib/summary";
 import type { Quote } from "@/lib/api";
@@ -230,5 +231,165 @@ describe("bestVenuePerTier metric=spread_bps", () => {
     expect(bestVenueMap(pairs, { metric: "total_cost_bps" })["1000"]).toBe(
       "binance",
     );
+  });
+});
+
+describe("formatSnapshotSummary", () => {
+  it("builds point-in-time prose from best eligible venues", () => {
+    const pairs = [
+      pair(
+        "humidifi",
+        "10000",
+        quote({
+          venue: "humidifi",
+          status: "ok",
+          total_cost_bps: "2.1",
+          notional_usd: "10000",
+        }),
+      ),
+      pair(
+        "binance",
+        "10000",
+        quote({
+          venue: "binance",
+          status: "ok",
+          total_cost_bps: "8",
+          notional_usd: "10000",
+        }),
+      ),
+      pair(
+        "binance",
+        "1000000",
+        quote({
+          venue: "binance",
+          status: "ok",
+          total_cost_bps: "4.4",
+          notional_usd: "1000000",
+          instrument_type: "perp",
+        }),
+      ),
+      pair(
+        "humidifi",
+        "1000000",
+        quote({
+          venue: "humidifi",
+          status: "ok",
+          total_cost_bps: "12",
+          notional_usd: "1000000",
+        }),
+      ),
+    ];
+    const text = formatSnapshotSummary(pairs, {
+      asset: "BTC",
+      side: "buy",
+      venueLabels: {
+        humidifi: "HumidiFi",
+        binance: "Binance perp",
+      },
+    });
+    expect(text).toBe(
+      "At $10k, HumidiFi has the lowest total cost to buy BTC (2.1 bps); at $1M, Binance perp (4.4 bps).",
+    );
+  });
+
+  it("mentions sell / round-trip side in the first clause", () => {
+    const buy = quote({
+      venue: "binance",
+      status: "ok",
+      side: "buy",
+      total_cost_bps: "9",
+    });
+    const sell = quote({
+      venue: "binance",
+      status: "ok",
+      side: "sell",
+      total_cost_bps: "11",
+    });
+    const pairs = [
+      pair("binance", "1000", buy, {
+        sell,
+        round_trip_total_cost_bps: "20",
+      }),
+    ];
+    expect(
+      formatSnapshotSummary(pairs, {
+        asset: "BTC",
+        side: "sell",
+        venueLabels: { binance: "Binance spot" },
+      }),
+    ).toContain("to sell BTC");
+    expect(
+      formatSnapshotSummary(pairs, {
+        asset: "BTC",
+        side: "round_trip",
+        venueLabels: { binance: "Binance spot" },
+      }),
+    ).toContain("to round-trip BTC");
+  });
+
+  it("never names non-ok or gas_unknown venues (WHI-799 §5.2)", () => {
+    const pairs = [
+      pair(
+        "uniswap_eth",
+        "1000",
+        quote({
+          venue: "uniswap_eth",
+          status: "ok",
+          total_cost_bps: null,
+          spread_bps: "0.5",
+          fee_breakdown: {
+            embedded_in_price: true,
+            platform_fee_bps: "0",
+            gas_unknown: true,
+            explicit_fee_bps: null,
+            gas_bps: null,
+          },
+        }),
+      ),
+      pair(
+        "hyperliquid",
+        "1000",
+        quote({ venue: "hyperliquid", status: "insufficient_liquidity" }),
+      ),
+      pair(
+        "humidifi",
+        "1000",
+        quote({ venue: "humidifi", status: "no_quote" }),
+      ),
+      pair(
+        "bybit",
+        "1000",
+        quote({ venue: "bybit", status: "error", error_code: "timeout" }),
+      ),
+      pair(
+        "binance",
+        "1000",
+        quote({ venue: "binance", status: "ok", total_cost_bps: "15" }),
+      ),
+    ];
+    const text = formatSnapshotSummary(pairs, {
+      asset: "ETH",
+      venueLabels: {
+        uniswap_eth: "Uniswap",
+        hyperliquid: "Hyperliquid",
+        humidifi: "HumidiFi",
+        bybit: "Bybit",
+        binance: "Binance spot",
+      },
+    });
+    expect(text).toContain("Binance spot");
+    expect(text).toContain("15.0 bps");
+    expect(text).not.toMatch(/Uniswap|Hyperliquid|HumidiFi|Bybit/);
+  });
+
+  it("returns empty string when no eligible picks", () => {
+    const pairs = [
+      pair(
+        "humidifi",
+        "1000",
+        quote({ venue: "humidifi", status: "no_quote" }),
+      ),
+    ];
+    expect(formatSnapshotSummary(pairs, { asset: "SOL" })).toBe("");
   });
 });

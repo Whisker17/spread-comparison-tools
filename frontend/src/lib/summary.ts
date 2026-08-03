@@ -7,7 +7,7 @@
  */
 
 import type { components } from "@/lib/api-types";
-import { parseDecimal, sortNotionals } from "@/lib/format";
+import { formatNotional, parseDecimal, sortNotionals } from "@/lib/format";
 import { isEligibleForBest } from "@/lib/status";
 
 export type Quote = components["schemas"]["Quote"];
@@ -165,4 +165,63 @@ export function bestVenueMap(
     }
   }
   return out;
+}
+
+export type SnapshotSummaryOptions = BestVenueOptions & {
+  /** Logical asset id shown in the prose (e.g. "BTC"). */
+  asset: string;
+  /**
+   * Map venue slug → display label used in the sentence.
+   * Defaults to the raw slug when missing.
+   */
+  venueLabels?: Readonly<Record<string, string>>;
+};
+
+/**
+ * Point-in-time prose summary of best venue per tier (WHI-809 Phase 1).
+ *
+ * Uses the same WHI-799 §5.2 eligibility as `bestVenuePerTier` — non-ok and
+ * gas_unknown / cost-incomplete venues never appear. Empty when no tier has
+ * an eligible pick.
+ *
+ * Example:
+ *   "At $10k, HumidiFi has the lowest total cost for BTC (2.1 bps); at $1M, Binance perp (4.4 bps)."
+ */
+export function formatSnapshotSummary(
+  pairs: readonly SizeQuotePair[],
+  options: SnapshotSummaryOptions,
+): string {
+  const picks = bestVenuePerTier(pairs, options).filter((p) => !p.empty);
+  if (picks.length === 0) {
+    return "";
+  }
+
+  const asset = options.asset;
+  const side = options.side ?? "buy";
+  const metric = options.metric ?? "total_cost_bps";
+  const labelOf = (slug: string) => options.venueLabels?.[slug] ?? slug;
+
+  const metricPhrase =
+    metric === "spread_bps" ? "lowest spread" : "lowest total cost";
+  const sidePhrase =
+    side === "round_trip"
+      ? "round-trip"
+      : side === "sell"
+        ? "sell"
+        : "buy";
+
+  const clauses = picks.map((pick, i) => {
+    const notional = formatNotional(pick.notionalUsd);
+    const venue = labelOf(pick.venue);
+    const bps = pick.valueBps.toFixed(1);
+    if (i === 0) {
+      return `At ${notional}, ${venue} has the ${metricPhrase} to ${sidePhrase} ${asset} (${bps} bps)`;
+    }
+    return `at ${notional}, ${venue} (${bps} bps)`;
+  });
+
+  if (clauses.length === 1) {
+    return `${clauses[0]}.`;
+  }
+  return `${clauses.join("; ")}.`;
 }

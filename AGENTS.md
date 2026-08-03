@@ -45,6 +45,9 @@ per-venue timeout/degradation, short-TTL response cache, `GET /quotes` / `GET /v
 Tailwind + typed OpenAPI client (`openapi-typescript`), `SpreadMatrix` /
 `TopOfBookRow` / status render SSOT / summary best-venue engine, six routes +
 `/status-fixtures`, TanStack Query polling; backend CORS for localhost:3000.
+M3 blue chips section (WHI-809): `/blue-chips` BTC/ETH/SOL live matrices +
+representation labels + snapshot summary (WHI-799 §5.2) + 30s poll; SOL hides
+EVM AMM rows.
 M4 fee schedules (WHI-812): `config/fees/*.yaml` + `fees.py` loader, adapters'
 `get_fees` config-backed, `GET /fees`. M3 asset catalog expansion (WHI-826): Phase 1
 stocks / equity perps / others in `assets.py`; instrument-aware `cex_symbols.CexSymbol`
@@ -52,7 +55,7 @@ stocks / equity perps / others in `assets.py`; instrument-aware `cex_symbols.Cex
 bStocks tokens; `perp_symbols` shared maps.
 
 **Not implemented:** remaining venue adapters (WHI-805), collector, section page
-content (WHI-809/810/811), fees/simulate UI. Do not assume a module exists until
+content (WHI-810/811), fees/simulate UI. Do not assume a module exists until
 its issue lands.
 
 **Blocking gap:** `docs/DESIGN.md` is still mostly the empty template stub (§4.2 module

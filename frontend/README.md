@@ -25,12 +25,11 @@ cp .env.example .env.local   # optional; defaults to http://localhost:8000
 pnpm dev
 ```
 
-Open http://localhost:3000 — `/` redirects to `/blue-chips`, which polls
-`GET /quotes` for BTC across **all registered adapters** (empty `venues` filter).
-Per-venue failures degrade to `status=error` / `no_quote` rather than failing the
-page. Reference mid still needs a working mid source (Binance index by default);
-without network, `/quotes` may 503. Section configs (WHI-809+) can pin `venues`
-to a subset (e.g. `["mock"]`) when desired.
+Open http://localhost:3000 — `/` redirects to `/blue-chips` (WHI-809): BTC / ETH /
+SOL blocks with live matrices, representation labels, snapshot summary, and
+section-level 30s auto-poll. Per-venue failures degrade to `status=error` /
+`no_quote` rather than failing the page. Reference mid still needs a working mid
+source (Binance index by default); without network, `/quotes` may 503.
 
 UI primitives under `src/components/ui/` follow the shadcn/new-york stack
 (Radix + CVA + `cn`). `components.json` is checked in so section agents can run
@@ -89,12 +88,15 @@ src/
 
 Section pages (WHI-809/810/811) should only edit their own
 `config/sections/<id>.ts` and page content — not `SpreadMatrix` or nav.
+Shared additive seams used by all sections live in `config/sections/types.ts`,
+`config/sections/helpers.ts`, and `lib/summary.ts` (best-venue / snapshot prose).
 
 ## Data fetching
 
 **TanStack Query** (not SWR): explicit query keys, multi-notional fan-out for
 the matrix, and first-class `refetch` for the manual refresh button. Default
-poll interval: 15s (`DEFAULT_POLL_MS` in `hooks/useQuotes.ts`).
+poll interval: 15s hook default (`DEFAULT_POLL_MS`); blue-chips overrides to 30s
+via `section.pollIntervalMs`.
 
 ## Status rendering
 
