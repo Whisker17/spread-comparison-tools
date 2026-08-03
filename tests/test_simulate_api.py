@@ -242,13 +242,18 @@ def test_simulate_pairs_shape_excludes_usd(client: TestClient) -> None:
 
 
 def test_simulate_pairs_round_trip_matches_validation(client: TestClient) -> None:
-    """Advertised pairs are exactly what resolve_simulate_pair accepts (WHI-833)."""
+    """Every advertised pair is accepted; stable×stable still 422 (WHI-833).
+
+    Advertised ⊆ accepted. Peg-only ``USD`` remains valid on POST /simulate
+    (byte-identical validation) but is never listed for pickers.
+    """
     from spread_compare.simulator import InvalidSimulatePairError, resolve_simulate_pair
 
     body = client.get("/simulate/pairs").json()
     stables: list[str] = body["stables"]
     assets: list[str] = body["assets"]
     assert stables and assets
+    assert "USD" not in stables
 
     for stable in stables:
         for asset in assets:
@@ -261,6 +266,10 @@ def test_simulate_pairs_round_trip_matches_validation(client: TestClient) -> Non
             assert sell_stable.asset == asset
             assert sell_stable.side == "buy"
             assert sell_stable.stable_leg == stable
+
+    # Intentional gap: peg token validates but is not advertised.
+    peg = resolve_simulate_pair("USD", "BTC")
+    assert peg.stable_leg == "USD" and peg.asset == "BTC" and peg.side == "buy"
 
     # Stable × stable still rejected (HTTP 422 cross_pair).
     assert len(stables) >= 2
