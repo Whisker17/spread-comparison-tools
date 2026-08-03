@@ -190,6 +190,61 @@ def test_missing_required_venue_fails(tmp_path: Path) -> None:
         load_fee_catalog(fees_dir=tmp_path)
 
 
+def test_missing_taker_bps_for_orderbook_fails(tmp_path: Path) -> None:
+    path = tmp_path / "binance.yaml"
+    path.write_text(
+        yaml.dump(
+            {
+                "venue": "binance",
+                "schedules": [
+                    {
+                        "instrument_type": "spot",
+                        "maker_bps": "10",
+                        "taker_bps": None,
+                        "fee_embedded_in_quote": False,
+                        "source_urls": ["https://example.com"],
+                        "updated_at": "2026-08-03T00:00:00Z",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="taker_bps required"):
+        load_fee_catalog(fees_dir=tmp_path)
+
+
+def test_default_tier_must_exist_in_tiers(tmp_path: Path) -> None:
+    path = tmp_path / "binance.yaml"
+    path.write_text(
+        yaml.dump(
+            {
+                "venue": "binance",
+                "schedules": [
+                    {
+                        "instrument_type": "spot",
+                        "maker_bps": "10",
+                        "taker_bps": "10",
+                        "default_tier": "default_taker",
+                        "tiers": [
+                            {
+                                "name": "regular",
+                                "maker_bps": "10",
+                                "taker_bps": "10",
+                            }
+                        ],
+                        "source_urls": ["https://example.com"],
+                        "updated_at": "2026-08-03T00:00:00Z",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="default_tier"):
+        load_fee_catalog(fees_dir=tmp_path)
+
+
 def test_venue_filename_mismatch_fails(tmp_path: Path) -> None:
     path = tmp_path / "binance.yaml"
     path.write_text(

@@ -52,12 +52,14 @@ _DEFAULT_WINDOW_S = 60.0
 _ORDER_LIMIT = 100
 _BLUE_CHIPS: tuple[str, ...] = ("BTC", "ETH", "SOL")
 
+
 @dataclass(frozen=True, slots=True)
 class _MarketMeta:
     market_id: int
     symbol: str
     mark_price: Decimal | None
     index_price: Decimal | None
+
 
 @register_adapter
 class LighterAdapter(BaseAdapter):

@@ -23,6 +23,7 @@ from spread_compare.models import (
 
 _DEFAULT_HTTP_TIMEOUT = 10.0
 
+
 class AdapterError(Exception):
     """Base error for adapter failures (fetch/timeout/parse).
 
@@ -30,17 +31,22 @@ class AdapterError(Exception):
     never return ``None`` for failure (``None`` means "no orderbook concept").
     """
 
+
 class AdapterFetchError(AdapterError):
     """Upstream HTTP/RPC fetch or parse failed."""
+
 
 class AdapterTimeoutError(AdapterError):
     """Upstream call timed out."""
 
+
 class UnsupportedAssetError(AdapterError):
     """Asset is not supported by this venue for the requested instrument type."""
 
+
 class AdapterConfigError(AdapterError):
     """Client/config misuse that must fail fast (never map to empty quote)."""
+
 
 class VenueAdapter(Protocol):
     """Cross-venue adapter surface (WHI-799 §7; async I/O per WHI-823)."""
@@ -102,6 +108,7 @@ class VenueAdapter(Protocol):
         """Assets this adapter can quote for the given (or default) instrument type."""
         ...
 
+
 class BaseAdapter:
     """Concrete lifecycle + shared ``httpx.AsyncClient`` for venue adapters.
 
@@ -147,11 +154,8 @@ class BaseAdapter:
     ) -> FeeSchedule:
         """Config-backed fee schedule (WHI-812). Override for scaffold-only adapters."""
         itype = instrument_type or default_instrument_type(self.venue_class)
-        return get_fee_schedule(
-            self.venue,
-            itype,
-            asset=asset.upper() if asset else None,
-        )
+        return get_fee_schedule(self.venue, itype, asset=asset)
+
 
 def default_instrument_type(venue_class: VenueClass) -> InstrumentType:
     """Default instrument_type when the caller passes None (WHI-799 §7)."""
@@ -162,6 +166,7 @@ def default_instrument_type(venue_class: VenueClass) -> InstrumentType:
         "prop_amm": "prop_amm",
     }
     return mapping[venue_class]
+
 
 def require_taker_bps(venue: str, schedule: FeeSchedule) -> Decimal:
     """Return schedule.taker_bps or raise when missing (orderbook venues)."""

@@ -67,6 +67,7 @@ AERO_TICK_SPACINGS: Final[tuple[int, ...]] = (1, 50, 100, 200)
 _BINANCE_BOOK_TICKER = "https://api.binance.com/api/v3/ticker/bookTicker"
 _WEI: Final[Decimal] = Decimal(10) ** 18
 
+
 @dataclass(frozen=True, slots=True)
 class TokenInfo:
     """On-chain token metadata for a logical asset or quote leg."""
@@ -74,6 +75,7 @@ class TokenInfo:
     address: str
     decimals: int
     symbol: str
+
 
 @dataclass(frozen=True, slots=True)
 class QuoterResult:
@@ -86,20 +88,24 @@ class QuoterResult:
     lp_fee_tier_bps: Decimal | None
     exact_out: bool
 
+
 def fee_to_lp_bps(fee: int) -> Decimal:
     """Convert Uniswap/PCS fee units (1e-6) to basis points."""
     return Decimal(fee) / Decimal(100)
+
 
 def to_raw(amount: Decimal, decimals: int) -> int:
     """Scale a human amount to integer token units (floor)."""
     scale = Decimal(10) ** decimals
     return int(amount * scale)
 
+
 def from_raw(raw: int, decimals: int) -> Decimal:
     """Scale integer token units to a Decimal human amount."""
     return Decimal(raw) / (Decimal(10) ** decimals)
 
 _DOTENV_LOADED = False
+
 
 def load_dotenv_once() -> None:
     """Load repo-root ``.env`` into ``os.environ`` (idempotent)."""
@@ -110,6 +116,7 @@ def load_dotenv_once() -> None:
 
     load_dotenv()  # searches cwd and parents; no-op if file absent
     _DOTENV_LOADED = True
+
 
 def require_env(name: str) -> str:
     """Return a non-empty env var or raise with a clear message.
@@ -124,6 +131,7 @@ def require_env(name: str) -> str:
             f"missing required env var {name} (set it in .env — see .env.example)"
         )
     return value
+
 
 def encode_quote_exact_input_single(
     token_in: str,
@@ -144,6 +152,7 @@ def encode_quote_exact_input_single(
         ["(address,address,uint256,uint24,uint160)"], [params]
     )
 
+
 def encode_quote_exact_output_single(
     token_in: str,
     token_out: str,
@@ -163,12 +172,14 @@ def encode_quote_exact_output_single(
         ["(address,address,uint256,uint24,uint160)"], [params]
     )
 
+
 def decode_quoter_v2_result(data: bytes) -> tuple[int, int, int, int]:
     """Decode (amount, sqrtPriceX96After, initializedTicksCrossed, gasEstimate)."""
     amount, sqrt_after, ticks, gas_est = decode(
         ["uint256", "uint160", "uint32", "uint256"], data
     )
     return int(amount), int(sqrt_after), int(ticks), int(gas_est)
+
 
 def encode_aero_exact_in_v3(
     token_in: str,
@@ -189,6 +200,7 @@ def encode_aero_exact_in_v3(
         ["(address,address,uint256,int24,uint160)"], [params]
     )
 
+
 def encode_aero_exact_in_v2(
     token_in: str,
     token_out: str,
@@ -204,10 +216,12 @@ def encode_aero_exact_in_v2(
     )
     return SEL_AERO_V2 + encode(["(address,address,bool,uint256)"], [params])
 
+
 def decode_aero_v2_amount(data: bytes) -> int:
     """Decode uint256 amountOut from quoteExactInputSingleV2."""
     (amount_out,) = decode(["uint256"], data)
     return int(amount_out)
+
 
 def encode_get_amounts_out(
     amount_in: int,
@@ -228,10 +242,12 @@ def encode_get_amounts_out(
         [amount_in, encoded_routes],
     )
 
+
 def decode_get_amounts_out(data: bytes) -> list[int]:
     """Decode uint256[] from getAmountsOut."""
     (amounts,) = decode(["uint256[]"], data)
     return [int(a) for a in amounts]
+
 
 def prefer_quoter_result(
     current: QuoterResult | None,
@@ -262,6 +278,7 @@ def prefer_quoter_result(
         return candidate
     return current
 
+
 class JsonRpcError(AdapterFetchError):
     """JSON-RPC eth_* call failed."""
 
@@ -276,6 +293,7 @@ class JsonRpcError(AdapterFetchError):
         self.transport = transport
         self.revert = revert
 
+
 def _is_execution_revert(err: object) -> bool:
     """True when the JSON-RPC error is a contract revert (pool miss / too deep)."""
     text = str(err).lower()
@@ -289,6 +307,7 @@ def _is_execution_revert(err: object) -> bool:
         if code == -32000 and "revert" in text:
             return True
     return False
+
 
 class RpcClient:
     """Minimal async JSON-RPC client for eth_call / eth_gasPrice."""
@@ -341,6 +360,7 @@ class RpcClient:
         if not isinstance(result, str) or not result.startswith("0x"):
             raise JsonRpcError(f"eth_gasPrice unexpected: {result!r}")
         return int(result, 16)
+
 
 async def probe_quoter_v2(
     rpc: RpcClient,
@@ -432,6 +452,7 @@ async def probe_quoter_v2(
         )
     return best
 
+
 async def fetch_binance_mid(
     http: httpx.AsyncClient,
     symbol: str,
@@ -448,6 +469,7 @@ async def fetch_binance_mid(
         return (bid + ask) / Decimal(2)
     except (httpx.HTTPError, KeyError, ValueError, TypeError):
         return None
+
 
 async def estimate_gas_usd(
     rpc: RpcClient,
@@ -472,6 +494,7 @@ async def estimate_gas_usd(
         return None, True
     gas_eth = Decimal(gas_estimate) * Decimal(gas_price_wei) / _WEI
     return gas_eth * native_usd, False
+
 
 def build_non_ok_quote(
     *,
@@ -517,6 +540,7 @@ def build_non_ok_quote(
         error_code=error_code,
         error_message=error_message,
     )
+
 
 def build_ok_quote(
     *,
@@ -576,6 +600,7 @@ def build_ok_quote(
         qty_base=qty_base,
         qty_method=qty_method,
     )
+
 
 class AmmDexAdapter(BaseAdapter):
     """Base class for on-chain AMM DEX adapters (Uniswap / Aerodrome / Pancake)."""

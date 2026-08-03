@@ -60,6 +60,7 @@ _SMOKE_BSC_AMOUNT = 10**15  # 0.001 BTCB
 
 _kyber_limiter = AsyncRateLimiter(_MIN_INTERVAL_S)
 
+
 class KyberSwapPropAdapter(BaseAdapter):
     """Base class for KyberSwap ``includedSources=tessera`` venues."""
 
@@ -333,6 +334,7 @@ class KyberSwapPropAdapter(BaseAdapter):
 
         raise last_err or AdapterFetchError(f"{self.venue}: KyberSwap route failed")
 
+
 def _parse_gas_usd(summary: dict[str, Any]) -> Decimal | None:
     """Extract gasUsd from routeSummary; None if missing/unparseable."""
     raw = summary.get("gasUsd")
@@ -346,6 +348,7 @@ def _parse_gas_usd(summary: dict[str, Any]) -> Decimal | None:
         return None
     return value
 
+
 @register_adapter
 class TesseraBaseAdapter(KyberSwapPropAdapter):
     """Tessera on Base via KyberSwap ``includedSources=tessera``."""
@@ -355,6 +358,7 @@ class TesseraBaseAdapter(KyberSwapPropAdapter):
     tokens: ClassVar[dict[str, TokenInfo]] = BASE_TOKENS
     quote_asset: ClassVar[str] = "USDC"
     supported: ClassVar[tuple[str, ...]] = ("ETH", "BTC", "AERO", "VIRTUAL", "EURC")
+
 
 @register_adapter
 class TesseraBscAdapter(KyberSwapPropAdapter):

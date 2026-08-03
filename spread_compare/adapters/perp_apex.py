@@ -52,6 +52,7 @@ _MIN_INTERVAL_S = 0.15
 _DEPTH_LIMIT = 100
 _BLUE_CHIPS: tuple[str, ...] = ("BTC", "ETH", "SOL")
 
+
 @dataclass(frozen=True, slots=True)
 class _ApexSymbol:
     """Resolved symbol mapping for one logical base asset."""
@@ -59,6 +60,7 @@ class _ApexSymbol:
     base: str
     config_symbol: str  # e.g. BTC-USDT (must NOT be used for depth)
     cross_symbol_name: str  # e.g. BTCUSDT (depth/ticker query key)
+
 
 @register_adapter
 class ApexAdapter(BaseAdapter):

@@ -73,6 +73,7 @@ _label_map_cache: dict[str, str] | None = None
 _meta_lock: asyncio.Lock | None = None
 _meta_loop: asyncio.AbstractEventLoop | None = None
 
+
 def _reset_jupiter_limiter_for_tests() -> None:
     """Test helper: drop the shared limiter + label cache so tests start clean."""
     global _jupiter_limiter, _jupiter_limiter_keyed, _label_map_cache
@@ -83,6 +84,7 @@ def _reset_jupiter_limiter_for_tests() -> None:
     _meta_lock = None
     _meta_loop = None
 
+
 def _get_meta_lock() -> asyncio.Lock:
     """Return an asyncio.Lock bound to the current event loop."""
     global _meta_lock, _meta_loop
@@ -91,6 +93,7 @@ def _get_meta_lock() -> asyncio.Lock:
         _meta_lock = asyncio.Lock()
         _meta_loop = loop
     return _meta_lock
+
 
 async def _get_jupiter_limiter(*, has_api_key: bool) -> AsyncRateLimiter:
     """Return the process-wide Jupiter rate limiter (created on first use).
@@ -110,9 +113,11 @@ async def _get_jupiter_limiter(*, has_api_key: bool) -> AsyncRateLimiter:
             _jupiter_limiter_keyed = False
         return _jupiter_limiter
 
+
 def jupiter_base_url() -> str:
     """Jupiter Metis v1 base; optional env override for migration only."""
     return optional_env("JUPITER_BASE_URL") or JUPITER_BASE_URL
+
 
 class JupiterPropAdapter(BaseAdapter):
     """Base class for Jupiter-filtered prop AMM venues on Solana."""
@@ -413,6 +418,7 @@ class JupiterPropAdapter(BaseAdapter):
             headers["x-api-key"] = key
         return headers
 
+
 def _retry_after_seconds(resp: httpx.Response, attempt: int) -> float:
     """Backoff for 429; prefer ``x-ratelimit-reset`` / Retry-After when present."""
     retry_after = resp.headers.get("retry-after")
@@ -431,6 +437,7 @@ def _retry_after_seconds(resp: httpx.Response, attempt: int) -> float:
             pass
     return float(min(2.0 * (2**attempt), 30.0))
 
+
 @register_adapter
 class HumidiFiAdapter(JupiterPropAdapter):
     """HumidiFi via Jupiter ``dexes=HumidiFi``."""
@@ -439,6 +446,7 @@ class HumidiFiAdapter(JupiterPropAdapter):
     jupiter_label: ClassVar[str] = "HumidiFi"
     program_id: ClassVar[str] = _EXPECTED_PROGRAM_IDS["HumidiFi"]
 
+
 @register_adapter
 class TesseraSolanaAdapter(JupiterPropAdapter):
     """Tessera (Solana) via Jupiter ``dexes=TesseraV`` (label ≠ slug)."""
@@ -446,6 +454,7 @@ class TesseraSolanaAdapter(JupiterPropAdapter):
     venue: str = "tessera_solana"
     jupiter_label: ClassVar[str] = "TesseraV"
     program_id: ClassVar[str] = _EXPECTED_PROGRAM_IDS["TesseraV"]
+
 
 @register_adapter
 class BisonFiAdapter(JupiterPropAdapter):

@@ -99,6 +99,7 @@ class FeeCatalog:
             ) from exc
         if asset is None:
             return schedule
+        # Caller may already upper; normalize once here as the sole owner.
         return schedule.model_copy(update={"asset": asset.upper()})
 
     def all_schedules(self) -> list[FeeSchedule]:
@@ -107,6 +108,7 @@ class FeeCatalog:
             self._all,
             key=lambda s: (s.venue, s.instrument_type),
         )
+
 
 def required_instruments(venue_class: VenueClass) -> frozenset[InstrumentType]:
     """Instrument types a venue of ``venue_class`` must publish schedules for."""
@@ -124,6 +126,49 @@ def _read_yaml(path: Path) -> dict[str, Any]:
     return raw
 
 
+def _validate_schedule(sched: FeeSchedule) -> list[str]:
+    """Cross-field checks beyond the pydantic shape."""
+    errs: list[str] = []
+    if not sched.source_urls:
+        errs.append(f"{sched.venue}/{sched.instrument_type}: source_urls empty")
+    if not sched.fee_embedded_in_quote and sched.taker_bps is None:
+        errs.append(
+            f"{sched.venue}/{sched.instrument_type}: taker_bps required when "
+            "fee_embedded_in_quote is false"
+        )
+    if sched.tiers:
+        names = {t.name for t in sched.tiers}
+        if sched.default_tier not in names:
+            errs.append(
+                f"{sched.venue}/{sched.instrument_type}: default_tier="
+                f"{sched.default_tier!r} not in tiers {sorted(names)}"
+            )
+        # Top-level maker/taker should match the default tier row when present.
+        default_row = next(
+            (t for t in sched.tiers if t.name == sched.default_tier), None
+        )
+        if default_row is not None:
+            if (
+                sched.taker_bps is not None
+                and default_row.taker_bps != sched.taker_bps
+            ):
+                errs.append(
+                    f"{sched.venue}/{sched.instrument_type}: taker_bps "
+                    f"{sched.taker_bps} != tiers[{sched.default_tier}].taker_bps "
+                    f"{default_row.taker_bps}"
+                )
+            if (
+                sched.maker_bps is not None
+                and default_row.maker_bps != sched.maker_bps
+            ):
+                errs.append(
+                    f"{sched.venue}/{sched.instrument_type}: maker_bps "
+                    f"{sched.maker_bps} != tiers[{sched.default_tier}].maker_bps "
+                    f"{default_row.maker_bps}"
+                )
+    return errs
+
+
 def _validate_coverage(catalog: FeeCatalog) -> None:
     """Fail if any registered venue lacks its required instrument schedules."""
     missing: list[str] = []
@@ -134,12 +179,11 @@ def _validate_coverage(catalog: FeeCatalog) -> None:
             except KeyError:
                 missing.append(f"{slug}/{itype}: schedule missing")
                 continue
-            if not sched.source_urls:
-                missing.append(f"{slug}/{itype}: source_urls empty")
             if sched.venue != slug:
                 missing.append(
                     f"{slug}/{itype}: venue field {sched.venue!r} != file slug"
                 )
+            missing.extend(_validate_schedule(sched))
     if missing:
         raise ValueError(
             "fee catalog incomplete or invalid:\n  - " + "\n  - ".join(missing)
