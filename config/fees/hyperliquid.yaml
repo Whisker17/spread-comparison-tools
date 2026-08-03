@@ -1,0 +1,35 @@
+# Hyperliquid perp fee schedule (WHI-812).
+# Phase 1 uses Tier 0 base rates (no staking discount, no referral discount).
+# Higher volume / staking tiers listed for display only.
+venue: hyperliquid
+schedules:
+  - instrument_type: perp
+    maker_bps: "1.5"
+    taker_bps: "4.5"
+    default_tier: default_taker
+    funding_model: perp_continuous
+    fee_embedded_in_quote: false
+    tiers:
+      - name: default_taker
+        maker_bps: "1.5"
+        taker_bps: "4.5"
+        volume_requirement: "14d weighted volume base (Tier 0)"
+      - name: tier1
+        maker_bps: "1.2"
+        taker_bps: "4"
+        volume_requirement: "> $5M 14d weighted volume"
+      - name: tier2
+        maker_bps: "0.8"
+        taker_bps: "3.5"
+        volume_requirement: "> $25M 14d weighted volume"
+      - name: tier3
+        maker_bps: "0.4"
+        taker_bps: "3"
+        volume_requirement: "> $100M 14d weighted volume"
+      - name: tier4
+        maker_bps: "0"
+        taker_bps: "2.8"
+        volume_requirement: "> $500M 14d weighted volume"
+    source_urls:
+      - https://hyperliquid.gitbook.io/hyperliquid-docs/trading/fees
+    updated_at: "2026-08-03T00:00:00Z"

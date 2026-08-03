@@ -45,10 +45,12 @@ per-venue timeout/degradation, short-TTL response cache, `GET /quotes` / `GET /v
 Tailwind + typed OpenAPI client (`openapi-typescript`), `SpreadMatrix` /
 `TopOfBookRow` / status render SSOT / summary best-venue engine, six routes +
 `/status-fixtures`, TanStack Query polling; backend CORS for localhost:3000.
+M4 fee schedules (WHI-812): `config/fees/*.yaml` + `fees.py` loader, adapters'
+`get_fees` config-backed, `GET /fees`.
 
-**Not implemented:** remaining venue adapters (WHI-805), fee config numbers
-(WHI-812), collector, section page content (WHI-809/810/811), fees/simulate UI.
-Do not assume a module exists until its issue lands.
+**Not implemented:** remaining venue adapters (WHI-805), collector, section page
+content (WHI-809/810/811), fees/simulate UI. Do not assume a module exists until
+its issue lands.
 
 **Blocking gap:** `docs/DESIGN.md` is still mostly the empty template stub (§4.2 module
 layout is filled by WHI-801). Produce the rest via `/grill-me` + `/to-spec` — the PR
@@ -97,10 +99,11 @@ load-bearing interfaces other modules may depend on.
 - **`spread_compare/bookwalk.py`** — sole walk-the-book VWAP; CEX/perp adapters import only this.
 - **`spread_compare/costs.py`** — sole `spread_bps` / `total_cost_bps` / `basis_bps`; aggregator never recomputes.
 - **`spread_compare/settings.py`** — typed YAML config loader (`config/mid.yaml`, `config/aggregator.yaml`, `config/api.yaml`).
+- **`spread_compare/fees.py`** — typed `config/fees/*.yaml` → `FeeSchedule` catalog; adapters + `GET /fees`.
 - **`spread_compare/mids.py`** — reference-mid service (WHI-799 §3 priority chain + cache).
 - **`spread_compare/aggregator.py`** — concurrent adapter fan-out, per-venue timeout, SizeQuotePair assembly, response cache; never recomputes bps.
 - **`spread_compare/adapters/`** — async `VenueAdapter` + `BaseAdapter`, auto-discovery, `@register_adapter` registry with `startup_all`/`aclose_all`, `mock` + CEX (`binance`/`bybit`) + perp DEX (`perp_hyperliquid`/`perp_lighter`/`perp_apex`) + AMM DEX (`amm_uniswap`/`amm_aerodrome`/`amm_pancakeswap`) + prop AMM (`prop_jupiter`/`prop_kyberswap`), shared `_cex_common` / `_perp_common` / `_amm_common` / `_prop_common`; one module per real venue (no hand-import list).
-- **`spread_compare/api/`** — FastAPI app factory with lifespan; `/health`, `/quotes`, `/venues`, `/assets`; CORS for local FE.
+- **`spread_compare/api/`** — FastAPI app factory with lifespan; `/health`, `/quotes`, `/venues`, `/assets`, `/fees`; CORS for local FE.
 - **`frontend/`** — Next.js dashboard (WHI-808): typed API client, SpreadMatrix, section config modules, route shell.
 - **`main.py`** — CLI: `--dry-run` validates; live serves uvicorn.
 

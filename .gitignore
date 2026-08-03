@@ -48,6 +48,7 @@ docker-compose.override.yml
 
 # Per-deployment config overrides (see config/README.md)
 config/*.local.yaml
+config/**/*.local.yaml
 
 # Editors / OS
 .vscode/

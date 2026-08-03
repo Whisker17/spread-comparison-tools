@@ -8,7 +8,6 @@ from __future__ import annotations
 import os
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Final
 
@@ -23,17 +22,14 @@ from spread_compare.adapters._amm_common import (
 from spread_compare.adapters.base import (
     AdapterConfigError,
     AdapterError,
-    default_instrument_type,
 )
 from spread_compare.models import (
-    FeeSchedule,
     InstrumentType,
     QtyMethod,
     Quote,
     QuoteStatus,
     ReferenceMid,
     Side,
-    VenueClass,
 )
 
 # Re-export shared builders/helpers so prop modules have one import site.
@@ -44,7 +40,6 @@ __all__ = [
     "optional_env",
     "build_non_ok_quote",
     "build_ok_quote",
-    "prop_fee_schedule",
     "require_mid_match",
     "PropFill",
     "PropNoQuoteError",
@@ -67,29 +62,6 @@ def require_mid_match(mid: ReferenceMid, asset: str) -> None:
         raise AdapterError(f"mid must be positive, got {mid.mid}")
 
 
-def prop_fee_schedule(
-    venue: str,
-    asset: str | None = None,
-    *,
-    instrument_type: InstrumentType | None = None,
-    venue_class: VenueClass = "prop_amm",
-) -> FeeSchedule:
-    """Static fee schedule for prop AMMs (fees embedded in quote price)."""
-    itype: InstrumentType = instrument_type or default_instrument_type(venue_class)
-    return FeeSchedule(
-        venue=venue,
-        asset=asset,
-        instrument_type=itype,
-        maker_bps=None,
-        taker_bps=None,
-        default_tier="embedded",
-        funding_model="none",
-        fee_embedded_in_quote=True,
-        source_urls=[],
-        updated_at=datetime.now(tz=UTC),
-    )
-
-
 @dataclass(frozen=True, slots=True)
 class PropFill:
     """Raw ExactIn fill amounts from a prop quote provider."""
@@ -105,7 +77,6 @@ class PropNoQuoteError(Exception):
     def __init__(self, message: str, *, code: str = "no_quote") -> None:
         super().__init__(message)
         self.code = code
-
 
 PropFetch = Callable[[str, str, int], Awaitable[PropFill]]
 
@@ -258,7 +229,6 @@ async def exact_in_prop_quote(
         gas_unknown=gas_unknown,
         venue_symbol=venue_symbol,
     )
-
 
 # Solana mint table (WHI-797 §6.2) — initial asset surface only.
 SOL_MINTS: Final[dict[str, TokenInfo]] = {

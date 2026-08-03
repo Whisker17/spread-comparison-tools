@@ -40,6 +40,13 @@ def main(argv: list[str] | None = None) -> int:
 
     # Import here so --help stays cheap and dry-run still exercises app construction.
     from spread_compare.api.app import create_app
+    from spread_compare.fees import get_fee_catalog
+    from spread_compare.settings import load_aggregator_settings, load_mid_settings
+
+    # Fail-fast typed config (including fee YAML) without starting the server.
+    load_mid_settings()
+    load_aggregator_settings()
+    get_fee_catalog()
 
     app = create_app()
 

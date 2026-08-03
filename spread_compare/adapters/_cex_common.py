@@ -25,14 +25,13 @@ from spread_compare.adapters.base import (
     BaseAdapter,
     UnsupportedAssetError,
     default_instrument_type,
+    require_taker_bps,
 )
 from spread_compare.bookwalk import walk_book
 from spread_compare.cex_symbols import resolve_cex_symbol, supported_cex_assets
 from spread_compare.costs import spread_bps, top_of_book_spread_bps, total_cost_bps
 from spread_compare.models import (
     FeeBreakdown,
-    FeeSchedule,
-    FundingModel,
     InstrumentType,
     Quote,
     ReferenceMid,
@@ -43,8 +42,6 @@ from spread_compare.models import (
 
 logger = logging.getLogger(__name__)
 
-# TODO(WHI-812): replace placeholder taker with real default_taker schedule.
-PLACEHOLDER_TAKER_BPS: Decimal = Decimal("10")
 DEFAULT_FEE_TIER: str = "default_taker"
 
 CexBookSide = Literal["spot", "perp"]
@@ -254,28 +251,6 @@ def build_top_of_book(
     )
 
 
-def placeholder_fee_schedule(
-    *,
-    venue: str,
-    asset: str | None,
-    instrument_type: InstrumentType,
-    taker_bps: Decimal = PLACEHOLDER_TAKER_BPS,
-) -> FeeSchedule:
-    funding: FundingModel = "perp_8h" if instrument_type == "perp" else "none"
-    return FeeSchedule(
-        venue=venue,
-        asset=asset,
-        instrument_type=instrument_type,
-        maker_bps=Decimal("0"),
-        taker_bps=taker_bps,  # TODO(WHI-812)
-        default_tier=DEFAULT_FEE_TIER,
-        funding_model=funding,
-        fee_embedded_in_quote=False,
-        source_urls=[],
-        updated_at=datetime.now(tz=UTC),
-    )
-
-
 class CexBaseAdapter(BaseAdapter, ABC):
     """Shared get_quote / TOB / fees / HTTP retry for orderbook CEX venues.
 
@@ -394,7 +369,8 @@ class CexBaseAdapter(BaseAdapter, ABC):
     ) -> Quote:
         requested = instrument_type or default_instrument_type(self.venue_class)
         asset_key = asset.upper()
-        # Echo requested tier name (mock parity); bps always default_taker until WHI-812.
+        # Echo requested tier name (mock parity); Phase 1 bps stay default_taker
+        # (WHI-799 §11 Q3) regardless of fee_tier label.
         tier = fee_tier or DEFAULT_FEE_TIER
 
         if mid.asset.upper() != asset_key:
@@ -437,11 +413,7 @@ class CexBaseAdapter(BaseAdapter, ABC):
 
         schedule = self.get_fees(asset_key, instrument_type=book_side)
         # Phase 1: only default_taker bps (WHI-799 §11 Q3); VIP rates out of scope.
-        trading_fee = (
-            schedule.taker_bps
-            if schedule.taker_bps is not None
-            else PLACEHOLDER_TAKER_BPS
-        )
+        trading_fee = require_taker_bps(self.venue, schedule)
 
         q_star = notional_usd / mid.mid
         bids, asks = await self._fetch_book(
@@ -481,19 +453,6 @@ class CexBaseAdapter(BaseAdapter, ABC):
             mid=mid,
             bids=bids,
             asks=asks,
-        )
-
-    def get_fees(
-        self,
-        asset: str | None = None,
-        *,
-        instrument_type: InstrumentType | None = None,
-    ) -> FeeSchedule:
-        itype = instrument_type or default_instrument_type(self.venue_class)
-        return placeholder_fee_schedule(
-            venue=self.venue,
-            asset=asset.upper() if asset else None,
-            instrument_type=itype,
         )
 
     def supported_assets(
