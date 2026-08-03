@@ -41,12 +41,27 @@ def test_get_assets(client: TestClient) -> None:
     assert resp.status_code == 200
     rows = resp.json()
     ids = {r["id"] for r in rows}
-    assert ids == {"BTC", "ETH", "SOL"}
+    # WHI-826 Phase 1 catalog: blue chips + stocks + equity perps + others.
+    assert {"BTC", "ETH", "SOL"} <= ids
+    assert {"QQQB", "SPCXB", "NVDAB", "NVDAON"} <= ids
+    assert {"TSLA", "NVDA", "AAPL", "MSFT"} <= ids
+    assert {"DOGE", "WIF", "XRP", "SUI", "LINK", "AVAX", "ADA", "BNB"} <= ids
+    assert len(ids) == 19
     btc = next(r for r in rows if r["id"] == "BTC")
     assert btc["category"] == "crypto_blue_chip"
     assert btc["representations"]["binance"] == "BTCUSDT"
     assert btc["representations"]["uniswap_eth"] == "WBTC"
     assert btc["representations"]["humidifi"] == "cbBTC"
+    qqqb = next(r for r in rows if r["id"] == "QQQB")
+    assert qqqb["category"] == "tokenized_stock"
+    assert qqqb["representations"]["binance"] == "QQQBUSDT"
+    assert qqqb["representations"]["pancakeswap_bsc"] == "QQQB"
+    assert qqqb["representations"]["tessera_bsc"] == "QQQB"
+    tsla = next(r for r in rows if r["id"] == "TSLA")
+    assert tsla["category"] == "equity_perp"
+    assert tsla["representations"]["hyperliquid"] == "xyz:TSLA"
+    doge = next(r for r in rows if r["id"] == "DOGE")
+    assert doge["category"] == "other"
 
 
 def test_get_fees(client: TestClient) -> None:

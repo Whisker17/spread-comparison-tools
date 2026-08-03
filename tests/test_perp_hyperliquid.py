@@ -52,19 +52,42 @@ def _mid(asset: str = "BTC", price: str = "100000") -> ReferenceMid:
     )
 
 
-def _meta_payload() -> list[Any]:
+def _meta_payload_main() -> list[Any]:
     return [
         {
             "universe": [
                 {"name": "BTC"},
                 {"name": "ETH"},
                 {"name": "SOL"},
+                {"name": "DOGE"},
+                {"name": "kPEPE"},
             ]
         },
         [
             {"funding": "0.0000125", "markPx": "100050"},
             {"funding": "0.00001", "markPx": "3000"},
             {"funding": "0.00002", "markPx": "150"},
+            {"funding": "0.00003", "markPx": "0.15"},
+            {"funding": "0.00004", "markPx": "0.01"},
+        ],
+    ]
+
+
+def _meta_payload_xyz() -> list[Any]:
+    return [
+        {
+            "universe": [
+                {"name": "TSLA"},
+                {"name": "NVDA"},
+                {"name": "AAPL"},
+                {"name": "MSFT"},
+            ]
+        },
+        [
+            {"funding": "0.00001", "markPx": "250"},
+            {"funding": "0.00001", "markPx": "120"},
+            {"funding": "0.00001", "markPx": "200"},
+            {"funding": "0.00001", "markPx": "400"},
         ],
     ]
 
@@ -79,7 +102,9 @@ def _transport(
         assert request.method == "POST"
         body = json.loads(request.content.decode())
         if body.get("type") == "metaAndAssetCtxs":
-            return httpx.Response(200, json=_meta_payload())
+            if body.get("dex") == "xyz":
+                return httpx.Response(200, json=_meta_payload_xyz())
+            return httpx.Response(200, json=_meta_payload_main())
         if body.get("type") == "l2Book":
             return httpx.Response(
                 200,
@@ -205,5 +230,60 @@ async def test_hl_startup_idempotent() -> None:
     try:
         await adapter.startup()  # second call is no-op
         assert "BTC" in adapter.supported_assets()
+    finally:
+        await adapter.aclose()
+
+
+@pytest.mark.asyncio
+async def test_hl_xyz_equity_perp_resolves() -> None:
+    """WHI-826: TSLA → xyz:TSLA with HIP-3 meta loaded."""
+    # Book sized for equity mid (~250) so q_star fits fixture depth.
+    eq_bids = [
+        {"px": "249.90", "sz": "40", "n": 1},
+        {"px": "249.50", "sz": "40", "n": 1},
+    ]
+    eq_asks = [
+        {"px": "250.10", "sz": "40", "n": 1},
+        {"px": "250.50", "sz": "40", "n": 1},
+    ]
+    adapter = await _ready_adapter(book_levels=[eq_bids, eq_asks])
+    try:
+        assert "TSLA" in adapter.supported_assets()
+        quote = await adapter.get_quote(
+            "TSLA", "buy", Decimal("1000"), mid=_mid("TSLA", "250")
+        )
+        assert quote.status == "ok"
+        assert quote.asset == "TSLA"
+        assert quote.venue_symbol == "xyz:TSLA"
+        assert quote.instrument_type == "perp"
+    finally:
+        await adapter.aclose()
+
+
+@pytest.mark.asyncio
+async def test_hl_kpepe_multiplier_normalizes() -> None:
+    """kPEPE book prices are 1000×; spread matches 1× mid after scale."""
+    # Contract book around 0.01 with mid 0.00001 (1× PEPE).
+    k_bids = [
+        {"px": "0.009999", "sz": "500000", "n": 1},
+        {"px": "0.009995", "sz": "500000", "n": 1},
+    ]
+    k_asks = [
+        {"px": "0.010001", "sz": "500000", "n": 1},
+        {"px": "0.010005", "sz": "500000", "n": 1},
+    ]
+    adapter = await _ready_adapter(book_levels=[k_bids, k_asks])
+    try:
+        mid = _mid("PEPE", "0.00001")
+        quote = await adapter.get_quote(
+            "PEPE", "buy", Decimal("10000"), mid=mid
+        )
+        assert quote.status == "ok"
+        assert quote.venue_symbol == "kPEPE"
+        assert quote.effective_price is not None
+        # Effective should be near 1× mid, not near 0.01.
+        assert quote.effective_price < Decimal("0.0001")
+        assert quote.spread_bps is not None
+        assert quote.spread_bps < Decimal("1000")
     finally:
         await adapter.aclose()

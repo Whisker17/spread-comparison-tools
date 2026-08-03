@@ -1,7 +1,11 @@
-"""Hyperliquid perp adapter: L2 book walk → Quote (WHI-803).
+"""Hyperliquid perp adapter: L2 book walk → Quote (WHI-803 / WHI-826).
 
 Endpoints: WHI-800 §4.1. Hard cap 20 levels/side — large notionals may return
 ``insufficient_liquidity`` (never fabricate depth).
+
+HIP-3 equity perps use ``xyz:TSLA`` coin form; meta is loaded for the main book
+and the ``xyz`` sub-dex only (WHI-798 §8 Q10). Scaled memes (``kPEPE``) normalize
+via contract multiplier before cost formulas (WHI-826).
 """
 
 from __future__ import annotations
@@ -38,6 +42,13 @@ from spread_compare.models import (
     TopOfBook,
     VenueClass,
 )
+from spread_compare.perp_symbols import (
+    HL_ALLOWED_DEXES,
+    HL_PHASE1_ASSETS,
+    UnsupportedPerpSymbolError,
+    hl_logical_id,
+    resolve_hl_coin,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -47,8 +58,6 @@ _MAX_LEVELS = 20
 # l2Book weight=2; aggregate weight pool 1200/min → max ~600 l2Book/min.
 # 0.12s floor ≈ 500/min (1000 weight) — under the pool with headroom.
 _MIN_INTERVAL_S = 0.12
-# Blue chips always listed; HIP-3 coins pass through on request (WHI-810).
-_BLUE_CHIPS: tuple[str, ...] = ("BTC", "ETH", "SOL")
 # HL ``funding`` field is hourly; store 8h-equivalent for FeeBreakdown (WHI-799 §5.3).
 _HOURS_PER_FUNDING_PERIOD = Decimal("8")
 
@@ -66,7 +75,10 @@ class HyperliquidAdapter(BaseAdapter):
         # coin → (hourly funding, mark px) from metaAndAssetCtxs at startup.
         self._funding_hourly: dict[str, Decimal] = {}
         self._mark_px: dict[str, Decimal] = {}
-        self._universe: list[str] = []
+        # Full coin names present in allowed dexes (e.g. BTC, xyz:TSLA, kPEPE).
+        self._universe_coins: set[str] = set()
+        # Logical ids we can quote (TSLA, DOGE, …).
+        self._logical_assets: list[str] = []
 
     async def startup(self) -> None:
         if self._started:
@@ -85,11 +97,23 @@ class HyperliquidAdapter(BaseAdapter):
         fee_tier: str | None = None,
     ) -> Quote:
         itype_default = instrument_type or default_instrument_type(self.venue_class)
-        coin = _normalize_hl_coin(asset)
-        # Canonical asset id for blue chips; HIP-3 keeps the dex-prefixed coin form
-        # until WHI-810 defines a separate logical id (venue form also in venue_symbol).
-        asset_key = coin.split(":", 1)[-1] if ":" in coin else coin
         tier = fee_tier or DEFAULT_FEE_TIER
+        try:
+            resolved = resolve_hl_coin(asset)
+        except UnsupportedPerpSymbolError as exc:
+            asset_key = asset.split(":", 1)[-1].upper() if ":" in asset else asset.upper()
+            return build_unsupported_quote(
+                venue=self.venue,
+                asset=asset_key,
+                side=side,
+                notional_usd=notional_usd,
+                mid=mid,
+                instrument_type=itype_default,
+                message=str(exc),
+                fee_tier=tier,
+            )
+        coin = resolved.venue_symbol
+        asset_key = hl_logical_id(coin)
 
         require_mid_asset(mid, asset_key)
 
@@ -104,6 +128,18 @@ class HyperliquidAdapter(BaseAdapter):
                 mid=mid,
                 instrument_type=itype_default,
                 message=str(exc),
+                fee_tier=tier,
+            )
+
+        if self._universe_coins and coin not in self._universe_coins:
+            return build_unsupported_quote(
+                venue=self.venue,
+                asset=asset_key,
+                side=side,
+                notional_usd=notional_usd,
+                mid=mid,
+                instrument_type=itype,
+                message=f"{asset} (coin={coin!r}) not on hyperliquid allowed dexes",
                 fee_tier=tier,
             )
 
@@ -125,6 +161,7 @@ class HyperliquidAdapter(BaseAdapter):
             trading_fee_bps=require_taker_bps(self.venue, schedule),
             funding_rate_8h=funding_8h,
             venue_mark=mark,
+            multiplier=resolved.multiplier,
         )
 
     async def get_orderbook_spread(
@@ -134,12 +171,20 @@ class HyperliquidAdapter(BaseAdapter):
         mid: ReferenceMid,
         instrument_type: Literal["spot", "perp"] | None = None,
     ) -> TopOfBook | None:
-        coin = _normalize_hl_coin(asset)
-        asset_key = coin.split(":", 1)[-1] if ":" in coin else coin
+        try:
+            resolved = resolve_hl_coin(asset)
+        except UnsupportedPerpSymbolError as exc:
+            raise UnsupportedAssetError(str(exc)) from exc
+        coin = resolved.venue_symbol
+        asset_key = hl_logical_id(coin)
         require_mid_asset(mid, asset_key)
         if instrument_type not in (None, "perp"):
             raise UnsupportedAssetError(
                 f"hyperliquid adapter only supports perp, got {instrument_type!r}"
+            )
+        if self._universe_coins and coin not in self._universe_coins:
+            raise UnsupportedAssetError(
+                f"{asset} (coin={coin!r}) not on hyperliquid allowed dexes"
             )
         bids, asks = await self._fetch_l2_book(coin)
         return build_top_of_book(
@@ -149,6 +194,7 @@ class HyperliquidAdapter(BaseAdapter):
             bids=bids,
             asks=asks,
             instrument_type="perp",
+            multiplier=resolved.multiplier,
         )
 
     def supported_assets(
@@ -157,11 +203,9 @@ class HyperliquidAdapter(BaseAdapter):
         instrument_type: InstrumentType | None = None,
     ) -> list[str]:
         _ = instrument_type
-        if self._universe:
-            blue = [c for c in _BLUE_CHIPS if c in self._universe]
-            rest = sorted(c for c in self._universe if c not in _BLUE_CHIPS)
-            return blue + rest
-        return list(_BLUE_CHIPS)
+        if self._logical_assets:
+            return list(self._logical_assets)
+        return list(HL_PHASE1_ASSETS)
 
     def _funding_rate_8h(self, coin: str) -> Decimal | None:
         hourly = self._funding_hourly.get(coin)
@@ -170,36 +214,74 @@ class HyperliquidAdapter(BaseAdapter):
         return hourly * _HOURS_PER_FUNDING_PERIOD
 
     async def _load_meta(self) -> None:
-        payload = await self._post_info({"type": "metaAndAssetCtxs"})
-        try:
-            if not isinstance(payload, list) or len(payload) < 2:
+        """Load main book + xyz HIP-3 meta (whitelist only — WHI-798 §8 Q10)."""
+        funding: dict[str, Decimal] = {}
+        marks: dict[str, Decimal] = {}
+        coins: set[str] = set()
+
+        for dex in ("", "xyz"):
+            body: dict[str, Any] = {"type": "metaAndAssetCtxs"}
+            if dex:
+                body["dex"] = dex
+            payload = await self._post_info(body)
+            try:
+                if not isinstance(payload, list) or len(payload) < 2:
+                    raise AdapterFetchError(
+                        f"hyperliquid metaAndAssetCtxs unexpected shape: {type(payload)}"
+                    )
+                meta, ctxs = payload[0], payload[1]
+                universe = meta["universe"]
+                if not isinstance(universe, list) or not isinstance(ctxs, list):
+                    raise AdapterFetchError("hyperliquid meta universe/ctxs not lists")
+                for i, entry in enumerate(universe):
+                    raw_name = str(entry["name"])
+                    # Main book names are bare (preserve case: kPEPE ≠ KPEPE).
+                    # xyz responses may be "TSLA" or "xyz:TSLA".
+                    if dex and ":" not in raw_name:
+                        coin = f"{dex}:{raw_name.upper()}"
+                    elif ":" in raw_name:
+                        d, n = raw_name.split(":", 1)
+                        d_l = d.lower()
+                        # Only whitelisted HIP-3 prefixes (main book has no prefix).
+                        if d_l not in HL_ALLOWED_DEXES:
+                            continue
+                        coin = f"{d_l}:{n.upper()}"
+                    else:
+                        coin = raw_name
+                    coins.add(coin)
+                    if i >= len(ctxs):
+                        break
+                    ctx = ctxs[i]
+                    if not isinstance(ctx, dict):
+                        continue
+                    if ctx.get("funding") is not None:
+                        funding[coin] = Decimal(str(ctx["funding"]))
+                    if ctx.get("markPx") is not None:
+                        marks[coin] = Decimal(str(ctx["markPx"]))
+            except (KeyError, TypeError, ArithmeticError, AdapterError) as exc:
                 raise AdapterFetchError(
-                    f"hyperliquid metaAndAssetCtxs unexpected shape: {type(payload)}"
-                )
-            meta, ctxs = payload[0], payload[1]
-            universe = meta["universe"]
-            if not isinstance(universe, list) or not isinstance(ctxs, list):
-                raise AdapterFetchError("hyperliquid meta universe/ctxs not lists")
-            funding: dict[str, Decimal] = {}
-            marks: dict[str, Decimal] = {}
-            names: list[str] = []
-            for i, entry in enumerate(universe):
-                name = str(entry["name"])
-                names.append(name)
-                if i >= len(ctxs):
-                    break
-                ctx = ctxs[i]
-                if not isinstance(ctx, dict):
-                    continue
-                if ctx.get("funding") is not None:
-                    funding[name] = Decimal(str(ctx["funding"]))
-                if ctx.get("markPx") is not None:
-                    marks[name] = Decimal(str(ctx["markPx"]))
-            self._universe = names
-            self._funding_hourly = funding
-            self._mark_px = marks
-        except (KeyError, TypeError, ArithmeticError, AdapterError) as exc:
-            raise AdapterFetchError(f"hyperliquid meta parse failed: {exc}") from exc
+                    f"hyperliquid meta parse failed (dex={dex!r}): {exc}"
+                ) from exc
+
+        self._universe_coins = coins
+        self._funding_hourly = funding
+        self._mark_px = marks
+        self._logical_assets = self._build_logical_list(coins)
+
+    @staticmethod
+    def _build_logical_list(coins: set[str]) -> list[str]:
+        """Prefer Phase-1 order, then remaining logical ids sorted."""
+        logicals = {hl_logical_id(c) for c in coins}
+        # Also expose known overrides whose coins are present.
+        ordered: list[str] = []
+        for asset in HL_PHASE1_ASSETS:
+            coin = resolve_hl_coin(asset).venue_symbol
+            if coin in coins or asset in logicals:
+                ordered.append(asset)
+        for asset in sorted(logicals):
+            if asset not in ordered:
+                ordered.append(asset)
+        return ordered
 
     async def _fetch_l2_book(self, coin: str) -> tuple[OrderbookLevels, OrderbookLevels]:
         payload = await self._post_info({"type": "l2Book", "coin": coin})
@@ -247,12 +329,3 @@ class HyperliquidAdapter(BaseAdapter):
             json_body=body,
             max_retries=4,
         )
-
-
-def _normalize_hl_coin(asset: str) -> str:
-    """Uppercase blue-chip coins; preserve HIP-3 ``dex:COIN`` form after strip."""
-    coin = asset.strip()
-    if ":" in coin:
-        dex, name = coin.split(":", 1)
-        return f"{dex}:{name.upper()}" if name else coin
-    return coin.upper()

@@ -22,7 +22,7 @@ class AssetInfo:
     representations: dict[str, str]
 
 
-# WHI-798 §3.3 representation map (Phase 1 blue chips).
+# WHI-798 §3.3 / §6.1 representation map (Phase 1 blue chips).
 _BLUE_CHIP_ROWS: Final[tuple[AssetInfo, ...]] = (
     AssetInfo(
         id="BTC",
@@ -79,13 +79,199 @@ _BLUE_CHIP_ROWS: Final[tuple[AssetInfo, ...]] = (
     ),
 )
 
-ASSETS: Final[dict[str, AssetInfo]] = {a.id: a for a in _BLUE_CHIP_ROWS}
+# WHI-798 §6.2 P0-A bStocks three-way (Binance spot × Pancake × Tessera BSC).
+_TOKENIZED_STOCK_ROWS: Final[tuple[AssetInfo, ...]] = (
+    AssetInfo(
+        id="QQQB",
+        category="tokenized_stock",
+        representations={
+            "binance": "QQQBUSDT",
+            "pancakeswap_bsc": "QQQB",
+            "tessera_bsc": "QQQB",
+        },
+    ),
+    AssetInfo(
+        id="SPCXB",
+        category="tokenized_stock",
+        representations={
+            "binance": "SPCXBUSDT",
+            "pancakeswap_bsc": "SPCXB",
+            "tessera_bsc": "SPCXB",
+        },
+    ),
+    AssetInfo(
+        id="NVDAB",
+        category="tokenized_stock",
+        representations={
+            "binance": "NVDABUSDT",
+            "pancakeswap_bsc": "NVDAB",
+            "tessera_bsc": "NVDAB",
+        },
+    ),
+    AssetInfo(
+        id="NVDAON",
+        category="tokenized_stock",
+        representations={
+            # No Binance spot for Ondo form; Tessera + Pancake for BSC comparison.
+            "pancakeswap_bsc": "NVDAon",
+            "tessera_bsc": "NVDAon",
+        },
+    ),
+)
 
-# Crypto blue chips use the §3.2 mid priority chain.
-CRYPTO_BLUE_CHIPS: Final[frozenset[str]] = frozenset(ASSETS)
+# WHI-798 §6.2 P0-B equity perps (exact ticker on five venues).
+_EQUITY_PERP_ROWS: Final[tuple[AssetInfo, ...]] = (
+    AssetInfo(
+        id="TSLA",
+        category="equity_perp",
+        representations={
+            "binance": "TSLAUSDT",
+            "bybit": "TSLAUSDT",
+            "hyperliquid": "xyz:TSLA",
+            "lighter": "TSLA",
+            "apex": "TSLA-USDT",
+        },
+    ),
+    AssetInfo(
+        id="NVDA",
+        category="equity_perp",
+        representations={
+            "binance": "NVDAUSDT",
+            "bybit": "NVDAUSDT",
+            "hyperliquid": "xyz:NVDA",
+            "lighter": "NVDA",
+            "apex": "NVDA-USDT",
+        },
+    ),
+    AssetInfo(
+        id="AAPL",
+        category="equity_perp",
+        representations={
+            "binance": "AAPLUSDT",
+            "bybit": "AAPLUSDT",
+            "hyperliquid": "xyz:AAPL",
+            "lighter": "AAPL",
+            "apex": "AAPL-USDT",
+        },
+    ),
+    AssetInfo(
+        id="MSFT",
+        category="equity_perp",
+        representations={
+            "binance": "MSFTUSDT",
+            "bybit": "MSFTUSDT",
+            "hyperliquid": "xyz:MSFT",
+            "lighter": "MSFT",
+            "apex": "MSFT-USDT",
+        },
+    ),
+)
+
+# WHI-798 §6.3 / §7.3 Others P0 (CEX + three perp DEXes).
+_OTHER_ROWS: Final[tuple[AssetInfo, ...]] = (
+    AssetInfo(
+        id="DOGE",
+        category="other",
+        representations={
+            "binance": "DOGEUSDT",
+            "bybit": "DOGEUSDT",
+            "hyperliquid": "DOGE",
+            "lighter": "DOGE",
+            "apex": "DOGE-USDT",
+        },
+    ),
+    AssetInfo(
+        id="WIF",
+        category="other",
+        representations={
+            "binance": "WIFUSDT",
+            "bybit": "WIFUSDT",
+            "hyperliquid": "WIF",
+            "lighter": "WIF",
+            "apex": "WIF-USDT",
+        },
+    ),
+    AssetInfo(
+        id="XRP",
+        category="other",
+        representations={
+            "binance": "XRPUSDT",
+            "bybit": "XRPUSDT",
+            "hyperliquid": "XRP",
+            "lighter": "XRP",
+            "apex": "XRP-USDT",
+        },
+    ),
+    AssetInfo(
+        id="SUI",
+        category="other",
+        representations={
+            "binance": "SUIUSDT",
+            "bybit": "SUIUSDT",
+            "hyperliquid": "SUI",
+            "lighter": "SUI",
+            "apex": "SUI-USDT",
+        },
+    ),
+    AssetInfo(
+        id="LINK",
+        category="other",
+        representations={
+            "binance": "LINKUSDT",
+            "bybit": "LINKUSDT",
+            "hyperliquid": "LINK",
+            "lighter": "LINK",
+            "apex": "LINK-USDT",
+        },
+    ),
+    AssetInfo(
+        id="AVAX",
+        category="other",
+        representations={
+            "binance": "AVAXUSDT",
+            "bybit": "AVAXUSDT",
+            "hyperliquid": "AVAX",
+            "lighter": "AVAX",
+            "apex": "AVAX-USDT",
+        },
+    ),
+    AssetInfo(
+        id="ADA",
+        category="other",
+        representations={
+            "binance": "ADAUSDT",
+            "bybit": "ADAUSDT",
+            "hyperliquid": "ADA",
+            "lighter": "ADA",
+            "apex": "ADA-USDT",
+        },
+    ),
+    AssetInfo(
+        id="BNB",
+        category="other",
+        representations={
+            "binance": "BNBUSDT",
+            "bybit": "BNBUSDT",
+            "hyperliquid": "BNB",
+            "lighter": "BNB",
+            "apex": "BNB-USDT",
+        },
+    ),
+)
+
+_ALL_ROWS: Final[tuple[AssetInfo, ...]] = (
+    _BLUE_CHIP_ROWS
+    + _TOKENIZED_STOCK_ROWS
+    + _EQUITY_PERP_ROWS
+    + _OTHER_ROWS
+)
+
+ASSETS: Final[dict[str, AssetInfo]] = {a.id: a for a in _ALL_ROWS}
+
+# Crypto blue chips use the §3.2 mid priority chain — must NOT absorb stocks/others.
+CRYPTO_BLUE_CHIPS: Final[frozenset[str]] = frozenset(a.id for a in _BLUE_CHIP_ROWS)
 
 # Tokenized stocks with a CEX spot book use that book's TOB as mid (WHI-799 §3.3).
-# Minimal seed for mid routing; full stocks catalog lands with WHI-810.
 TOKENIZED_CEX_SPOT: Final[dict[str, str]] = {
     # asset -> preferred mid source venue for spot TOB
     "QQQB": "binance",
@@ -105,7 +291,7 @@ TOKENIZED_UNDERLYING: Final[dict[str, str]] = {
     "MUON": "MU",
 }
 
-# Equity perps / others without a crypto index use mark median (WHI-799 §3.3).
+# Equity perps / stocks without a crypto index use mark median (WHI-799 §3.3).
 EQUITY_PERP_ASSETS: Final[frozenset[str]] = frozenset(
     {
         "TSLA",
@@ -123,8 +309,8 @@ EQUITY_PERP_ASSETS: Final[frozenset[str]] = frozenset(
 
 
 def list_assets() -> list[AssetInfo]:
-    """All catalogued logical assets (stable id order)."""
-    return list(_BLUE_CHIP_ROWS)
+    """All catalogued logical assets (stable catalog order)."""
+    return list(_ALL_ROWS)
 
 
 def get_asset(asset_id: str) -> AssetInfo | None:

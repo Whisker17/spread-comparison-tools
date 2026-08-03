@@ -40,6 +40,7 @@ from spread_compare.models import (
     TopOfBook,
     VenueClass,
 )
+from spread_compare.perp_symbols import resolve_lighter_symbol, scaled_1000_logical_id
 
 logger = logging.getLogger(__name__)
 
@@ -100,6 +101,7 @@ class LighterAdapter(BaseAdapter):
     ) -> Quote:
         itype_default = instrument_type or default_instrument_type(self.venue_class)
         asset_key = asset.upper()
+        resolved = resolve_lighter_symbol(asset_key)
         tier = fee_tier or DEFAULT_FEE_TIER
 
         require_mid_asset(mid, asset_key)
@@ -118,7 +120,7 @@ class LighterAdapter(BaseAdapter):
                 fee_tier=tier,
             )
 
-        meta = self._markets_by_symbol.get(asset_key)
+        meta = self._markets_by_symbol.get(resolved.venue_symbol)
         if meta is None:
             return build_unsupported_quote(
                 venue=self.venue,
@@ -147,6 +149,7 @@ class LighterAdapter(BaseAdapter):
             trading_fee_bps=require_taker_bps(self.venue, schedule),
             funding_rate_8h=None,  # not exposed on orderBookDetails (Phase 1)
             venue_mark=meta.mark_price,
+            multiplier=resolved.multiplier,
         )
 
     async def get_orderbook_spread(
@@ -157,12 +160,13 @@ class LighterAdapter(BaseAdapter):
         instrument_type: Literal["spot", "perp"] | None = None,
     ) -> TopOfBook | None:
         asset_key = asset.upper()
+        resolved = resolve_lighter_symbol(asset_key)
         require_mid_asset(mid, asset_key)
         if instrument_type not in (None, "perp"):
             raise UnsupportedAssetError(
                 f"lighter adapter only supports perp, got {instrument_type!r}"
             )
-        meta = self._markets_by_symbol.get(asset_key)
+        meta = self._markets_by_symbol.get(resolved.venue_symbol)
         if meta is None:
             raise UnsupportedAssetError(f"{asset} not supported by lighter")
         bids, asks = await self._fetch_orders(meta.market_id)
@@ -173,6 +177,7 @@ class LighterAdapter(BaseAdapter):
             bids=bids,
             asks=asks,
             instrument_type="perp",
+            multiplier=resolved.multiplier,
         )
 
     def supported_assets(
@@ -182,14 +187,16 @@ class LighterAdapter(BaseAdapter):
     ) -> list[str]:
         _ = instrument_type
         if self._markets_by_symbol:
-            blue = [c for c in _BLUE_CHIPS if c in self._markets_by_symbol]
-            rest = sorted(s for s in self._markets_by_symbol if s not in _BLUE_CHIPS)
+            logicals = {scaled_1000_logical_id(sym) for sym in self._markets_by_symbol}
+            blue = [c for c in _BLUE_CHIPS if c in logicals]
+            rest = sorted(s for s in logicals if s not in _BLUE_CHIPS)
             return blue + rest
         return list(_BLUE_CHIPS)
 
     def market_id_for(self, asset: str) -> int | None:
         """Return cached ``market_id`` for ``asset`` (tests / debugging)."""
-        meta = self._markets_by_symbol.get(asset.upper())
+        resolved = resolve_lighter_symbol(asset)
+        meta = self._markets_by_symbol.get(resolved.venue_symbol)
         return None if meta is None else meta.market_id
 
     async def _load_markets(self) -> None:

@@ -9,6 +9,25 @@ from __future__ import annotations
 from collections.abc import Sequence
 from decimal import Decimal
 
+OrderbookLevels = list[tuple[Decimal, Decimal]]
+
+
+def scale_book_to_canonical(
+    levels: Sequence[tuple[Decimal, Decimal]],
+    multiplier: Decimal,
+) -> OrderbookLevels:
+    """Convert contract-unit levels to 1× canonical (price/mult, size×mult).
+
+    ``1000PEPE`` / ``kPEPE`` books quote per contract unit; after scaling,
+    :func:`walk_book` and cost formulas share the same units as a 1× mid
+    (WHI-826 / WHI-798 §5.3).
+    """
+    if multiplier == 1:
+        return list(levels)
+    if multiplier <= 0:
+        raise ValueError(f"contract multiplier must be positive, got {multiplier}")
+    return [(price / multiplier, size * multiplier) for price, size in levels]
+
 
 def walk_book(
     levels: Sequence[tuple[Decimal, Decimal]],

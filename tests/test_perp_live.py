@@ -23,6 +23,8 @@ _APPROX_MID: dict[str, Decimal] = {
     "BTC": Decimal("60000"),
     "ETH": Decimal("2000"),
     "SOL": Decimal("80"),
+    "DOGE": Decimal("0.15"),
+    "TSLA": Decimal("250"),
 }
 
 
@@ -124,3 +126,49 @@ async def test_live_apex_quotes_and_tob() -> None:
                         assert "-" not in quote.venue_symbol
     finally:
         await adapter.aclose()
+
+
+@pytest.mark.live
+@pytest.mark.asyncio
+async def test_live_doge_five_perp_venues() -> None:
+    """WHI-826 AC: DOGE ok on HL / Lighter / ApeX (CEX covered in cex live)."""
+    notional = Decimal("10000")
+    mid = _mid("DOGE")
+    for adapter_cls in (HyperliquidAdapter, LighterAdapter, ApexAdapter):
+        adapter = adapter_cls()
+        try:
+            await adapter.startup()
+            quote = await adapter.get_quote("DOGE", "buy", notional, mid=mid)
+            assert quote.status == "ok", (
+                f"{adapter.venue} DOGE: {quote.status} {quote.error_message}"
+            )
+            assert quote.asset == "DOGE"
+        finally:
+            await adapter.aclose()
+
+
+@pytest.mark.live
+@pytest.mark.asyncio
+async def test_live_tsla_hip3_and_perp_venues() -> None:
+    """WHI-826 AC: TSLA ok on five perp venues; HL resolves xyz:TSLA."""
+    notional = Decimal("10000")
+    mid = _mid("TSLA")
+    hl = HyperliquidAdapter()
+    try:
+        await hl.startup()
+        quote = await hl.get_quote("TSLA", "buy", notional, mid=mid)
+        assert quote.status == "ok", f"HL TSLA: {quote.status} {quote.error_message}"
+        assert quote.venue_symbol == "xyz:TSLA"
+    finally:
+        await hl.aclose()
+
+    for adapter_cls in (LighterAdapter, ApexAdapter):
+        adapter = adapter_cls()
+        try:
+            await adapter.startup()
+            quote = await adapter.get_quote("TSLA", "buy", notional, mid=mid)
+            assert quote.status == "ok", (
+                f"{adapter.venue} TSLA: {quote.status} {quote.error_message}"
+            )
+        finally:
+            await adapter.aclose()

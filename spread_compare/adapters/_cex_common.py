@@ -27,8 +27,12 @@ from spread_compare.adapters.base import (
     default_instrument_type,
     require_taker_bps,
 )
-from spread_compare.bookwalk import walk_book
-from spread_compare.cex_symbols import resolve_cex_symbol, supported_cex_assets
+from spread_compare.bookwalk import scale_book_to_canonical, walk_book
+from spread_compare.cex_symbols import (
+    resolve_cex_multiplier,
+    resolve_cex_symbol,
+    supported_cex_assets,
+)
 from spread_compare.costs import spread_bps, top_of_book_spread_bps, total_cost_bps
 from spread_compare.models import (
     FeeBreakdown,
@@ -113,9 +117,16 @@ def build_quote_from_book(
     trading_fee_bps: Decimal,
     fee_tier: str = DEFAULT_FEE_TIER,
     timestamp: datetime | None = None,
+    multiplier: Decimal = Decimal(1),
 ) -> Quote:
-    """Walk the book and assemble a ``Quote`` (shared CEX path)."""
+    """Walk the book and assemble a ``Quote`` (shared CEX path).
+
+    When ``multiplier`` ≠ 1, levels are normalized to 1× canonical units before
+    the walk so ``spread_bps`` compares against a 1× mid (WHI-826).
+    """
     now = timestamp or datetime.now(tz=UTC)
+    bids = scale_book_to_canonical(bids, multiplier)
+    asks = scale_book_to_canonical(asks, multiplier)
     q_star = notional_usd / mid.mid
     levels = asks if side == "buy" else bids
     p_star = walk_book(levels, q_star)
@@ -226,7 +237,10 @@ def build_top_of_book(
     bids: OrderbookLevels,
     asks: OrderbookLevels,
     timestamp: datetime | None = None,
+    multiplier: Decimal = Decimal(1),
 ) -> TopOfBook:
+    bids = scale_book_to_canonical(bids, multiplier)
+    asks = scale_book_to_canonical(asks, multiplier)
     if not bids or not asks:
         raise AdapterError(f"{venue}: empty bids or asks for TOB")
     best_bid, bid_size = bids[0]
@@ -367,6 +381,7 @@ class CexBaseAdapter(BaseAdapter, ABC):
         instrument_type: InstrumentType | None = None,
         fee_tier: str | None = None,
     ) -> Quote:
+        explicit_itype = instrument_type is not None
         requested = instrument_type or default_instrument_type(self.venue_class)
         asset_key = asset.upper()
         # Echo requested tier name (mock parity); Phase 1 bps stay default_taker
@@ -396,8 +411,18 @@ class CexBaseAdapter(BaseAdapter, ABC):
                 status="error",
             )
 
-        symbol = resolve_cex_symbol(asset_key)
-        if symbol is None:
+        symbol = resolve_cex_symbol(asset_key, book_side)
+        # Equity perps have no CEX spot book — when the caller omitted
+        # instrument_type, fall through to the only listed book (WHI-826).
+        if (
+            symbol is None
+            and not explicit_itype
+            and book_side == "spot"
+            and resolve_cex_symbol(asset_key, "perp") is not None
+        ):
+            book_side = "perp"
+            symbol = resolve_cex_symbol(asset_key, "perp")
+        if symbol is None or not self._venue_lists_asset(asset_key, book_side):
             return build_error_quote(
                 venue=self.venue,
                 asset=asset_key,
@@ -406,14 +431,17 @@ class CexBaseAdapter(BaseAdapter, ABC):
                 mid=mid,
                 instrument_type=book_side,
                 error_code="unsupported_asset",
-                message=f"{asset} not supported by {self.venue} adapter",
+                message=(
+                    f"{asset} not supported by {self.venue} adapter "
+                    f"as instrument_type={book_side!r}"
+                ),
                 fee_tier=tier,
                 status="unsupported_asset",
             )
 
         schedule = self.get_fees(asset_key, instrument_type=book_side)
-        # Phase 1: only default_taker bps (WHI-799 §11 Q3); VIP rates out of scope.
         trading_fee = require_taker_bps(self.venue, schedule)
+        multiplier = resolve_cex_multiplier(asset_key, book_side)
 
         q_star = notional_usd / mid.mid
         bids, asks = await self._fetch_book(
@@ -431,6 +459,7 @@ class CexBaseAdapter(BaseAdapter, ABC):
             asks=asks,
             fee_tier=tier,
             trading_fee_bps=trading_fee,
+            multiplier=multiplier,
         )
 
     async def get_orderbook_spread(
@@ -441,10 +470,13 @@ class CexBaseAdapter(BaseAdapter, ABC):
         instrument_type: Literal["spot", "perp"] | None = None,
     ) -> TopOfBook | None:
         asset_key = asset.upper()
-        symbol = resolve_cex_symbol(asset_key)
-        if symbol is None:
-            raise UnsupportedAssetError(f"{asset} not supported by {self.venue}")
         book_side: CexBookSide = instrument_type or "spot"
+        symbol = resolve_cex_symbol(asset_key, book_side)
+        if symbol is None:
+            raise UnsupportedAssetError(
+                f"{asset} not supported by {self.venue} as {book_side}"
+            )
+        multiplier = resolve_cex_multiplier(asset_key, book_side)
         bids, asks = await self._fetch_book(symbol, book_side)
         return build_top_of_book(
             venue=self.venue,
@@ -453,6 +485,7 @@ class CexBaseAdapter(BaseAdapter, ABC):
             mid=mid,
             bids=bids,
             asks=asks,
+            multiplier=multiplier,
         )
 
     def supported_assets(
@@ -460,5 +493,17 @@ class CexBaseAdapter(BaseAdapter, ABC):
         *,
         instrument_type: InstrumentType | None = None,
     ) -> list[str]:
-        _ = instrument_type
-        return supported_cex_assets()
+        if instrument_type in ("spot", "perp"):
+            assets = supported_cex_assets(instrument_type)
+        else:
+            assets = supported_cex_assets()
+        return [a for a in assets if self._venue_lists_asset(a, instrument_type)]
+
+    def _venue_lists_asset(
+        self,
+        asset: str,
+        instrument_type: InstrumentType | CexBookSide | None,
+    ) -> bool:
+        """Per-venue listing filter (override for Bybit bStocks gaps, etc.)."""
+        _ = asset, instrument_type
+        return True
