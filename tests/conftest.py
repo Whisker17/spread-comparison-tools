@@ -61,6 +61,25 @@ def offline_perp_http(request: pytest.FixtureRequest) -> Iterator[None]:
 
 
 @pytest.fixture(autouse=True)
+def offline_prop_http(request: pytest.FixtureRequest) -> Iterator[None]:
+    """Wire mock HTTP for registered prop AMM adapters in non-live tests."""
+    if request.node.get_closest_marker("live"):
+        yield
+        return
+
+    from tests.prop_offline_http import install_offline_clients
+
+    clients = install_offline_clients()
+    yield
+
+    async def _close() -> None:
+        for client in clients:
+            await client.aclose()
+
+    asyncio.run(_close())
+
+
+@pytest.fixture(autouse=True)
 def _default_amm_rpc_env(
     request: pytest.FixtureRequest,
     monkeypatch: pytest.MonkeyPatch,

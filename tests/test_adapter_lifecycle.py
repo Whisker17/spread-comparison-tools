@@ -65,17 +65,28 @@ async def test_base_adapter_lazy_http_client(monkeypatch: pytest.MonkeyPatch) ->
 
 @pytest.mark.asyncio
 async def test_startup_all_initializes_mock() -> None:
-    from tests.perp_offline_http import install_offline_clients
+    from tests.perp_offline_http import install_offline_clients as install_perp
+    from tests.prop_offline_http import install_offline_clients as install_prop
 
     _INITIALIZED.clear()
     await aclose_all()
     # aclose_all drops HTTP clients; reinstall offline mocks for real adapters.
-    install_offline_clients()
+    install_perp()
+    install_prop()
     assert initialized_count() == 0
     await startup_all()
     try:
         assert initialized_count() >= 1
         assert "mock" in _INITIALIZED
+        # Prop AMM adapters must start under offline mocks (WHI-806).
+        for slug in (
+            "humidifi",
+            "tessera_solana",
+            "bisonfi",
+            "tessera_base",
+            "tessera_bsc",
+        ):
+            assert slug in _INITIALIZED
         # Second call is safe (per-adapter startup is idempotent).
         count_after_first = initialized_count()
         await startup_all()

@@ -43,6 +43,10 @@ class UnsupportedAssetError(AdapterError):
     """Asset is not supported by this venue for the requested instrument type."""
 
 
+class AdapterConfigError(AdapterError):
+    """Client/config misuse that must fail fast (never map to empty quote)."""
+
+
 class VenueAdapter(Protocol):
     """Cross-venue adapter surface (WHI-799 §7; async I/O per WHI-823)."""
 
