@@ -28,13 +28,20 @@ across Solana/Base/BSC (WHI-797), asset inventory (WHI-798), spread & fee data m
 registry, mock adapter, and FastAPI `GET /health`. M2 async adapter protocol (WHI-823):
 async `VenueAdapter` + lifecycle hooks, `BaseAdapter` shared `httpx.AsyncClient`, registry
 `startup_all`/`aclose_all`, adapter auto-discovery, app lifespan, and `--live` test marker.
-M2 perp DEX adapters (WHI-803): `hyperliquid`, `lighter`, `apex` — orderbook walk →
-`Quote`/`TopOfBook`, HL 20-level cap, Lighter per-order aggregation + 60 req/min throttle,
-ApeX `crossSymbolName` resolution.
+M2 CEX adapters (WHI-802): `binance` + `bybit` (spot + perp via `instrument_type`), shared
+`cex_symbols` map, fixture + `@pytest.mark.live` smoke tests; discovery test uses
+`_test_discovery` slug (not a production venue). M2 perp DEX adapters (WHI-803):
+`hyperliquid`, `lighter`, `apex` — orderbook walk → `Quote`/`TopOfBook`, HL 20-level
+cap, Lighter per-order aggregation + 60 req/min throttle, ApeX `crossSymbolName`
+resolution. M2 AMM DEX adapters (WHI-804): `uniswap_eth`, `aerodrome_base`,
+`pancakeswap_bsc` via on-chain Quoter `eth_call` (raw JSON-RPC + eth-abi; no web3);
+RPC env `ETH_RPC_URL` / `BASE_RPC_URL` / `BSC_RPC_URL`. M2 aggregation API (WHI-807):
+reference-mid service (`mids.py` + `config/mid.yaml`), `QuoteAggregator` fan-out with
+per-venue timeout/degradation, short-TTL response cache, `GET /quotes` / `GET /venues`
+/ `GET /assets`.
 
-**Not implemented:** CEX / AMM / prop-AMM venue adapters (WHI-802, WHI-804…806),
-`/quotes` + reference-mid (WHI-807), fee config numbers (WHI-812), collector, frontend.
-Do not assume a module exists until its issue lands.
+**Not implemented:** remaining venue adapters (WHI-805, 806), fee config numbers
+(WHI-812), collector, frontend. Do not assume a module exists until its issue lands.
 
 **Blocking gap:** `docs/DESIGN.md` is still mostly the empty template stub (§4.2 module
 layout is filled by WHI-801). Produce the rest via `/grill-me` + `/to-spec` — the PR
@@ -71,11 +78,16 @@ that section — one bullet per top-level module, its single responsibility, and
 load-bearing interfaces other modules may depend on.
 
 - **`spread_compare/models.py`** — WHI-799 pydantic models + Quote §6.2 invariants.
-- **`spread_compare/venues.py`** — static venue slug registry (WHI-799 §6.5).
+- **`spread_compare/venues.py`** — static venue slug registry (WHI-799 §6.5) + chain for FE.
+- **`spread_compare/assets.py`** — logical asset catalog + representation labels (WHI-798 §3.3).
+- **`spread_compare/cex_symbols.py`** — logical asset → CEX USDT symbol map (WHI-798 §3.3).
 - **`spread_compare/bookwalk.py`** — sole walk-the-book VWAP; CEX/perp adapters import only this.
-- **`spread_compare/costs.py`** — sole `spread_bps` / `total_cost_bps`; aggregator never recomputes.
-- **`spread_compare/adapters/`** — async `VenueAdapter` + `BaseAdapter`, auto-discovery, `@register_adapter` registry with `startup_all`/`aclose_all`, `mock` + perp DEX adapters (`perp_hyperliquid`, `perp_lighter`, `perp_apex`); one module per real venue (no hand-import list).
-- **`spread_compare/api/`** — FastAPI app factory with lifespan (`/health` reports initialized adapter count; `/quotes` later).
+- **`spread_compare/costs.py`** — sole `spread_bps` / `total_cost_bps` / `basis_bps`; aggregator never recomputes.
+- **`spread_compare/settings.py`** — typed YAML config loader (`config/mid.yaml`, `config/aggregator.yaml`).
+- **`spread_compare/mids.py`** — reference-mid service (WHI-799 §3 priority chain + cache).
+- **`spread_compare/aggregator.py`** — concurrent adapter fan-out, per-venue timeout, SizeQuotePair assembly, response cache; never recomputes bps.
+- **`spread_compare/adapters/`** — async `VenueAdapter` + `BaseAdapter`, auto-discovery, `@register_adapter` registry with `startup_all`/`aclose_all`, `mock` + CEX (`binance`/`bybit`) + perp DEX (`perp_hyperliquid`/`perp_lighter`/`perp_apex`) + AMM DEX (`amm_uniswap`/`amm_aerodrome`/`amm_pancakeswap`), shared `_cex_common` / `_perp_common` / `_amm_common`; one module per real venue (no hand-import list).
+- **`spread_compare/api/`** — FastAPI app factory with lifespan; `/health`, `/quotes`, `/venues`, `/assets`.
 - **`main.py`** — CLI: `--dry-run` validates; live serves uvicorn.
 
 ## Git workflow (mandatory)

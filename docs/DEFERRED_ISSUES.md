@@ -32,12 +32,10 @@ defines none: `docs/GIT_WORKFLOW.md` § High-risk paths), **Medium**
 
 ## Open
 
-- **`mid_stale` is never computed by adapters** (Low, WHI-801).
-  `spread_compare/models.py::Quote.mid_stale` — WHI-799 §3.2 defines
-  `mid_stale = abs(quote.timestamp - mid_timestamp) > mid.stale_threshold_sec`, but
-  computing it needs `config/mid.yaml` (still unvalidated / WHI-807). Mock leaves the
-  default `False`. Fix in WHI-807 (or a shared helper once the threshold lives in
-  typed config).
+- **`GET /assets` lists blue chips only** (Low, WHI-807).
+  `spread_compare/assets.py::list_assets` — WHI-798 stocks/equity catalogs are
+  mid-routing seeds (`TOKENIZED_*`, `EQUITY_PERP_ASSETS`) but not returned by
+  `/assets`. Expand with WHI-810.
 
 - **Perp adapter rate/depth/taker constants live in source, not `config/`** (Low, WHI-803).
   `spread_compare/adapters/_perp_common.py`, `perp_*.py` — placeholders and rate floors
@@ -66,12 +64,41 @@ defines none: `docs/GIT_WORKFLOW.md` § High-risk paths), **Medium**
   copy-paste drift. Promote a `build_quote(...)` (and optional mid/asset guard) into
   `adapters/base.py` with the first real adapter PR if duplication appears.
 
+- **SizeQuotePair has no first-class TOB-error field** (Low, WHI-807).
+  `spread_compare/aggregator.py::_collect_venue` — WHI-799 §6.3 says orderbook
+  TOB fetch failure must not look like AMM `None`, but §6.4's `SizeQuotePair`
+  has no `tob_error` channel. WHI-807 stamps `raw_ref=tob_error:…` on ok legs
+  instead so spread bps stay authoritative. Promote a dedicated field if the FE
+  needs structured handling.
+
+- **`cex_tradfi_index` is best-effort via Binance premiumIndex only** (Low, WHI-807).
+  `spread_compare/mids.py::_try_cex_tradfi_index` — WHI-799 §3.3 prefers a CEX
+  TradFi index; we reuse USDT-M `premiumIndex` when the equity symbol is listed,
+  else fall through to mark median. A dedicated TradFi feed (when productized)
+  should replace this probe.
+
+
 - **Default HTTP timeout hardcoded on BaseAdapter** (Low, WHI-823).
   `spread_compare/adapters/base.py::_DEFAULT_HTTP_TIMEOUT` — AGENTS.md requires
   non-secret tunables in `config/` traced to DESIGN.md §2, but neither the config
   loader nor DESIGN §2 exists yet. Subclasses can override via
-  `super().__init__(timeout=…)`. Move to typed YAML when the first real adapter
-  lands a shared HTTP config (or when DESIGN §2 is written).
+  `super().__init__(timeout=…)`. Move to typed YAML when DESIGN §2 is written.
+
+- **CEX rate-limit / depth / fee placeholder tunables hardcoded** (Low, WHI-802).
+  `spread_compare/adapters/cex_binance.py::_DEPTH_LIMITS` and
+  `BinanceAdapter._min_interval_s`;
+  `cex_bybit.py::_ORDERBOOK_LIMIT` and `BybitAdapter._min_interval_s`;
+  `CexBaseAdapter._max_retries` / `_backoff_start_s` /
+  `_cex_common.PLACEHOLDER_TAKER_BPS` — config/README.md wants YAML, but
+  DESIGN.md §2 and the typed loader still do not exist. Defer until DESIGN §2 +
+  config loader land (or WHI-812 for fees). Fix: `config/cex.yaml` + pydantic
+  model, loaded at adapter startup.
+
+- **`funding_rate_8h` not fetched on CEX quote path** (Low, WHI-802).
+  Spec allows null "when not cheaply available". Depth endpoints do not carry
+  funding; piggybacking `premiumIndex` / Bybit tickers adds weight and latency
+  per quote. Leave null for Phase 1; optional cheap join once the aggregator
+  batches mid+funding (WHI-807) or WHI-812 fee work.
 
 - **Adapter init state is process-global** (Low, WHI-823).
   `spread_compare/adapters/registry.py::_INITIALIZED` — `/health`'s
@@ -81,8 +108,43 @@ defines none: `docs/GIT_WORKFLOW.md` § High-risk paths), **Medium**
   if a slug is started then removed from `_REGISTRY` without `aclose_all`, the
   count can go stale — clear both sets together when unregister is added.
 
+- **AMM fee-tier / tick-spacing probe lists are module constants** (Low, WHI-804).
+  `spread_compare/adapters/_amm_common.py::UNISWAP_FEE_TIERS` (and
+  `PANCAKE_FEE_TIERS`, `AERO_TICK_SPACINGS`) — AGENTS.md wants non-secret tunables
+  in `config/` traced to DESIGN.md §2, but DESIGN §2 is still empty and WHI-812
+  owns fee numbers. Constants are cited to WHI-800 (2026-08-03). Move to typed
+  YAML when DESIGN §2 / WHI-812 lands.
+
+- **Native gas USD uses Binance spot bookTicker inside AMM helpers** (Low, WHI-804).
+  `spread_compare/adapters/_amm_common.py::fetch_binance_mid` — WHI-804 requires
+  `gasEstimate × gasPrice × native USD` via Binance ETHUSDT/BNBUSDT; not the
+  reference-mid path (WHI-807). Acceptable coupling for Phase 1; extract a shared
+  CEX mid helper when WHI-802/807 land to avoid shotgun edits on URL/field renames.
+
+- **AMM ExactOut / deep-size reverts map to `no_quote`, not `insufficient_liquidity`**
+  (Medium, WHI-804).
+  `spread_compare/adapters/_amm_common.py::probe_quoter_v2` — WHI-799 §4.2/§6.6
+  distinguish thin depth from missing routes, but a QuoterV2 eth_call revert does
+  not tell them apart without an extra small-size probe RPC. Left as `no_quote` for
+  reverts; upgrade when a cheap pool-existence probe is worth the RTT.
+
+- **AMM Quote builders not yet unified with mock `_quote_shell`** (Low, WHI-804).
+  `spread_compare/adapters/_amm_common.py::build_ok_quote` / `build_non_ok_quote` —
+  same shape as mock's helper (WHI-801 deferred entry). Promote one shared builder
+  when a third adapter family duplicates the pattern again.
+
 ---
 
 ## Resolved
 
-_(none yet)_
+- **`mid_stale` is never computed by adapters** (Low, WHI-801 → fixed in WHI-807).
+  Aggregator stamps `mid_stale` via `spread_compare.mids.is_mid_stale` /
+  `apply_mid_stale` using `config/mid.yaml` `stale_threshold_sec` after each
+  adapter quote is collected. Adapters may still leave the default `False`; the
+  aggregator is the SSOT for the flag on the assembled package.
+
+- **Shared Quote assembly helper not extracted** (Low, WHI-801 → WHI-802).
+  CEX path extracted into `spread_compare/adapters/_cex_common.py`
+  (`CexBaseAdapter`, `build_quote_from_book`). Mock still has its own shell;
+  promote further only if AMM/perp adapters re-copy.
+
