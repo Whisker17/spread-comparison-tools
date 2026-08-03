@@ -13,6 +13,7 @@ schedules:
       - "5"    # 0.05% (fee unit 500)
       - "25"   # 0.25% (fee unit 2500)
       - "100"  # 1.00% (fee unit 10000)
+    # unvalidated engineering estimate (display fallback only; live quotes use quoter/route gas)
     gas_estimate_usd: "0.25"
     funding_model: none
     fee_embedded_in_quote: true

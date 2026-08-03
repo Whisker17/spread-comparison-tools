@@ -22,17 +22,14 @@ from spread_compare.adapters._amm_common import (
 from spread_compare.adapters.base import (
     AdapterConfigError,
     AdapterError,
-    default_instrument_type,
 )
 from spread_compare.models import (
-    FeeSchedule,
     InstrumentType,
     QtyMethod,
     Quote,
     QuoteStatus,
     ReferenceMid,
     Side,
-    VenueClass,
 )
 
 # Re-export shared builders/helpers so prop modules have one import site.
@@ -43,7 +40,6 @@ __all__ = [
     "optional_env",
     "build_non_ok_quote",
     "build_ok_quote",
-    "prop_fee_schedule",
     "require_mid_match",
     "PropFill",
     "PropNoQuoteError",
@@ -64,24 +60,6 @@ def require_mid_match(mid: ReferenceMid, asset: str) -> None:
         raise AdapterError(f"mid.asset={mid.asset!r} does not match asset={asset!r}")
     if mid.mid <= 0:
         raise AdapterError(f"mid must be positive, got {mid.mid}")
-
-
-def prop_fee_schedule(
-    venue: str,
-    asset: str | None = None,
-    *,
-    instrument_type: InstrumentType | None = None,
-    venue_class: VenueClass = "prop_amm",
-) -> FeeSchedule:
-    """Config-backed fee schedule for prop AMMs (fees embedded in quote price)."""
-    from spread_compare.fees import get_fee_schedule
-
-    itype: InstrumentType = instrument_type or default_instrument_type(venue_class)
-    return get_fee_schedule(
-        venue,
-        itype,
-        asset=asset.upper() if asset else None,
-    )
 
 
 @dataclass(frozen=True, slots=True)

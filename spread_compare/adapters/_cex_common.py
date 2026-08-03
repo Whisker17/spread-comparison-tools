@@ -25,14 +25,13 @@ from spread_compare.adapters.base import (
     BaseAdapter,
     UnsupportedAssetError,
     default_instrument_type,
+    require_taker_bps,
 )
 from spread_compare.bookwalk import walk_book
 from spread_compare.cex_symbols import resolve_cex_symbol, supported_cex_assets
 from spread_compare.costs import spread_bps, top_of_book_spread_bps, total_cost_bps
-from spread_compare.fees import get_fee_schedule
 from spread_compare.models import (
     FeeBreakdown,
-    FeeSchedule,
     InstrumentType,
     Quote,
     ReferenceMid,
@@ -414,11 +413,7 @@ class CexBaseAdapter(BaseAdapter, ABC):
 
         schedule = self.get_fees(asset_key, instrument_type=book_side)
         # Phase 1: only default_taker bps (WHI-799 §11 Q3); VIP rates out of scope.
-        if schedule.taker_bps is None:
-            raise AdapterError(
-                f"{self.venue}: fee schedule missing taker_bps for {book_side}"
-            )
-        trading_fee = schedule.taker_bps
+        trading_fee = require_taker_bps(self.venue, schedule)
 
         q_star = notional_usd / mid.mid
         bids, asks = await self._fetch_book(
@@ -458,19 +453,6 @@ class CexBaseAdapter(BaseAdapter, ABC):
             mid=mid,
             bids=bids,
             asks=asks,
-        )
-
-    def get_fees(
-        self,
-        asset: str | None = None,
-        *,
-        instrument_type: InstrumentType | None = None,
-    ) -> FeeSchedule:
-        itype = instrument_type or default_instrument_type(self.venue_class)
-        return get_fee_schedule(
-            self.venue,
-            itype,
-            asset=asset.upper() if asset else None,
         )
 
     def supported_assets(

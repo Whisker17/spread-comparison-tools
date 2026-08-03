@@ -15,24 +15,14 @@ from spread_compare.fees import (
     get_fee_schedule,
     list_fee_schedules,
     load_fee_catalog,
+    required_instruments,
 )
 from spread_compare.venues import VENUES, known_slugs
 
-# Default instrument type each registered venue serves (for coverage snapshot).
+# Derived from venue_class (same matrix as the loader coverage check).
 _EXPECTED: dict[str, tuple[str, ...]] = {
-    "binance": ("spot", "perp"),
-    "bybit": ("spot", "perp"),
-    "hyperliquid": ("perp",),
-    "lighter": ("perp",),
-    "apex": ("perp",),
-    "uniswap_eth": ("amm_pool",),
-    "aerodrome_base": ("amm_pool",),
-    "pancakeswap_bsc": ("amm_pool",),
-    "humidifi": ("prop_amm",),
-    "tessera_solana": ("prop_amm",),
-    "tessera_base": ("prop_amm",),
-    "tessera_bsc": ("prop_amm",),
-    "bisonfi": ("prop_amm",),
+    slug: tuple(sorted(required_instruments(info.venue_class)))
+    for slug, info in VENUES.items()
 }
 
 
@@ -119,6 +109,20 @@ def test_amm_lp_tiers_and_gas_fallback() -> None:
     aero = get_fee_schedule("aerodrome_base", "amm_pool")
     assert aero.lp_fee_tiers_bps is None
     assert aero.fee_embedded_in_quote is True
+
+
+def test_amm_config_lp_tiers_match_probe_constants() -> None:
+    """Display lp_fee_tiers_bps must stay aligned with quoter probe fee units."""
+    from spread_compare.adapters._amm_common import (
+        PANCAKE_FEE_TIERS,
+        UNISWAP_FEE_TIERS,
+        fee_to_lp_bps,
+    )
+
+    uni = get_fee_schedule("uniswap_eth", "amm_pool")
+    assert uni.lp_fee_tiers_bps == [fee_to_lp_bps(f) for f in UNISWAP_FEE_TIERS]
+    pcs = get_fee_schedule("pancakeswap_bsc", "amm_pool")
+    assert pcs.lp_fee_tiers_bps == [fee_to_lp_bps(f) for f in PANCAKE_FEE_TIERS]
 
 
 def test_prop_amm_embedded() -> None:

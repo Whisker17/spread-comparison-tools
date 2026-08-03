@@ -27,7 +27,6 @@ from spread_compare.costs import spread_bps as calc_spread_bps
 from spread_compare.costs import total_cost_bps
 from spread_compare.models import (
     FeeBreakdown,
-    FeeSchedule,
     InstrumentType,
     QtyMethod,
     Quote,
@@ -612,7 +611,8 @@ class AmmDexAdapter(BaseAdapter):
     rpc_env: str
     native_binance_symbol: str  # ETHUSDT or BNBUSDT
     supported: tuple[str, ...] = ("BTC", "ETH")
-    # Venue-specific Uniswap-style fee tiers for get_fees(); override per adapter.
+    # Venue-specific Uniswap-style fee tiers for quoter probes; keep in sync with
+    # config/fees/<slug>.yaml lp_fee_tiers_bps (display). Override per adapter.
     lp_fee_tiers: tuple[int, ...] = ()
 
     def __init__(self, *, timeout: float | None = None) -> None:
@@ -652,23 +652,6 @@ class AmmDexAdapter(BaseAdapter):
     ) -> list[str]:
         _ = instrument_type
         return list(self.supported)
-
-    def get_fees(
-        self,
-        asset: str | None = None,
-        *,
-        instrument_type: InstrumentType | None = None,
-    ) -> FeeSchedule:
-        itype: InstrumentType = instrument_type or default_instrument_type(
-            self.venue_class
-        )
-        from spread_compare.fees import get_fee_schedule
-
-        return get_fee_schedule(
-            self.venue,
-            itype,
-            asset=asset.upper() if asset else None,
-        )
 
     async def get_orderbook_spread(
         self,

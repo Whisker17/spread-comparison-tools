@@ -29,11 +29,10 @@ from spread_compare.adapters.base import (
     BaseAdapter,
     UnsupportedAssetError,
     default_instrument_type,
+    require_taker_bps,
 )
 from spread_compare.adapters.registry import register_adapter
-from spread_compare.fees import get_fee_schedule
 from spread_compare.models import (
-    FeeSchedule,
     InstrumentType,
     Quote,
     ReferenceMid,
@@ -134,8 +133,6 @@ class LighterAdapter(BaseAdapter):
 
         bids, asks = await self._fetch_orders(meta.market_id)
         schedule = self.get_fees(asset_key, instrument_type=itype)
-        if schedule.taker_bps is None:
-            raise AdapterError(f"{self.venue}: fee schedule missing taker_bps")
         return build_quote_from_book(
             venue=self.venue,
             asset=asset_key,
@@ -147,7 +144,7 @@ class LighterAdapter(BaseAdapter):
             bids=bids,
             asks=asks,
             fee_tier=tier,
-            trading_fee_bps=schedule.taker_bps,
+            trading_fee_bps=require_taker_bps(self.venue, schedule),
             funding_rate_8h=None,  # not exposed on orderBookDetails (Phase 1)
             venue_mark=meta.mark_price,
         )
@@ -178,18 +175,6 @@ class LighterAdapter(BaseAdapter):
             instrument_type="perp",
         )
 
-    def get_fees(
-        self,
-        asset: str | None = None,
-        *,
-        instrument_type: InstrumentType | None = None,
-    ) -> FeeSchedule:
-        itype = instrument_type or default_instrument_type(self.venue_class)
-        return get_fee_schedule(
-            self.venue,
-            itype,
-            asset=asset.upper() if asset else None,
-        )
 
     def supported_assets(
         self,

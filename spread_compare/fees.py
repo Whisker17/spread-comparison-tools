@@ -15,27 +15,18 @@ from typing import Any, Final
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
-from spread_compare.models import FeeSchedule, FeeTier, InstrumentType
-from spread_compare.venues import known_slugs
+from spread_compare.models import FeeSchedule, InstrumentType, VenueClass
+from spread_compare.venues import VENUES
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _FEES_DIR: Final[Path] = _REPO_ROOT / "config" / "fees"
 
-# Instrument types each registered venue must publish a schedule for.
-_REQUIRED_INSTRUMENTS: Final[dict[str, frozenset[InstrumentType]]] = {
-    "binance": frozenset({"spot", "perp"}),
-    "bybit": frozenset({"spot", "perp"}),
-    "hyperliquid": frozenset({"perp"}),
-    "lighter": frozenset({"perp"}),
-    "apex": frozenset({"perp"}),
-    "uniswap_eth": frozenset({"amm_pool"}),
-    "aerodrome_base": frozenset({"amm_pool"}),
-    "pancakeswap_bsc": frozenset({"amm_pool"}),
-    "humidifi": frozenset({"prop_amm"}),
-    "tessera_solana": frozenset({"prop_amm"}),
-    "tessera_base": frozenset({"prop_amm"}),
-    "tessera_bsc": frozenset({"prop_amm"}),
-    "bisonfi": frozenset({"prop_amm"}),
+# Instrument types each venue_class must publish (CEX serves spot + perp on one slug).
+_INSTRUMENTS_BY_CLASS: Final[dict[VenueClass, frozenset[InstrumentType]]] = {
+    "cex": frozenset({"spot", "perp"}),
+    "perp_dex": frozenset({"perp"}),
+    "amm_dex": frozenset({"amm_pool"}),
+    "prop_amm": frozenset({"prop_amm"}),
 }
 
 
@@ -114,6 +105,11 @@ class FeeCatalog:
         return frozenset(v for v, _ in self._by_key)
 
 
+def required_instruments(venue_class: VenueClass) -> frozenset[InstrumentType]:
+    """Instrument types a venue of ``venue_class`` must publish schedules for."""
+    return _INSTRUMENTS_BY_CLASS[venue_class]
+
+
 def _read_yaml(path: Path) -> dict[str, Any]:
     raw = yaml.safe_load(path.read_text(encoding="utf-8"))
     if raw is None:
@@ -128,14 +124,8 @@ def _read_yaml(path: Path) -> dict[str, Any]:
 def _validate_coverage(catalog: FeeCatalog) -> None:
     """Fail if any registered venue lacks its required instrument schedules."""
     missing: list[str] = []
-    for slug in sorted(known_slugs()):
-        required = _REQUIRED_INSTRUMENTS.get(slug)
-        if required is None:
-            # New venue in VENUES without a fee matrix entry — treat as error so
-            # the catalog stays complete for every registered slug.
-            missing.append(f"{slug}: no required-instrument matrix entry")
-            continue
-        for itype in sorted(required):
+    for slug, info in sorted(VENUES.items()):
+        for itype in sorted(required_instruments(info.venue_class)):
             try:
                 sched = catalog.get(slug, itype)
             except KeyError:
@@ -143,20 +133,14 @@ def _validate_coverage(catalog: FeeCatalog) -> None:
                 continue
             if not sched.source_urls:
                 missing.append(f"{slug}/{itype}: source_urls empty")
-            if sched.updated_at is None:
-                missing.append(f"{slug}/{itype}: updated_at missing")
             if sched.venue != slug:
                 missing.append(
                     f"{slug}/{itype}: venue field {sched.venue!r} != file slug"
                 )
-    # Extra files for unknown venues are allowed only if not in VENUES — but
-    # we still require every VENUES slug to be covered above.
-    extra = catalog.venues() - known_slugs()
     if missing:
         raise ValueError(
             "fee catalog incomplete or invalid:\n  - " + "\n  - ".join(missing)
         )
-    _ = extra  # scaffold-only adapters (mock) need no fee YAML
 
 
 def load_fee_catalog(*, fees_dir: Path | None = None) -> FeeCatalog:
@@ -224,13 +208,12 @@ def clear_fee_catalog_cache() -> None:
     get_fee_catalog.cache_clear()
 
 
-# Re-export FeeTier for type convenience in tests.
 __all__ = [
     "FeeCatalog",
-    "FeeTier",
     "clear_fee_catalog_cache",
     "get_fee_catalog",
     "get_fee_schedule",
     "list_fee_schedules",
     "load_fee_catalog",
+    "required_instruments",
 ]

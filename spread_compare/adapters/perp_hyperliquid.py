@@ -27,11 +27,10 @@ from spread_compare.adapters.base import (
     BaseAdapter,
     UnsupportedAssetError,
     default_instrument_type,
+    require_taker_bps,
 )
 from spread_compare.adapters.registry import register_adapter
-from spread_compare.fees import get_fee_schedule
 from spread_compare.models import (
-    FeeSchedule,
     InstrumentType,
     Quote,
     ReferenceMid,
@@ -112,8 +111,6 @@ class HyperliquidAdapter(BaseAdapter):
         funding_8h = self._funding_rate_8h(coin)
         mark = self._mark_px.get(coin)
         schedule = self.get_fees(asset_key, instrument_type=itype)
-        if schedule.taker_bps is None:
-            raise AdapterError(f"{self.venue}: fee schedule missing taker_bps")
         return build_quote_from_book(
             venue=self.venue,
             asset=asset_key,
@@ -125,7 +122,7 @@ class HyperliquidAdapter(BaseAdapter):
             bids=bids,
             asks=asks,
             fee_tier=tier,
-            trading_fee_bps=schedule.taker_bps,
+            trading_fee_bps=require_taker_bps(self.venue, schedule),
             funding_rate_8h=funding_8h,
             venue_mark=mark,
         )
@@ -154,21 +151,6 @@ class HyperliquidAdapter(BaseAdapter):
             instrument_type="perp",
         )
 
-    def get_fees(
-        self,
-        asset: str | None = None,
-        *,
-        instrument_type: InstrumentType | None = None,
-    ) -> FeeSchedule:
-        itype = instrument_type or default_instrument_type(self.venue_class)
-        asset_key: str | None
-        if asset is None:
-            asset_key = None
-        elif ":" in asset:
-            asset_key = asset  # HIP-3 form; stamp as-is
-        else:
-            asset_key = asset.upper()
-        return get_fee_schedule(self.venue, itype, asset=asset_key)
 
     def supported_assets(
         self,

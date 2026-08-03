@@ -111,11 +111,14 @@ class VenueAdapter(Protocol):
 class BaseAdapter:
     """Concrete lifecycle + shared ``httpx.AsyncClient`` for venue adapters.
 
-    Subclasses implement quote/fee methods. Override ``startup`` to fetch
-    metadata (market maps, label tables) after calling ``await super().startup()``.
+    Subclasses implement quote methods and set ``venue`` / ``venue_class``.
+    Override ``startup`` to fetch metadata after ``await super().startup()``.
     The HTTP client is created lazily on first ``http`` access — ``startup`` itself
     is a no-op so adapters with no network work at boot stay offline-safe.
     """
+
+    venue: str
+    venue_class: VenueClass
 
     def __init__(self, *, timeout: float = _DEFAULT_HTTP_TIMEOUT) -> None:
         self._timeout = timeout
@@ -142,6 +145,22 @@ class BaseAdapter:
             self._client = None
         self._started = False
 
+    def get_fees(
+        self,
+        asset: str | None = None,
+        *,
+        instrument_type: InstrumentType | None = None,
+    ) -> FeeSchedule:
+        """Config-backed fee schedule (WHI-812). Override for scaffold-only adapters."""
+        from spread_compare.fees import get_fee_schedule
+
+        itype = instrument_type or default_instrument_type(self.venue_class)
+        return get_fee_schedule(
+            self.venue,
+            itype,
+            asset=asset.upper() if asset else None,
+        )
+
 
 def default_instrument_type(venue_class: VenueClass) -> InstrumentType:
     """Default instrument_type when the caller passes None (WHI-799 §7)."""
@@ -152,3 +171,10 @@ def default_instrument_type(venue_class: VenueClass) -> InstrumentType:
         "prop_amm": "prop_amm",
     }
     return mapping[venue_class]
+
+
+def require_taker_bps(venue: str, schedule: FeeSchedule) -> Decimal:
+    """Return schedule.taker_bps or raise when missing (orderbook venues)."""
+    if schedule.taker_bps is None:
+        raise AdapterError(f"{venue}: fee schedule missing taker_bps")
+    return schedule.taker_bps

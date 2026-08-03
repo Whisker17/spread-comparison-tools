@@ -8,6 +8,7 @@ schedules:
     taker_bps: null
     default_tier: pool
     lp_fee_tiers_bps: null
+    # unvalidated engineering estimate (display fallback only; live quotes use quoter/route gas)
     gas_estimate_usd: "0.10"
     funding_model: none
     fee_embedded_in_quote: true
