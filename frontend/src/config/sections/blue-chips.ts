@@ -47,96 +47,78 @@ export type BlueChipAsset = "BTC" | "ETH" | "SOL";
 
 /**
  * Static venue metadata for labels / quote-currency annotation.
- * Display names mirror `spread_compare/venues.py`; quote currency is FE
- * annotation only (WHI-798 §7.1) — not re-derived from adapters.
+ * Display names mirror `spread_compare/venues.py` (GET /venues). Quote
+ * currency is FE-only annotation (WHI-798 §7.1). Representation labels
+ * prefer `GET /assets` when BlueChipsSection has fetched them; the
+ * static `REPRESENTATIONS` table is the offline / test fallback kept in
+ * lockstep with `spread_compare/assets.py`.
  */
 export const BLUE_CHIP_VENUE_META: Readonly<Record<string, VenueMeta>> = {
   binance: {
-    slug: "binance",
     displayName: "Binance",
     venueClass: "cex",
     quoteCurrency: "USDT",
   },
   bybit: {
-    slug: "bybit",
     displayName: "Bybit",
     venueClass: "cex",
     quoteCurrency: "USDT",
   },
   hyperliquid: {
-    slug: "hyperliquid",
     displayName: "Hyperliquid",
     venueClass: "perp_dex",
     // USDC-margined perps (not USDT).
     quoteCurrency: "USDC",
   },
   lighter: {
-    slug: "lighter",
     displayName: "Lighter",
     venueClass: "perp_dex",
     quoteCurrency: "USDC",
   },
   apex: {
-    slug: "apex",
     displayName: "ApeX",
     venueClass: "perp_dex",
     quoteCurrency: "USDT",
   },
   uniswap_eth: {
-    slug: "uniswap_eth",
     displayName: "Uniswap (Ethereum)",
     venueClass: "amm_dex",
     quoteCurrency: "USDC",
-    chain: "ethereum",
   },
   aerodrome_base: {
-    slug: "aerodrome_base",
     displayName: "Aerodrome (Base)",
     venueClass: "amm_dex",
     quoteCurrency: "USDC",
-    chain: "base",
   },
   pancakeswap_bsc: {
-    slug: "pancakeswap_bsc",
     displayName: "PancakeSwap (BSC)",
     venueClass: "amm_dex",
     quoteCurrency: "USDT",
-    chain: "bsc",
   },
   humidifi: {
-    slug: "humidifi",
     displayName: "HumidiFi",
     venueClass: "prop_amm",
     quoteCurrency: "USDC",
-    chain: "solana",
   },
   tessera_solana: {
-    slug: "tessera_solana",
     displayName: "Tessera (Solana)",
     venueClass: "prop_amm",
     quoteCurrency: "USDC",
-    chain: "solana",
   },
   tessera_base: {
-    slug: "tessera_base",
     displayName: "Tessera (Base)",
     venueClass: "prop_amm",
     quoteCurrency: "USDC",
-    chain: "base",
   },
   tessera_bsc: {
-    slug: "tessera_bsc",
     displayName: "Tessera (BSC)",
     venueClass: "prop_amm",
     quoteCurrency: "USDT",
-    chain: "bsc",
   },
   bisonfi: {
-    slug: "bisonfi",
     displayName: "BisonFi",
     venueClass: "prop_amm",
     quoteCurrency: "USDC",
-    chain: "solana",
   },
 };
 
@@ -235,6 +217,15 @@ function defaultInstrumentType(
   return undefined;
 }
 
+export type BuildVenueLabelsOptions = {
+  /**
+   * Representation map from `GET /assets` (preferred). Merged over the
+   * static `REPRESENTATIONS` fallback so the backend catalog stays SSOT
+   * when the API is available.
+   */
+  representationOverrides?: Readonly<Record<string, string>>;
+};
+
 /**
  * Build display labels for matrix rows.
  *
@@ -245,15 +236,12 @@ function defaultInstrumentType(
 export function buildVenueLabels(
   asset: string,
   venues: readonly string[],
-  /**
-   * Live instrument_type from pairs when available (defaults: CEX=spot,
-   * perp_dex=perp). Keyed by venue slug.
-   */
-  instrumentByVenue?: Readonly<Record<string, string | undefined>>,
+  options: BuildVenueLabelsOptions = {},
 ): Record<string, string> {
-  const reps =
+  const staticReps =
     REPRESENTATIONS[asset as BlueChipAsset] ??
     ({} as Readonly<Record<string, string>>);
+  const reps = { ...staticReps, ...options.representationOverrides };
   const out: Record<string, string> = {};
 
   for (const slug of venues) {
@@ -262,8 +250,7 @@ export function buildVenueLabels(
     const quote = meta?.quoteCurrency;
     const venueClass = meta?.venueClass;
     const rep = reps[slug];
-    const instrument =
-      instrumentByVenue?.[slug] ?? defaultInstrumentType(venueClass);
+    const instrument = defaultInstrumentType(venueClass);
 
     const parts: string[] = [display];
 
@@ -296,21 +283,22 @@ export function venueSummaryLabel(
   slug: string,
   options: {
     asset?: string;
-    instrumentType?: string | null;
+    /** From GET /assets when available. */
+    representationOverrides?: Readonly<Record<string, string>>;
   } = {},
 ): string {
   const meta = BLUE_CHIP_VENUE_META[slug];
   const name = meta?.displayName ?? slug;
   if (!meta) return name;
   if (meta.venueClass === "cex") {
-    const itype = options.instrumentType ?? "spot";
-    return `${name} ${itype}`;
+    return `${name} ${defaultInstrumentType("cex") ?? "spot"}`;
   }
   if (meta.venueClass === "perp_dex") {
     return `${name} perp`;
   }
   if (options.asset && ON_CHAIN_VENUE_CLASSES.has(meta.venueClass)) {
-    const rep = REPRESENTATIONS[options.asset as BlueChipAsset]?.[slug];
+    const staticRep = REPRESENTATIONS[options.asset as BlueChipAsset]?.[slug];
+    const rep = options.representationOverrides?.[slug] ?? staticRep;
     if (rep) return `${name} (${rep})`;
   }
   return name;

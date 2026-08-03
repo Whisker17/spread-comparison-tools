@@ -1,5 +1,6 @@
 "use client";
 
+import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 
 import { AssetSpreadBlock } from "@/components/AssetSpreadBlock";
@@ -10,13 +11,29 @@ import {
   venueSummaryLabel,
 } from "@/config/sections/blue-chips";
 import { venuesForAsset } from "@/config/sections/helpers";
+import { fetchAssets } from "@/lib/api";
 
 /**
  * Full `/blue-chips` content: BTC / ETH / SOL blocks with live data (WHI-809).
  * Owns section-config helpers so AssetSpreadBlock stays section-agnostic.
+ * Representation labels prefer GET /assets (backend SSOT) with static fallback.
  */
 export function BlueChipsSection() {
   const section = blueChipsSection;
+
+  const assetsQuery = useQuery({
+    queryKey: ["assets"],
+    queryFn: ({ signal }) => fetchAssets({ signal }),
+    staleTime: 60_000,
+  });
+
+  const repsByAsset = useMemo(() => {
+    const map = new Map<string, Readonly<Record<string, string>>>();
+    for (const row of assetsQuery.data ?? []) {
+      map.set(row.id.toUpperCase(), row.representations);
+    }
+    return map;
+  }, [assetsQuery.data]);
 
   return (
     <div className="space-y-6">
@@ -29,7 +46,11 @@ export function BlueChipsSection() {
 
       <div className="space-y-8">
         {section.assets.map((asset) => (
-          <BlueChipAssetBlock key={asset} asset={asset} />
+          <BlueChipAssetBlock
+            key={asset}
+            asset={asset}
+            representationOverrides={repsByAsset.get(asset)}
+          />
         ))}
       </div>
 
@@ -40,8 +61,9 @@ export function BlueChipsSection() {
           </strong>{" "}
           On-chain rows show the venue wrapper (e.g. cbBTC, WBTC, BTCB, Wormhole
           WETH, wSOL) — these are different assets with different bridge and peg
-          risk, not bare BTC/ETH/SOL. Cross-wrapper basis is not folded into
-          total cost (WHI-798 §3.3).
+          risk, not bare BTC/ETH/SOL. Labels prefer{" "}
+          <code className="text-[11px]">GET /assets</code> (backend catalog);
+          cross-wrapper basis is not folded into total cost (WHI-798 §3.3).
         </p>
         <p>
           <strong className="font-medium text-zinc-700 dark:text-zinc-300">
@@ -71,7 +93,13 @@ export function BlueChipsSection() {
   );
 }
 
-function BlueChipAssetBlock({ asset }: { asset: string }) {
+function BlueChipAssetBlock({
+  asset,
+  representationOverrides,
+}: {
+  asset: string;
+  representationOverrides?: Readonly<Record<string, string>>;
+}) {
   const section = blueChipsSection;
   const venues = useMemo(
     () => venuesForAsset(section, asset),
@@ -79,17 +107,23 @@ function BlueChipAssetBlock({ asset }: { asset: string }) {
   );
 
   const venueLabels = useMemo(
-    () => buildVenueLabels(asset, venues),
-    [asset, venues],
+    () =>
+      buildVenueLabels(asset, venues, {
+        representationOverrides,
+      }),
+    [asset, venues, representationOverrides],
   );
 
   const summaryVenueLabels = useMemo(() => {
     const out: Record<string, string> = {};
     for (const slug of venues) {
-      out[slug] = venueSummaryLabel(slug, { asset });
+      out[slug] = venueSummaryLabel(slug, {
+        asset,
+        representationOverrides,
+      });
     }
     return out;
-  }, [venues, asset]);
+  }, [venues, asset, representationOverrides]);
 
   const orderbookVenues = useMemo(
     () => venues.filter((v) => isOrderbookVenue(v)),
