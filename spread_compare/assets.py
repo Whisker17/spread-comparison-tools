@@ -272,7 +272,13 @@ ASSETS: Final[dict[str, AssetInfo]] = {a.id: a for a in _ALL_ROWS}
 
 # USD-pegged quote legs treated as fungible for /simulate pair matching (WHI-814).
 # Not catalog rows: venues pick USDC vs USDT themselves (WHI-798 §7.1).
+# Includes "USD" for mid/peg recognition only — it is not a tradeable token.
 USD_STABLES: Final[frozenset[str]] = frozenset({"USDC", "USDT", "USD"})
+
+# Tradeable USD stablecoin symbols a client may offer as a /simulate pair leg
+# (WHI-833). Subset of USD_STABLES; excludes "USD" (peg token, not pickable).
+# Ordered for stable API presentation (picker order).
+TRADEABLE_USD_STABLES: Final[tuple[str, ...]] = ("USDC", "USDT")
 
 # Crypto blue chips use the §3.2 mid priority chain — must NOT absorb stocks/others.
 CRYPTO_BLUE_CHIPS: Final[frozenset[str]] = frozenset(a.id for a in _BLUE_CHIP_ROWS)
@@ -327,3 +333,17 @@ def get_asset(asset_id: str) -> AssetInfo | None:
 def is_usd_stable(asset_id: str) -> bool:
     """True when the symbol is a recognized USD stablecoin (case-insensitive)."""
     return asset_id.upper() in USD_STABLES
+
+
+def list_tradeable_usd_stables() -> list[str]:
+    """Ordered tradeable USD stable symbols for simulate pair pickers (WHI-833)."""
+    return list(TRADEABLE_USD_STABLES)
+
+
+def list_simulate_pair_assets() -> list[str]:
+    """Catalogued non-stable legs valid opposite a tradeable stable (WHI-833).
+
+    Catalog rows are never USD stables today; filter defensively so a future
+    catalog mistake cannot advertise an invalid pair.
+    """
+    return [a.id for a in _ALL_ROWS if a.id not in USD_STABLES]
