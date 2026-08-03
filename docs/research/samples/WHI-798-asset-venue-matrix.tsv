@@ -1,0 +1,54 @@
+# WHI-798 asset × venue coverage matrix
+# snapshot_date_utc: 2026-08-03
+# present: yes | no | n/a | partial
+# instrument: venue-native symbol / mint / address (representative)
+# notes: multipliers (1000/k), wraps, HIP-3 dex prefix
+# prop AMM pairs reuse WHI-797 onlyDirect findings
+# sources: Binance exchangeInfo+fapi, Bybit instruments-info, HL info meta/perpDexs/xyz/spotMeta,
+#          Lighter orderBooks, ApeX omni symbols, Jupiter token search, WHI-797 asset-matrix.tsv
+# binance_spot stocks = no(*B_excl) means out-of-scope for Phase 1 tokenized set (Backed xStocks path).
+# Binance has TRADING *B equity tokens (TSLABUSDT, AAPLBUSDT, …) but they are explicitly excluded
+# (different issuer model vs Backed; see WHI-798-asset-category-inventory.md §4.3.1).
+section	logical	binance_spot	binance_perp	bybit_spot	bybit_perp	hl_main_perp	hl_spot_or_hip3	lighter_perp	apex	prop_amm_humidifi	prop_amm_tesserav	prop_amm_bisonfi	uniswap_eth	aerodrome_base	pancake_bsc	instrument_notes
+bluechip	BTC	yes:BTCUSDT	yes:BTCUSDT	yes:BTCUSDT	yes:BTCUSDT	yes:BTC	yes:UBTC(@142)	yes:BTC	yes:BTC-USDT	yes:cbBTC/USDC	yes:cbBTC/USDC	yes:cbBTC/USDC	yes:WBTC	yes:cbBTC	yes:BTCB	wraps differ per chain; prop mint cbbtcf3aa214zXHbiAZQwf4122FBYbraNdFqgw4iMij
+bluechip	ETH	yes:ETHUSDT	yes:ETHUSDT	yes:ETHUSDT	yes:ETHUSDT	yes:ETH	yes:UETH(@151)	yes:ETH	yes:ETH-USDT	yes:WETH/USDC	yes:WETH/USDC	yes:WETH/USDC	yes:WETH	yes:WETH	yes:ETH	prop WETH mint 7vfCXTUXx5WJV5JADk17DUJ4ksgau7utNKj4b963voxs (Wormhole)
+bluechip	SOL	yes:SOLUSDT	yes:SOLUSDT	yes:SOLUSDT	yes:SOLUSDT	yes:SOL	yes:USOL(@156)	yes:SOL	yes:SOL-USDT	yes:SOL/USDC	yes:SOL/USDC	yes:SOL/USDC	no	no	no	wSOL So11111111111111111111111111111111111111112; no native EVM AMM path in scope
+stocks	TSLA	no(*B_excl)	yes:TSLAUSDT(TRADIFI)	yes:TSLAXUSDT	yes:TSLAUSDT	no	yes:xyz:TSLA	yes:TSLA	yes:TSLA-USDT	no	no	no	n/a	n/a	n/a	Sol xStock TSLAx XsDoVfqeBukxuZHWhdvWHBhgEHjGNst4MLodqsJHzoB; BN spot TSLABUSDT exists but Phase1 excluded
+stocks	AAPL	no(*B_excl)	yes:AAPLUSDT(TRADIFI)	yes:AAPLXUSDT	yes:AAPLUSDT	no	yes:xyz:AAPL	yes:AAPL	yes:AAPL-USDT	no	no	no	n/a	n/a	n/a	Sol xStock AAPLx XsbEhLAtcf6HdfpFZ5xEMdqW8nfAvcsP5bdudRLJzJp (not APPLx pump fakes); BN AAPLBUSDT excluded
+stocks	NVDA	no(*B_excl)	yes:NVDAUSDT(TRADIFI)	yes:NVDAXUSDT	yes:NVDAUSDT	no	yes:xyz:NVDA	yes:NVDA	yes:NVDA-USDT	no	no	no	n/a	n/a	n/a	Sol NVDAx Xsc9qvGR1efVDFGLrVsmkzv3qi45LTBjeUKSPmx9qEh; BN NVDABUSDT excluded
+stocks	MSFT	no(*B_excl)	yes:MSFTUSDT(TRADIFI)	no	yes:MSFTUSDT	no	yes:xyz:MSFT	yes:MSFT	yes:MSFT-USDT	no	no	no	n/a	n/a	n/a	Sol MSFTx XspzcW1PRtgf6Wj92HCiZdjzKCyFekVD8P5Ueh3dRMX; Bybit spot xStock absent in snapshot
+stocks	AMZN	no(*B_excl)	yes:AMZNUSDT(TRADIFI)	yes:AMZNXUSDT	yes:AMZNUSDT	no	yes:xyz:AMZN	yes:AMZN	yes:AMZN-USDT	no	no	no	n/a	n/a	n/a	Sol AMZNx Xs3eBt7uRfJX8QUs4suhyU8p2M6DoUDrJyWBa8LLZsg; BN AMZNBUSDT excluded
+stocks	GOOGL	no(*B_excl)	yes:GOOGLUSDT(TRADIFI)	yes:GOOGLXUSDT	yes:GOOGLUSDT	no	yes:xyz:GOOGL	yes:GOOGL	yes:GOOGL-USDT	no	no	no	n/a	n/a	n/a	Sol GOOGLx XsCPL9dNWBMvFtTmwcCA5v3xWPSMEBCszbQdiLLq6aN
+stocks	META	no(*B_excl)	yes:METAUSDT(TRADIFI)	yes:METAXUSDT	yes:METAUSDT	no	yes:xyz:META	yes:META	yes:META-USDT	no	no	no	n/a	n/a	n/a	Sol METAx Xsa62P5mvPszXL1krVUnU5ar38bBSVcWAB6fmPCo5Zu
+stocks	COIN	no(*B_excl)	yes:COINUSDT(TRADIFI)	yes:COINXUSDT	yes:COINUSDT	no	yes:xyz:COIN	yes:COIN	yes:COIN-USDT	no	no	no	n/a	n/a	n/a	Sol COINx Xs7ZdzSHLU9ftNJsii5fCeJhoRWSC32SQGzGQtePxNu
+stocks	HOOD	no(*B_excl)	yes:HOODUSDT(TRADIFI)	yes:HOODXUSDT	yes:HOODUSDT	no	yes:xyz:HOOD	yes:HOOD	yes:HOOD-USDT	no	no	no	n/a	n/a	n/a	Sol HOODx XsvNBAYkrDRNhA7wPHQfX3ZUXZyZLdnCQDfHZ56bzpg
+stocks	MSTR	no(*B_excl)	yes:MSTRUSDT(TRADIFI)	no	yes:MSTRUSDT	no	yes:xyz:MSTR	yes:MSTR	yes:MSTR-USDT	no	no	no	n/a	n/a	n/a	Sol MSTRx XsP7xzNPvEHS1m6qfanPUGjNmdnmsLKEoNAnHjdxxyZ
+stocks	SPY	no(*B_excl)	yes:SPYUSDT(TRADIFI)	no	yes:SPYUSDT	no	partial:proxy:xyz:SP500	yes:SPY	yes:SPY-USDT	no	no	no	n/a	n/a	n/a	HL no xyz:SPY (proxy SP500 only); P0-lite; Sol SPYx XsoCS1TfEyfFhfvj8EtZ528L3CaKBDBRqRapnBbDF2W; BN SPYBUSDT excluded
+stocks	QQQ	no(*B_excl)	yes:QQQUSDT(TRADIFI)	no	yes:QQQUSDT	no	partial:proxy:xyz:XYZ100	yes:QQQ	yes:QQQ-USDT	no	no	no	n/a	n/a	n/a	HL no xyz:QQQ (proxy XYZ100 only); P0-lite; Sol QQQx Xs8S1uUs1zvS2p7iwtsG3b6fkhpvmwz4GYU3gWAmWHZ
+stocks	CRCL	no(*B_excl)	yes:CRCLUSDT(TRADIFI)	yes:CRCLXUSDT	yes:CRCLUSDT	no	yes:xyz:CRCL	yes:CRCL	yes:CRCL-USDT	no	no	no	n/a	n/a	n/a	Sol CRCLx XsueG8BtpquVJX9LVLLEGuViXUungE6WmK5YZ3p3bd1; BN CRCLBUSDT excluded
+stocks	AMD	no(*B_excl)	yes:AMDUSDT(TRADIFI)	no	yes:AMDSTOCKUSDT	no	yes:xyz:AMD	yes:AMD	yes:AMD-USDT	no	no	no	n/a	n/a	n/a	Bybit linear symbol is AMDSTOCKUSDT (not AMDUSDT); Sol AMDx XsXcJ6GZ9kVnjqGsjBnktRcuwMBmvKWh8S93RefZ1rF; BN AMDBUSDT excluded
+others	DOGE	yes:DOGEUSDT	yes:DOGEUSDT	yes:DOGEUSDT	yes:DOGEUSDT	yes:DOGE	n/a	yes:DOGE	yes:DOGE-USDT	no	no	no	partial	partial	partial	CEX+perp intersection; no prop direct
+others	WIF	yes:WIFUSDT	yes:WIFUSDT	yes:WIFUSDT	yes:WIFUSDT	yes:WIF	n/a	yes:WIF	yes:WIF-USDT	no	no	no	partial	partial	partial	prop WHI-797 no routes
+others	XRP	yes:XRPUSDT	yes:XRPUSDT	yes:XRPUSDT	yes:XRPUSDT	yes:XRP	n/a	yes:XRP	yes:XRP-USDT	no	no	no	partial	partial	partial	
+others	BNB	yes:BNBUSDT	yes:BNBUSDT	yes:BNBUSDT	yes:BNBUSDT	yes:BNB	n/a	yes:BNB	yes:BNB-USDT	no	no	no	n/a	n/a	yes:WBNB	native to BSC AMM
+others	AVAX	yes:AVAXUSDT	yes:AVAXUSDT	yes:AVAXUSDT	yes:AVAXUSDT	yes:AVAX	n/a	yes:AVAX	yes:AVAX-USDT	no	no	no	partial	partial	partial	
+others	LINK	yes:LINKUSDT	yes:LINKUSDT	yes:LINKUSDT	yes:LINKUSDT	yes:LINK	n/a	yes:LINK	yes:LINK-USDT	no	no	no	partial	partial	partial	
+others	SUI	yes:SUIUSDT	yes:SUIUSDT	yes:SUIUSDT	yes:SUIUSDT	yes:SUI	n/a	yes:SUI	yes:SUI-USDT	no	no	no	partial	partial	partial	
+others	ADA	yes:ADAUSDT	yes:ADAUSDT	yes:ADAUSDT	yes:ADAUSDT	yes:ADA	n/a	yes:ADA	yes:ADA-USDT	no	no	no	partial	partial	partial	
+others	PEPE	yes:PEPEUSDT	yes:1000PEPEUSDT	yes:PEPEUSDT	yes:1000PEPEUSDT	yes:kPEPE	n/a	yes:1000PEPE	yes:1000PEPE-USDT	no	no	no	partial	partial	partial	NORMALIZE 1000x vs k prefix before compare; P1 not P0
+others	BONK	yes:BONKUSDT	yes:1000BONKUSDT	yes:BONKUSDT	yes:1000BONKUSDT	yes:kBONK	n/a	yes:1000BONK	yes:1000BONK-USDT	no	no	no	partial	partial	partial	NORMALIZE 1000x vs k prefix; P1 not P0
+others	JUP	yes:JUPUSDT	yes:JUPUSDT	yes:JUPUSDT	yes:JUPUSDT	yes:JUP	n/a	yes:JUP	yes:JUP-USDT	yes:USDC/JUP only	no	no	n/a	n/a	n/a	prop only HumidiFi; mint JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN
+# address_ref (canonical, not invented)
+# eth_weth=0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2
+# eth_wbtc=0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599
+# eth_usdc=0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48
+# base_weth=0x4200000000000000000000000000000000000006
+# base_cbbtc=0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf
+# base_usdc=0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913
+# bsc_btcb=0x7130d2A12B9BCbFAe4f2634d864A1Ee1Ce3Ead9c
+# bsc_eth=0x2170Ed0880ac9A755fd29B2688956BD959F933F8
+# bsc_usdt=0x55d398326f99059fF775485246999027B3197955
+# sol_wsol=So11111111111111111111111111111111111111112
+# sol_usdc=EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v
+# sol_cbbtc=cbbtcf3aa214zXHbiAZQwf4122FBYbraNdFqgw4iMij
+# sol_weth_wormhole=7vfCXTUXx5WJV5JADk17DUJ4ksgau7utNKj4b963voxs
