@@ -47,7 +47,27 @@ describe("decideCellRender", () => {
     expect(d.hint).toMatch(/retry/i);
   });
 
-  it("maps gas_unknown ok quotes to cost_incomplete and not eligible", () => {
+  it("maps gas_unknown ok quotes to cost_incomplete for total_cost metric", () => {
+    const d = decideCellRender(
+      q({
+        status: "ok",
+        spread_bps: "4.4",
+        total_cost_bps: null,
+        effective_price: "100",
+        qty_base: "1",
+        fee_breakdown: {
+          embedded_in_price: true,
+          platform_fee_bps: "0",
+          gas_unknown: true,
+        },
+      }),
+      { formattedMetric: "—", metricKey: "total_cost_bps" },
+    );
+    expect(d.kind).toBe("cost_incomplete");
+    expect(d.eligibleForBest).toBe(false);
+  });
+
+  it("still shows spread_bps value when gas_unknown (cost incomplete only for total)", () => {
     const d = decideCellRender(
       q({
         status: "ok",
@@ -63,7 +83,9 @@ describe("decideCellRender", () => {
       }),
       { formattedMetric: "4.40", metricKey: "spread_bps" },
     );
-    expect(d.kind).toBe("cost_incomplete");
+    expect(d.kind).toBe("value");
+    expect(d.label).toBe("4.40");
+    // Best-venue eligibility still requires total_cost (independent of display metric).
     expect(d.eligibleForBest).toBe(false);
   });
 

@@ -201,3 +201,34 @@ describe("metricForPair round_trip", () => {
     expect(metricForPair(p, "round_trip")).toBe(22);
   });
 });
+
+describe("bestVenuePerTier metric=spread_bps", () => {
+  it("ranks by spread when requested", () => {
+    const pairs = [
+      pair(
+        "binance",
+        "1000",
+        quote({
+          venue: "binance",
+          status: "ok",
+          total_cost_bps: "5",
+          spread_bps: "20",
+        }),
+      ),
+      pair(
+        "bybit",
+        "1000",
+        quote({
+          venue: "bybit",
+          status: "ok",
+          total_cost_bps: "50",
+          spread_bps: "3",
+        }),
+      ),
+    ];
+    expect(bestVenueMap(pairs, { metric: "spread_bps" })["1000"]).toBe("bybit");
+    expect(bestVenueMap(pairs, { metric: "total_cost_bps" })["1000"]).toBe(
+      "binance",
+    );
+  });
+});

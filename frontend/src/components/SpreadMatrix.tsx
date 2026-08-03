@@ -19,7 +19,11 @@ import {
 } from "@/lib/format";
 import { heatClass, heatRange } from "@/lib/heat";
 import { isEligibleForBest, type MetricKey } from "@/lib/status";
-import { bestVenueMap, type SideView } from "@/lib/summary";
+import {
+  bestVenueMap,
+  bothLegsEligible,
+  type SideView,
+} from "@/lib/summary";
 import { cn } from "@/lib/utils";
 
 export type SpreadMatrixProps = {
@@ -98,6 +102,7 @@ export function SpreadMatrix({
     if (!highlightBest) return {};
     return bestVenueMap(pairs, {
       side: sideView,
+      metric,
       venues: venuesProp && venuesProp.length > 0 ? venuesProp : undefined,
       hiddenVenues: [...hiddenVenues, ...disabledVenues],
     });
@@ -105,6 +110,7 @@ export function SpreadMatrix({
     pairs,
     highlightBest,
     sideView,
+    metric,
     venuesProp,
     hiddenVenues,
     disabledVenues,
@@ -181,6 +187,11 @@ export function SpreadMatrix({
                     highlightBest &&
                     best[n] === venue &&
                     cell.eligibleBest;
+                  const heatOk =
+                    heat &&
+                    !isDisabled &&
+                    cell.value !== null &&
+                    includeInHeat(pair, sideView, metric);
 
                   return (
                     <td key={n} className="px-0.5 py-0.5">
@@ -190,9 +201,7 @@ export function SpreadMatrix({
                         metricKey={metric}
                         isBest={isBest}
                         heatClassName={
-                          heat && !isDisabled && cell.value !== null
-                            ? heatClass(cell.value, range)
-                            : undefined
+                          heatOk ? heatClass(cell.value, range) : undefined
                         }
                         onRetry={onRetry}
                       />
@@ -257,17 +266,24 @@ function cellFromPair(
       displayQuote: buy,
       value,
       formatted: formatBps(value),
-      eligibleBest: bothLegsEligible(pair),
+      eligibleBest:
+        metric === "total_cost_bps"
+          ? bothLegsEligible(pair)
+          : buy?.status === "ok" && sell?.status === "ok",
     };
   }
 
   const quote = sideView === "buy" ? (pair.buy ?? null) : (pair.sell ?? null);
   const value = metricValue(pair, sideView, metric);
+  const eligibleBest =
+    metric === "total_cost_bps"
+      ? isEligibleForBest(quote)
+      : Boolean(quote && quote.status === "ok" && value !== null);
   return {
     displayQuote: quote,
     value,
     formatted: value === null ? null : formatBps(value),
-    eligibleBest: isEligibleForBest(quote),
+    eligibleBest,
   };
 }
 
@@ -289,12 +305,6 @@ function metricValue(
     return parseDecimal(quote.total_cost_bps);
   }
   return parseDecimal(quote.spread_bps);
-}
-
-function bothLegsEligible(pair: SizeQuotePair): boolean {
-  return (
-    isEligibleForBest(pair.buy ?? null) && isEligibleForBest(pair.sell ?? null)
-  );
 }
 
 function includeInHeat(

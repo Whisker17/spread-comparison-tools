@@ -44,12 +44,14 @@ type FetchOptions = {
   signal?: AbortSignal;
 };
 
-async function apiGet<T>(
+function buildUrl(
   path: string,
   query?: Record<string, string | undefined | null>,
-  options: FetchOptions = {},
-): Promise<T> {
-  const url = new URL(path, `${getApiBaseUrl()}/`);
+): URL {
+  // Preserve any path prefix on the base (e.g. https://host/api + /quotes).
+  const base = getApiBaseUrl();
+  const joined = `${base.replace(/\/+$/, "")}/${path.replace(/^\/+/, "")}`;
+  const url = new URL(joined);
   if (query) {
     for (const [k, v] of Object.entries(query)) {
       if (v !== undefined && v !== null && v !== "") {
@@ -57,6 +59,15 @@ async function apiGet<T>(
       }
     }
   }
+  return url;
+}
+
+async function apiGet<T>(
+  path: string,
+  query?: Record<string, string | undefined | null>,
+  options: FetchOptions = {},
+): Promise<T> {
+  const url = buildUrl(path, query);
 
   const res = await fetch(url.toString(), {
     method: "GET",
@@ -141,7 +152,7 @@ export async function fetchQuotesMultiNotional(
   mids: ReferenceMid[];
   snapshotIds: string[];
 }> {
-  const responses = await Promise.all(
+  const settled = await Promise.allSettled(
     params.notionals.map((notional) =>
       fetchQuotes(
         {
@@ -156,11 +167,21 @@ export async function fetchQuotesMultiNotional(
     ),
   );
 
+  const ok = settled.flatMap((r) => (r.status === "fulfilled" ? [r.value] : []));
+  if (ok.length === 0) {
+    const first = settled.find((r) => r.status === "rejected");
+    const reason =
+      first && first.status === "rejected" ? first.reason : undefined;
+    throw reason instanceof Error
+      ? reason
+      : new ApiError("all notional tiers failed", 502, reason);
+  }
+
   return {
     asset: params.asset,
-    pairs: responses.flatMap((r) => r.pairs),
-    mids: responses.map((r) => r.mid),
-    snapshotIds: responses.map((r) => r.snapshot_id),
+    pairs: ok.flatMap((r) => r.pairs),
+    mids: ok.map((r) => r.mid),
+    snapshotIds: ok.map((r) => r.snapshot_id),
   };
 }
 

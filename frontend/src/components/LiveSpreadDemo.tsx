@@ -52,7 +52,10 @@ export function LiveSpreadDemo({
     const map: Record<string, TopOfBook | null> = {};
     for (const v of venues) map[v] = null;
     // Prefer TOB from the smallest notional row (same book snapshot per venue).
-    for (const pair of pairs) {
+    const ordered = [...pairs].sort(
+      (a, b) => Number(a.notional_usd) - Number(b.notional_usd),
+    );
+    for (const pair of ordered) {
       if (pair.top_of_book && map[pair.venue] === null) {
         map[pair.venue] = pair.top_of_book;
       }

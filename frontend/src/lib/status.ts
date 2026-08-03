@@ -95,30 +95,22 @@ export function decideCellRender(
         eligibleForBest: false,
       };
     case "ok": {
-      // gas_unknown ⇒ total_cost incomplete; still showable as cost_incomplete group.
-      if (gasUnknown) {
-        return {
-          kind: "cost_incomplete",
-          label: options.formattedMetric ?? "—",
-          badge: "cost incomplete",
-          midStale,
-          midTimestamp,
-          eligibleForBest: false,
-        };
-      }
-      // For total_cost_bps metric, null total is not eligible even if not gas_unknown.
       const metricKey = options.metricKey ?? "total_cost_bps";
-      const totalNull =
-        quote.total_cost_bps === null || quote.total_cost_bps === undefined;
-      if (metricKey === "total_cost_bps" && totalNull) {
-        return {
-          kind: "cost_incomplete",
-          label: options.formattedMetric ?? "—",
-          badge: "cost incomplete",
-          midStale,
-          midTimestamp,
-          eligibleForBest: false,
-        };
+      // gas_unknown / null total only make *cost* incomplete (WHI-799 §5.2).
+      // When displaying spread_bps the number is still complete.
+      if (metricKey === "total_cost_bps") {
+        const totalNull =
+          quote.total_cost_bps === null || quote.total_cost_bps === undefined;
+        if (gasUnknown || totalNull) {
+          return {
+            kind: "cost_incomplete",
+            label: options.formattedMetric ?? "—",
+            badge: "cost incomplete",
+            midStale,
+            midTimestamp,
+            eligibleForBest: false,
+          };
+        }
       }
       return {
         kind: "value",

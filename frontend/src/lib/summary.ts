@@ -18,16 +18,22 @@ export type SideView = "buy" | "sell" | "round_trip";
 export type BestVenuePick = {
   notionalUsd: string;
   venue: string;
-  /** Metric used for ranking (total cost). */
+  /** Metric value used for ranking (bps). */
   totalCostBps: number;
+  /** Which metric was ranked. */
+  metric: RankMetric;
   side: SideView;
   /** True when no eligible quote existed for this tier. */
   empty: boolean;
 };
 
+export type RankMetric = "total_cost_bps" | "spread_bps";
+
 export type BestVenueOptions = {
   /** Which leg / aggregate to rank on. Default: buy. */
   side?: SideView;
+  /** Metric to minimize. Default total_cost_bps (WHI-799 §5.2 eligibility applies). */
+  metric?: RankMetric;
   /**
    * Optional venue allow-list (section config). Empty/undefined = all venues
    * present in `pairs`.
@@ -51,6 +57,7 @@ export function bestVenuePerTier(
   options: BestVenueOptions = {},
 ): BestVenuePick[] {
   const side = options.side ?? "buy";
+  const metric = options.metric ?? "total_cost_bps";
   const allow = options.venues ? new Set(options.venues) : null;
   const hidden = new Set(options.hiddenVenues ?? []);
 
@@ -75,7 +82,7 @@ export function bestVenuePerTier(
     let best: BestVenuePick | null = null;
 
     for (const pair of bucket) {
-      const cost = metricForPair(pair, side);
+      const cost = metricForPair(pair, side, metric);
       if (cost === null) continue;
       // Strictly lower cost wins; equal cost → stable venue slug tiebreak.
       if (
@@ -87,6 +94,7 @@ export function bestVenuePerTier(
           notionalUsd,
           venue: pair.venue,
           totalCostBps: cost,
+          metric,
           side,
           empty: false,
         };
@@ -98,6 +106,7 @@ export function bestVenuePerTier(
         notionalUsd,
         venue: "",
         totalCostBps: Number.POSITIVE_INFINITY,
+        metric,
         side,
         empty: true,
       }
@@ -109,28 +118,42 @@ export function bestVenuePerTier(
 export function metricForPair(
   pair: SizeQuotePair,
   side: SideView,
+  metric: RankMetric = "total_cost_bps",
 ): number | null {
   if (side === "round_trip") {
-    // Prefer pair-level round_trip_total_cost_bps when both legs eligible.
-    const rt = parseDecimal(pair.round_trip_total_cost_bps);
-    if (rt !== null && bothLegsEligible(pair)) {
-      return rt;
+    if (metric === "total_cost_bps") {
+      const rt = parseDecimal(pair.round_trip_total_cost_bps);
+      if (rt !== null && bothLegsEligible(pair)) return rt;
+      if (!bothLegsEligible(pair)) return null;
+      const buy = parseDecimal(pair.buy?.total_cost_bps);
+      const sell = parseDecimal(pair.sell?.total_cost_bps);
+      if (buy === null || sell === null) return null;
+      return buy + sell;
     }
-    // Fall back to sum of eligible legs only when both exist and are eligible.
-    if (!bothLegsEligible(pair)) return null;
-    const buy = parseDecimal(pair.buy?.total_cost_bps);
-    const sell = parseDecimal(pair.sell?.total_cost_bps);
+    // spread_bps RT: require both legs status=ok (not full cost eligibility).
+    if (pair.buy?.status !== "ok" || pair.sell?.status !== "ok") return null;
+    const rt = parseDecimal(pair.round_trip_spread_bps);
+    if (rt !== null) return rt;
+    const buy = parseDecimal(pair.buy.spread_bps);
+    const sell = parseDecimal(pair.sell.spread_bps);
     if (buy === null || sell === null) return null;
     return buy + sell;
   }
 
   const quote = side === "buy" ? pair.buy : pair.sell;
-  if (!isEligibleForBest(quote ?? null)) return null;
-  return parseDecimal(quote?.total_cost_bps);
+  if (!quote || quote.status !== "ok") return null;
+  if (metric === "total_cost_bps") {
+    if (!isEligibleForBest(quote)) return null;
+    return parseDecimal(quote.total_cost_bps);
+  }
+  return parseDecimal(quote.spread_bps);
 }
 
-function bothLegsEligible(pair: SizeQuotePair): boolean {
-  return isEligibleForBest(pair.buy ?? null) && isEligibleForBest(pair.sell ?? null);
+/** Both legs pass WHI-799 §5.2 total-cost eligibility. Shared with SpreadMatrix. */
+export function bothLegsEligible(pair: SizeQuotePair): boolean {
+  return (
+    isEligibleForBest(pair.buy ?? null) && isEligibleForBest(pair.sell ?? null)
+  );
 }
 
 /**
