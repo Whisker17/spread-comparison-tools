@@ -26,11 +26,13 @@ class VenueInfo:
 
 # Exact table from docs/research/WHI-799-spread-fee-data-model.md §6.5 (+ chain for FE).
 _VENUE_ROWS: Final[tuple[VenueInfo, ...]] = (
+    # chain: unvalidated engineering labels for FE filters (pending DESIGN.md §2).
+    # CEX and multi-settlement perp DEXes use null — not a single L1 chain id.
     VenueInfo("binance", "Binance", "cex", chain=None),
     VenueInfo("bybit", "Bybit", "cex", chain=None),
-    VenueInfo("hyperliquid", "Hyperliquid", "perp_dex", chain="hyperliquid"),
-    VenueInfo("lighter", "Lighter", "perp_dex", chain="lighter"),
-    VenueInfo("apex", "ApeX", "perp_dex", chain="apex"),
+    VenueInfo("hyperliquid", "Hyperliquid", "perp_dex", chain=None),
+    VenueInfo("lighter", "Lighter", "perp_dex", chain=None),
+    VenueInfo("apex", "ApeX", "perp_dex", chain=None),
     VenueInfo("uniswap_eth", "Uniswap (Ethereum)", "amm_dex", chain="ethereum"),
     VenueInfo("aerodrome_base", "Aerodrome (Base)", "amm_dex", chain="base"),
     VenueInfo("pancakeswap_bsc", "PancakeSwap (BSC)", "amm_dex", chain="bsc"),

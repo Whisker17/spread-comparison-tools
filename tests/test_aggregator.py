@@ -278,6 +278,98 @@ async def test_single_venue_timeout_degrades_to_error(
 
 
 @pytest.mark.asyncio
+async def test_orderbook_tob_failure_stamps_raw_ref(
+    slow_binance_adapter: None,
+) -> None:
+    """CEX TOB failure must not look like AMM None — stamp raw_ref on ok legs."""
+
+    class _QuoteOkTobBoom(BaseAdapter):
+        venue: str = _TIMEOUT_SLUG
+        venue_class: VenueClass = "cex"
+
+        async def get_quote(
+            self,
+            asset: str,
+            side: Side,
+            notional_usd: Decimal,
+            *,
+            mid: ReferenceMid,
+            instrument_type: InstrumentType | None = None,
+            fee_tier: str | None = None,
+        ) -> Quote:
+            from spread_compare.models import FeeBreakdown
+
+            fees = FeeBreakdown(
+                embedded_in_price=False,
+                trading_fee_bps=Decimal("10"),
+                platform_fee_bps=Decimal("0"),
+                gas_unknown=False,
+                explicit_fee_bps=Decimal("10"),
+            )
+            return Quote(
+                snapshot_id=mid.snapshot_id,
+                venue=self.venue,
+                asset=asset.upper(),
+                instrument_type=instrument_type or "spot",
+                side=side,
+                notional_usd=notional_usd,
+                mid=mid.mid,
+                mid_source=mid.mid_source,
+                mid_timestamp=mid.timestamp,
+                effective_price=mid.mid,
+                spread_bps=Decimal("0"),
+                fee_breakdown=fees,
+                total_cost_bps=Decimal("10"),
+                timestamp=mid.timestamp,
+                status="ok",
+                qty_base=notional_usd / mid.mid,
+                qty_method="base_from_mid",
+            )
+
+        async def get_orderbook_spread(
+            self,
+            asset: str,
+            *,
+            mid: ReferenceMid,
+            instrument_type: Literal["spot", "perp"] | None = None,
+        ) -> TopOfBook | None:
+            from spread_compare.adapters.base import AdapterFetchError
+
+            raise AdapterFetchError("book down")
+
+        def get_fees(
+            self,
+            asset: str | None = None,
+            *,
+            instrument_type: InstrumentType | None = None,
+        ) -> FeeSchedule:
+            raise NotImplementedError
+
+        def supported_assets(
+            self,
+            *,
+            instrument_type: InstrumentType | None = None,
+        ) -> list[str]:
+            return ["BTC"]
+
+    _REGISTRY[_TIMEOUT_SLUG] = _QuoteOkTobBoom()
+    agg = QuoteAggregator(
+        _FixedMid(),
+        aggregator_settings=AggregatorSettings(
+            venue_timeout_sec=3.0, response_cache_ttl_sec=0.0
+        ),
+    )
+    package = await agg.collect(
+        "BTC", Decimal("10000"), venues=[_TIMEOUT_SLUG], use_cache=False
+    )
+    pair = package.pairs[0]
+    assert pair.top_of_book is None
+    assert pair.buy is not None and pair.buy.status == "ok"
+    assert pair.buy.raw_ref is not None and pair.buy.raw_ref.startswith("tob_error:")
+    assert pair.sell is not None and pair.sell.raw_ref is not None
+
+
+@pytest.mark.asyncio
 async def test_response_cache_hits() -> None:
     calls = {"n": 0}
 

@@ -36,3 +36,4 @@ def test_get_venue_display_and_class() -> None:
 def test_venue_chain_for_amm() -> None:
     assert get_venue("uniswap_eth").chain == "ethereum"
     assert get_venue("binance").chain is None
+    assert get_venue("hyperliquid").chain is None

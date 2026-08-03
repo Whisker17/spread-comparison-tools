@@ -17,9 +17,9 @@ from typing import Protocol
 import httpx
 
 from spread_compare.assets import (
-    CRYPTO_BLUE_CHIPS,
     EQUITY_PERP_ASSETS,
     TOKENIZED_CEX_SPOT,
+    TOKENIZED_UNDERLYING,
 )
 from spread_compare.models import MidSource, ReferenceMid
 from spread_compare.settings import MidSettings, load_mid_settings
@@ -112,12 +112,16 @@ class DefaultMarkProvider:
         self._client = client
 
     async def marks_for(self, asset: str) -> Sequence[tuple[str, Decimal]]:
+        """Sample marks from the five §3.3 venues (skip silently when unavailable)."""
         symbol = _USDT_SYMBOL.format(asset=asset.upper())
+        asset_key = asset.upper()
         samples: list[tuple[str, Decimal]] = []
         for label, coro in (
             ("binance", self._binance_mark(symbol)),
             ("bybit", self._bybit_mark(symbol)),
-            ("hyperliquid", self._hyperliquid_mark(asset.upper())),
+            ("hyperliquid", self._hyperliquid_mark(asset_key)),
+            ("lighter", self._lighter_mark(asset_key)),
+            ("apex", self._apex_mark(asset_key)),
         ):
             try:
                 price = await coro
@@ -174,6 +178,57 @@ class DefaultMarkProvider:
                     return None
                 return _parse_decimal(raw, field="hyperliquid.mark")
         return None
+
+    async def _lighter_mark(self, asset: str) -> Decimal | None:
+        # Public orderBooks list; match by symbol when present.
+        resp = await self._client.get(
+            "https://mainnet.zklighter.elliot.ai/api/v1/orderBooks"
+        )
+        if resp.status_code >= 400:
+            return None
+        data = resp.json()
+        books: list[object]
+        if isinstance(data, list):
+            books = data
+        elif isinstance(data, dict):
+            raw_books = data.get("order_books") or data.get("orderBooks") or []
+            books = raw_books if isinstance(raw_books, list) else []
+        else:
+            books = []
+        for book in books:
+            if not isinstance(book, dict):
+                continue
+            name = str(book.get("symbol") or book.get("market_id") or "")
+            if name.upper() == asset or name.upper().startswith(f"{asset}-"):
+                raw = book.get("last_trade_price") or book.get("mark_price")
+                if raw is None:
+                    return None
+                return _parse_decimal(raw, field="lighter.mark")
+        return None
+
+    async def _apex_mark(self, asset: str) -> Decimal | None:
+        resp = await self._client.get(
+            "https://omni.apex.exchange/api/v3/ticker",
+            params={"symbol": f"{asset}USDT"},
+        )
+        if resp.status_code >= 400:
+            # Try hyphenated contract form.
+            resp = await self._client.get(
+                "https://omni.apex.exchange/api/v3/ticker",
+                params={"symbol": f"{asset}-USDT"},
+            )
+            if resp.status_code >= 400:
+                return None
+        data = resp.json()
+        payload = data.get("data") if isinstance(data, dict) else data
+        if isinstance(payload, list) and payload:
+            payload = payload[0]
+        if not isinstance(payload, dict):
+            return None
+        raw = payload.get("markPrice") or payload.get("lastPrice") or payload.get("fairPrice")
+        if raw is None:
+            return None
+        return _parse_decimal(raw, field="apex.mark")
 
 
 class MidService:
@@ -260,17 +315,22 @@ class MidService:
                 return result
             raise MidResolutionError(f"tokenized spot TOB failed for {asset}")
 
-        # Tokenized without a CEX spot book → same path as equity ref (WHI-799 §3.3).
-        if _looks_like_tokenized_without_cex(asset):
+        # Tokenized without CEX spot → equity underlying ref (WHI-799 §3.3).
+        underlying = TOKENIZED_UNDERLYING.get(asset)
+        if underlying is not None:
             result = await self._try_proxy_mark_median(
-                asset, mid_source="equity_ref_same_as_perp"
+                underlying, mid_source="equity_ref_same_as_perp"
             )
             if result is not None:
                 return result
-            raise MidResolutionError(f"equity_ref mid failed for {asset}")
+            # Fall through to §3.2 chain on the tokenized ticker rather than hard-fail.
+            logger.debug("equity_ref failed for %s (underlying %s)", asset, underlying)
 
         if asset in EQUITY_PERP_ASSETS:
-            # Prefer proxy mark median (TradFi index endpoints vary by venue; §3.3).
+            # §3.3: prefer CEX TradFi index, else mark median across perps.
+            result = await self._try_cex_tradfi_index(asset)
+            if result is not None:
+                return result
             result = await self._try_proxy_mark_median(
                 asset, mid_source="proxy_perp_mark_median"
             )
@@ -278,15 +338,16 @@ class MidService:
                 return result
             raise MidResolutionError(f"proxy mark median failed for {asset}")
 
-        # Crypto blue chips and Others: §3.2 priority chain (Others fall through P0→P3).
+        # Crypto blue chips (CRYPTO_BLUE_CHIPS) and Others: §3.2 priority chain.
+        return await self._try_crypto_chain(asset)
+
+    async def _try_crypto_chain(self, asset: str) -> _SourceResult:
         chain: list[FetchFn] = [
             lambda: self._try_binance_usdm_index(asset),
             lambda: self._try_binance_spot_tob(asset),
             lambda: self._try_bybit_spot_tob(asset),
             lambda: self._try_pyth(asset),
         ]
-        _ = CRYPTO_BLUE_CHIPS  # documented membership; chain is shared with Others
-
         errors: list[str] = []
         for fetch in chain:
             try:
@@ -386,6 +447,22 @@ class MidService:
             logger.debug("pyth failed for %s: %s", asset, exc)
             return None
 
+    async def _try_cex_tradfi_index(self, asset: str) -> _SourceResult | None:
+        """Best-effort CEX TradFi index via Binance premiumIndex when listed.
+
+        WHI-799 §3.3 prefers this over mark median. Many equity tickers are not
+        on USDT-M; returns None and the caller falls through to median.
+        """
+        result = await self._try_binance_usdm_index(asset)
+        if result is None:
+            return None
+        return _SourceResult(
+            result.mid,
+            "cex_tradfi_index",
+            result.timestamp,
+            sources_detail=["binance_usdm_index"],
+        )
+
     async def _try_proxy_mark_median(
         self,
         asset: str,
@@ -412,9 +489,3 @@ class MidService:
         )
 
 
-def _looks_like_tokenized_without_cex(asset: str) -> bool:
-    """Heuristic for tokenized symbols with no CEX spot mid path (WHI-799 §3.3)."""
-    if asset in TOKENIZED_CEX_SPOT or asset in EQUITY_PERP_ASSETS:
-        return False
-    # Ondo-style suffix; expand catalog with WHI-810.
-    return asset.endswith("ON") and len(asset) > 2

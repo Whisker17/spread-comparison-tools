@@ -32,6 +32,19 @@ defines none: `docs/GIT_WORKFLOW.md` § High-risk paths), **Medium**
 
 ## Open
 
+- **SizeQuotePair has no first-class TOB-error field** (Low, WHI-807).
+  `spread_compare/aggregator.py::_collect_venue` — WHI-799 §6.3 says orderbook
+  TOB fetch failure must not look like AMM `None`, but §6.4's `SizeQuotePair`
+  has no `tob_error` channel. WHI-807 stamps `raw_ref=tob_error:…` on ok legs
+  instead so spread bps stay authoritative. Promote a dedicated field if the FE
+  needs structured handling.
+
+- **`cex_tradfi_index` is best-effort via Binance premiumIndex only** (Low, WHI-807).
+  `spread_compare/mids.py::_try_cex_tradfi_index` — WHI-799 §3.3 prefers a CEX
+  TradFi index; we reuse USDT-M `premiumIndex` when the equity symbol is listed,
+  else fall through to mark median. A dedicated TradFi feed (when productized)
+  should replace this probe.
+
 - **Shared Quote assembly helper not extracted** (Low, WHI-801).
   `spread_compare/adapters/mock.py::_quote_shell` — mapping `ReferenceMid` + status
   into a §6.2-valid `Quote` is private to the mock. Real adapters (WHI-802…806) risk

@@ -56,6 +56,7 @@ _BLUE_CHIP_ROWS: Final[tuple[AssetInfo, ...]] = (
             "tessera_solana": "WETH",
             "bisonfi": "WETH",
             "tessera_base": "WETH",
+            "tessera_bsc": "ETH",
             "uniswap_eth": "WETH",
             "aerodrome_base": "WETH",
             "pancakeswap_bsc": "ETH",
@@ -93,6 +94,15 @@ TOKENIZED_CEX_SPOT: Final[dict[str, str]] = {
     "TSLAB": "binance",
     "TSLAX": "bybit",
     "NVDAX": "bybit",
+}
+
+# Tokenized without CEX spot → map to equity underlying for equity_ref mid (WHI-799 §3.3).
+TOKENIZED_UNDERLYING: Final[dict[str, str]] = {
+    "NVDAON": "NVDA",
+    "TSLAON": "TSLA",
+    "AAPLON": "AAPL",
+    "GOOGLON": "GOOGL",
+    "MUON": "MU",
 }
 
 # Equity perps / others without a crypto index use mark median (WHI-799 §3.3).

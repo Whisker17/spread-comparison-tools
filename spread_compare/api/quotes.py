@@ -8,6 +8,7 @@ from typing import Annotated
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
 
+from spread_compare.adapters.registry import get as registry_get
 from spread_compare.adapters.registry import list_venues as list_registered_adapters
 from spread_compare.aggregator import (
     InvalidNotionalError,
@@ -138,8 +139,6 @@ async def get_quotes(
 @router.get("/venues", response_model=list[VenueResponse])
 def get_venues() -> list[VenueResponse]:
     """Static venue registry + whether an adapter is currently registered."""
-    from spread_compare.adapters.registry import get as registry_get
-
     registered = set(list_registered_adapters())
     rows: list[VenueResponse] = []
     for info in VENUES.values():

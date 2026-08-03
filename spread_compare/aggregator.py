@@ -362,41 +362,21 @@ class QuoteAggregator:
             else:
                 sell = result
 
-        # WHI-799 §6.3: orderbook TOB failure must not look like "no TOB concept".
-        # When the book fetch fails for CEX/perp, surface status=error on missing legs
-        # and drop a successful book (there isn't one). Keep ok legs that already
-        # carried spread data — FE sees top_of_book=null + venue_class to flag degradation.
+        # WHI-799 §6.3: orderbook TOB failure must not look like AMM "no TOB concept".
+        # SizeQuotePair has no tob_error field — stamp ok legs' raw_ref so the FE can
+        # see the degradation while keeping authoritative spread bps (quotes are primary).
         top_of_book = tob_outcome.book
         if tob_outcome.failed and adapter.venue_class in _ORDERBOOK_CLASSES:
             top_of_book = None
-            # If a leg is missing (side-filtered), fill with tob error so the row is visible.
             err_code = tob_outcome.error_code or "tob_error"
             err_msg = tob_outcome.error_message or "orderbook spread fetch failed"
-            if buy is None and "buy" in side_order:
-                buy = error_quote(
-                    mid=mid,
-                    venue=slug,
-                    asset=asset,
-                    side="buy",
-                    notional_usd=notional_usd,
-                    instrument_type=itype,
-                    error_code=err_code,
-                    error_message=err_msg,
-                )
-            if sell is None and "sell" in side_order:
-                sell = error_quote(
-                    mid=mid,
-                    venue=slug,
-                    asset=asset,
-                    side="sell",
-                    notional_usd=notional_usd,
-                    instrument_type=itype,
-                    error_code=err_code,
-                    error_message=err_msg,
-                )
-            # Both legs already present as ok/error — leave them; TOB simply absent.
+            tag = f"tob_error:{err_code}:{err_msg}"
+            if buy is not None and buy.status == "ok":
+                buy = buy.model_copy(update={"raw_ref": tag})
+            if sell is not None and sell.status == "ok":
+                sell = sell.model_copy(update={"raw_ref": tag})
             logger.warning(
-                "venue %s orderbook TOB failed (%s); pair returned without top_of_book",
+                "venue %s orderbook TOB failed (%s); stamped raw_ref on ok legs",
                 slug,
                 err_msg,
             )
