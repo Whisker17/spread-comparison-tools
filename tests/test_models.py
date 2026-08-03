@@ -6,7 +6,7 @@ from decimal import Decimal
 import pytest
 from pydantic import ValidationError
 
-from spread_compare.models import FeeBreakdown, Quote
+from spread_compare.models import NOTIONAL_TIERS_USD, FeeBreakdown, Quote
 
 _TS = datetime(2026, 8, 3, tzinfo=UTC)
 
@@ -149,6 +149,15 @@ def test_non_ok_null_fields_valid() -> None:
     )
     assert q.effective_price is None
     assert q.spread_bps is None
+
+
+def test_notional_tiers_usd() -> None:
+    assert NOTIONAL_TIERS_USD == (
+        Decimal("1000"),
+        Decimal("10000"),
+        Decimal("100000"),
+        Decimal("1000000"),
+    )
 
 
 def test_fee_breakdown_gas_unknown_rejects_gas_bps() -> None:

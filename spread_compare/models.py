@@ -28,6 +28,16 @@ Side = Literal["buy", "sell"]
 VenueClass = Literal["cex", "perp_dex", "amm_dex", "prop_amm"]
 QtyMethod = Literal["base_from_mid", "quote_exact_in_approx"]
 FundingModel = Literal["none", "perp_8h", "perp_continuous"]
+# WHI-799 §3.2 / §3.3 closed vocabulary for ReferenceMid.mid_source / Quote.mid_source.
+MidSource = Literal[
+    "binance_usdm_index",
+    "binance_spot_tob",
+    "bybit_spot_tob",
+    "pyth",
+    "cex_tradfi_index",
+    "proxy_perp_mark_median",
+    "equity_ref_same_as_perp",
+]
 
 # WHI-799 §4.1 — fixed notional tiers (USD). Compare with Decimal equality.
 NOTIONAL_TIERS_USD: Final[tuple[Decimal, ...]] = (
@@ -110,7 +120,7 @@ class ReferenceMid(BaseModel):
     snapshot_id: str
     asset: str
     mid: Decimal
-    mid_source: str
+    mid_source: MidSource
     timestamp: AwareDatetime
     sources_detail: list[str] | None = None
 
@@ -129,7 +139,7 @@ class Quote(BaseModel):
     notional_usd: Decimal
 
     mid: Decimal
-    mid_source: str
+    mid_source: MidSource
     mid_timestamp: AwareDatetime
     mid_stale: bool = False
     effective_price: Decimal | None = None

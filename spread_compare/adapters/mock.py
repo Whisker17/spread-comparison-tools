@@ -20,6 +20,7 @@ from spread_compare.costs import spread_bps, top_of_book_spread_bps, total_cost_
 from spread_compare.models import (
     FeeBreakdown,
     FeeSchedule,
+    FundingModel,
     InstrumentType,
     QtyMethod,
     Quote,
@@ -71,8 +72,8 @@ def _quote_shell(
     timestamp: datetime,
     venue_symbol: str | None = None,
     effective_price: Decimal | None = None,
-    spread_bps: Decimal | None = None,
-    total_cost_bps: Decimal | None = None,
+    spread_bps_value: Decimal | None = None,
+    total_cost_bps_value: Decimal | None = None,
     qty_base: Decimal | None = None,
     qty_method: QtyMethod | None = None,
     error_code: str | None = None,
@@ -90,9 +91,9 @@ def _quote_shell(
         mid_source=mid.mid_source,
         mid_timestamp=mid.timestamp,
         effective_price=effective_price,
-        spread_bps=spread_bps,
+        spread_bps=spread_bps_value,
         fee_breakdown=fee_breakdown,
-        total_cost_bps=total_cost_bps,
+        total_cost_bps=total_cost_bps_value,
         timestamp=timestamp,
         status=status,
         qty_base=qty_base,
@@ -194,8 +195,8 @@ class MockAdapter:
             timestamp=now,
             venue_symbol=f"{asset_key}USDT",
             effective_price=p_star,
-            spread_bps=sp,
-            total_cost_bps=cost.total_cost_bps,
+            spread_bps_value=sp,
+            total_cost_bps_value=cost.total_cost_bps,
             qty_base=q_star,
             qty_method="base_from_mid",
         )
@@ -238,7 +239,7 @@ class MockAdapter:
         instrument_type: InstrumentType | None = None,
     ) -> FeeSchedule:
         itype = instrument_type or default_instrument_type(self.venue_class)
-        funding: Literal["none", "perp_8h"] = "perp_8h" if itype == "perp" else "none"
+        funding: FundingModel = "perp_8h" if itype == "perp" else "none"
         return FeeSchedule(
             venue=self.venue,
             asset=asset,
