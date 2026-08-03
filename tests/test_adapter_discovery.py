@@ -14,7 +14,9 @@ from spread_compare.adapters import discover_adapters, list_venues
 from spread_compare.adapters.registry import _REGISTRY
 
 _MODULE_NAME = "throwaway_whi823_discovery"
-_SLUG = "bybit"  # known WHI-799 §6.5 slug, unused by mock
+# Test-only slug in registry._EXTRA_ALLOWED_SLUGS — never a production venue
+# (WHI-802: registering real bybit would break this test if it claimed "bybit").
+_SLUG = "_test_discovery"
 
 
 def _package_dir() -> Path:
