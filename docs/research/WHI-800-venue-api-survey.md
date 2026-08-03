@@ -8,7 +8,9 @@
 | 调研日期 | 2026-08-03（UTC） |
 | 方法 | **官方文档主源** + **公网 live 探测**（无 API key / 无私有签名）；延迟为从本机（NRT 出口附近）测得的 RTT 量级，**非** SLA |
 | 样本 | [`samples/venue-api/`](./samples/venue-api/) |
-| 对齐 | Venue 名单与 [WHI-798](./WHI-798-asset-category-inventory.md) / [WHI-799](./WHI-799-spread-fee-data-model.md) 一致；Prop AMM 见 [WHI-797](./WHI-797-prop-amm-jupiter-quote-api.md)（本文不重复） |
+| 对齐 | Venue 名单与 [WHI-798](./WHI-798-asset-category-inventory.md) / [WHI-799](./WHI-799-spread-fee-data-model.md) 一致；Prop AMM（**Solana Jupiter + Base/BSC KyberSwap**，v2）见 [WHI-797](./WHI-797-prop-amm-jupiter-quote-api.md)（本文不重复，仅 §1.1 / §6 索引） |
+
+> **v2 变更**（对齐 WHI-797/798 重做）：§1.1 / §6 补 prop AMM 两条报价路径的索引行（Solana Jupiter、Base/BSC KyberSwap），slug 换用 WHI-799 v2 的链维度写法；§5.3 PancakeSwap 增补 bStocks 池（P0-A）的 fee tier 警示；§5.4 为 KyberSwap `includedSources` 增加「可作 venue 隔离路径」的例外说明。CEX / Perp DEX / AMM 的探测数据本身无变化。
 
 ---
 
@@ -25,7 +27,9 @@
 | Perp DEX | ApeX Omni | `GET /api/v3/depth?symbol=BTCUSDT` | 公开 **无需 key** | live `limit` 5…200 有效；默认 25 | 符号注意：`crossSymbolName=BTCUSDT` vs 配置内 `symbol=BTC-USDT` |
 | AMM | Uniswap (ETH) | **优先**链上 QuoterV2；Trading API `/v1/quote` 仅作对照 | API key（Trading API）/ 仅 RPC（链上） | 净输出报价（非 orderbook） | Trading API 可能掺非 Uniswap 路由；单 venue 语义用链上 quoter |
 | AMM | Aerodrome (Base) | 链上 Quoter / MixedQuoter；或 QuickNode Aerodrome Swap API | RPC / 商业 addon | 净输出 | 无一等公民公开 REST quoter |
-| AMM | PancakeSwap (BSC) | 链上 QuoterV2 / Smart Router | 仅 RPC | 净输出 | 官方合约地址明确 |
+| AMM | PancakeSwap (BSC) | 链上 QuoterV2 / Smart Router | 仅 RPC | 净输出 | 官方合约地址明确；**bStocks 池 fee tier 逐池不同**（§5.3，v2） |
+| Prop AMM | HumidiFi / Tessera (Solana) / BisonFi | Jupiter `GET /swap/v1/quote?dexes=<Label>` | 可选 `x-api-key`（keyless 0.5 RPS） | 净输出 | 详见 WHI-797 §3–§6（本文不重复） |
+| Prop AMM | Tessera (Base / BSC)（v2） | KyberSwap `GET /{base\|bsc}/api/v1/routes?includedSources=tessera` | **无需 key**；`x-client-id` 影响限速 | 净输出（含 `gasUsd`） | 详见 WHI-797 §7；BSC 是 Tessera 量最大链 |
 
 ### 1.2 实现默认建议（给 adapter）
 
@@ -67,7 +71,7 @@
 - 费率数字清单（[WHI-812](https://linear.app/whisker-personal/issue/WHI-812)）。
 - Spread 公式与统一模型（[WHI-799](./WHI-799-spread-fee-data-model.md) 已定）。
 - 资产是否在架（[WHI-798](./WHI-798-asset-category-inventory.md)）。
-- Prop AMM / Jupiter（[WHI-797](./WHI-797-prop-amm-jupiter-quote-api.md)）。
+- Prop AMM 报价路径细节——Solana Jupiter **与 Base/BSC KyberSwap** 均属 [WHI-797](./WHI-797-prop-amm-jupiter-quote-api.md)（v2）；本文只在 §1.1 / §6 放索引行。
 - 下单、私有账户、WS 本地 orderbook 同步的完整工程实现（仅给选型指针）。
 
 ---
@@ -578,6 +582,7 @@ cast call 0xB048Bbc1Ee6b733FFfCFb9e9CeF7375518e25997 \
 #### Phase 1 推荐
 
 - BSC RPC + QuoterV2；多版本池（v2/v3/Infinity）若要「全站最优」再上 Smart Router off-chain 路由库（`@pancakeswap/smart-router`），复杂度显著上升——**蓝筹 USDT/USDC 对先固定 v3 fee tier** 足够。
+- **bStocks 池（P0-A，v2）**：QQQB/SPCXB/NVDAB 等 tokenized stocks 是 Pancake v3 上的活跃池（WHI-798 v2 §4.3），但 **fee tier 逐池不同且不可假设**——live 观测：QQQB/USDT 主池 0.01%、NVDAB/USDT 0.05%、SPCXB/USDT 0.25%。「固定单一 tier」的蓝筹简化**不适用于 stocks 池**：adapter 须按 (token0, token1) 枚举 100/500/2500/10000 各 tier 的 QuoterV2 报价取最优，或维护一张池级配置表（池集会随流动性迁移变化，建议探测而非硬编码）。
 
 ---
 
@@ -609,6 +614,8 @@ curl -sS "https://api.1inch.dev/swap/v6.0/1/quote?src=0xC02aaA39b223FE8D0A0e5C4F
 
 - 把 0x/1inch 输出标成 `venue=uniswap_eth` / `aerodrome_base` / `pancakeswap_bsc`。
 
+**例外（v2，与上述边界不矛盾）**：「聚合器不能当单 venue 报价源」的前提是**无法锁源**。若聚合器暴露 **include 型 source 过滤**且已 live 验证隔离有效，则它就是该 venue 的合法报价路径——这正是 prop AMM 的接入方式：Solana 用 Jupiter `dexes=<Label>`，Base/BSC 用 KyberSwap `includedSources=tessera`（响应 `route[].exchange` 可逐 hop 校验，见 WHI-797 §7）。0x（公开仅 `excludedSources`）与 1inch（未验证）不满足此条件，维持 fallback-only。**KyberSwap 的这个用法仅授权给 prop AMM venue**——AMM venue（Uniswap/Aerodrome/Pancake）仍走链上 quoter，不得改走任何聚合器。
+
 ---
 
 ## 6. 跨 venue 对照表（实现 checklist）
@@ -626,7 +633,8 @@ curl -sS "https://api.1inch.dev/swap/v6.0/1/quote?src=0xC02aaA39b223FE8D0A0e5C4F
 | `uniswap_eth` | `amm_pool` | eth_call / HTTP | QuoterV2 / Trading API | RPC / API key | 净输出 | RPC 或 portal 配额 | 合约 ABI | 调用形状 §5.1 |
 | `aerodrome_base` | `amm_pool` | eth_call | Router / Quoter / MixedQuoter | RPC | 净输出 | RPC | sugar / ABI | 调用形状 §5.2 |
 | `pancakeswap_bsc` | `amm_pool` | eth_call | QuoterV2 | RPC | 净输出 | RPC | ABI / smart-router | 调用形状 §5.3 |
-| `humidifi` / `tessera` / `bisonfi` | `prop_amm` | GET | Jupiter `/quote?dexes=` | 可选 key | 净输出 | 见 WHI-797 | — | WHI-797 |
+| `humidifi` / `tessera_solana` / `bisonfi` | `prop_amm` | GET | Jupiter `/quote?dexes=<Label>` | 可选 key（keyless 0.5 RPS） | 净输出 | 见 WHI-797 §3 | — | WHI-797 samples |
+| `tessera_base` / `tessera_bsc`（v2） | `prop_amm` | GET | KyberSwap `/{base\|bsc}/api/v1/routes?includedSources=tessera` | 无需 key；`x-client-id` 影响限速 | 净输出 + `gasUsd` | 官方未公布数字；12 连发未限流（WHI-797 §7.2） | — | WHI-797 `ks-route-*.json` |
 
 ---
 
@@ -670,6 +678,7 @@ curl -sS "https://api.1inch.dev/swap/v6.0/1/quote?src=0xC02aaA39b223FE8D0A0e5C4F
 - PancakeSwap v3 addresses：https://developer.pancakeswap.finance/contracts/v3/addresses  
 - 0x rate limits：https://docs.0x.org/docs/developer-resources/rate-limits  
 - 1inch pricing：https://business.1inch.com/pricing  
+- KyberSwap Aggregator API（Tessera Base/BSC 报价路径，v2）：https://docs.kyberswap.com/developer-guide/aggregator-api/aggregator-api-specification/evm-swaps  
 
 ### 8.2 Live 探测命令（摘要）
 
@@ -720,3 +729,4 @@ curl -sS 'https://omni.apex.exchange/api/v3/depth?symbol=BTCUSDT&limit=5'
 | 2026-08-03 | Review round 1：`insufficient_liquidity` 词汇对齐；README/产出物清单；ApeX 全路径统一；AMM 调用形状与延迟口径；Bybit limit live 复核；§7 降级为非规范提示 |
 | 2026-08-03 | Review round 2：§6 slug 对齐 WHI-799；FAPI depth weight live 表；Aerodrome 可运行 cast；0x/1inch 请求骨架；§8.3 缺口补全 |
 | 2026-08-03 | Review round 3：§1.1 Uniswap 优先级与 §5 一致；Aerodrome Route 四元组 + factory；§6 `instrument_type` 填 `amm_pool`/`prop_amm` |
+| 2026-08-03 | **v2 对齐 WHI-797/798 重做**：§1.1/§6 增 prop AMM 双路径索引行（Jupiter + KyberSwap），slug 换 WHI-799 v2 链维度写法；§5.3 bStocks 池 fee tier 警示；§5.4 聚合器边界增 include 型 source 过滤例外。CEX/Perp DEX/AMM 探测数据无变化 |
