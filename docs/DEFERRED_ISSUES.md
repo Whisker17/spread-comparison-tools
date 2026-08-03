@@ -32,6 +32,35 @@ defines none: `docs/GIT_WORKFLOW.md` § High-risk paths), **Medium**
 
 ## Open
 
+- **Prop AMM asset surface beyond BTC/ETH/SOL has no mid path** (Medium, WHI-806).
+  `spread_compare/adapters/prop_kyberswap.py` advertises Base AERO/VIRTUAL/EURC and
+  BSC QQQB/SPCXB/NVDAB/NVDAON, but `assets.py` / `config/mid.yaml` only seed blue
+  chips — so `/quotes` cannot resolve a reference mid for those pairs yet. Expand
+  mid + catalog with WHI-810 (stocks) / a follow-up mid config ticket; adapters keep
+  the mint/address map so live smoke can still probe QQQB once mid exists.
+
+- **Jupiter keyless 2s limiter vs aggregator 3s per-venue timeout** (Medium, WHI-806).
+  Shared `_jupiter_limiter` serializes humidifi/tessera_solana/bisonfi (and both
+  legs). A concurrent `/quotes` fan-out can exceed `config/aggregator.yaml`
+  `venue_timeout_sec: 3.0` for later Solana prop venues. Do not weaken the WHI-797
+  §3.3 ≥2s floor; raise prop-class timeout or serialize prop quotes outside the
+  per-venue budget in a follow-up aggregator tweak.
+
+- **AdapterConfigError collapses to generic adapter_error in aggregator** (Low, WHI-806).
+  `AdapterConfigError` subclasses `AdapterError`; the aggregator maps both to
+  `error_code=adapter_error`. Config drift (40011 / dexes+exclude) is therefore
+  hard to alert on separately. Promote a distinct error_code when the aggregator
+  error taxonomy is next touched.
+
+- **Prop pair lists are a static snapshot** (Low, WHI-806).
+  `SOL_MINTS` / `BASE_TOKENS` / `BSC_TOKENS` — WHI-797 §7.4 warns pool sets drift;
+  "no route is a normal business state". Phase 1 uses a researched initial map;
+  dynamic discovery is out of scope for WHI-806.
+
+- **Prop rate/slippage tunables live in source, not `config/`** (Low, WHI-806).
+  `prop_jupiter.py` / `prop_kyberswap.py` — min intervals, `slippageBps=50`, retry
+  counts. Same pattern as WHI-803; move into typed `config/` once DESIGN.md §2 exists.
+
 - **`GET /assets` lists blue chips only** (Low, WHI-807).
   `spread_compare/assets.py::list_assets` — WHI-798 stocks/equity catalogs are
   mid-routing seeds (`TOKENIZED_*`, `EQUITY_PERP_ASSETS`) but not returned by

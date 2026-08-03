@@ -50,15 +50,27 @@ OrderbookLevels = list[tuple[Decimal, Decimal]]
 
 
 class AsyncRateLimiter:
-    """Simple min-interval throttle (one request slot at a time per instance)."""
+    """Simple min-interval throttle (one request slot at a time per instance).
+
+    The lock is re-created if the running event loop changes so module-level
+    limiters stay valid across pytest-asyncio loops and Starlette TestClient.
+    """
 
     def __init__(self, min_interval_s: float) -> None:
         self._min_interval_s = min_interval_s
-        self._lock = asyncio.Lock()
+        self._lock: asyncio.Lock | None = None
+        self._loop: asyncio.AbstractEventLoop | None = None
         self._last_mono = 0.0
 
+    def _get_lock(self) -> asyncio.Lock:
+        loop = asyncio.get_running_loop()
+        if self._lock is None or self._loop is not loop:
+            self._lock = asyncio.Lock()
+            self._loop = loop
+        return self._lock
+
     async def acquire(self) -> None:
-        async with self._lock:
+        async with self._get_lock():
             now = time.monotonic()
             wait = self._min_interval_s - (now - self._last_mono)
             if wait > 0:
@@ -76,7 +88,8 @@ class RollingWindowRateLimiter:
             raise ValueError("window_s must be positive")
         self._max_requests = max_requests
         self._window_s = window_s
-        self._lock = asyncio.Lock()
+        self._lock: asyncio.Lock | None = None
+        self._loop: asyncio.AbstractEventLoop | None = None
         self._timestamps: deque[float] = deque()
 
     @property
@@ -87,13 +100,20 @@ class RollingWindowRateLimiter:
     def window_s(self) -> float:
         return self._window_s
 
+    def _get_lock(self) -> asyncio.Lock:
+        loop = asyncio.get_running_loop()
+        if self._lock is None or self._loop is not loop:
+            self._lock = asyncio.Lock()
+            self._loop = loop
+        return self._lock
+
     def _prune(self, now: float) -> None:
         cutoff = now - self._window_s
         while self._timestamps and self._timestamps[0] <= cutoff:
             self._timestamps.popleft()
 
     async def acquire(self) -> None:
-        async with self._lock:
+        async with self._get_lock():
             while True:
                 now = time.monotonic()
                 self._prune(now)
