@@ -356,10 +356,16 @@ async def test_aerodrome_router_fallback(
     try:
         quote = await adapter.get_quote("ETH", "sell", Decimal("1000"), mid=_MID_ETH)
         assert quote.status == "ok"
-        assert quote.fee_breakdown.fee_tier in ("router_volatile", "router_stable")
-        # no gasEstimate on router path → gas_unknown
+        assert quote.fee_breakdown.fee_tier in (
+            "router_volatile",
+            "router_stable",
+            "v2_volatile",
+            "v2_stable",
+        )
+        # no gasEstimate on V2/router path → gas_unknown (not silently 0)
         assert quote.fee_breakdown.gas_unknown is True
         assert quote.total_cost_bps is None
+        assert quote.fee_breakdown.lp_fee_tier_bps is None
     finally:
         await adapter.aclose()
 
@@ -408,9 +414,32 @@ async def test_pancake_btc_buy_exact_out(
 @pytest.mark.asyncio
 async def test_startup_fails_without_rpc_url(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("ETH_RPC_URL", raising=False)
+    # require_env loads .env once; force a re-check against cleared env only.
+    import spread_compare.adapters._amm_common as amm_common
+
+    monkeypatch.setattr(amm_common, "_DOTENV_LOADED", True)
     adapter = UniswapEthAdapter()
     with pytest.raises(RuntimeError, match="ETH_RPC_URL"):
         await adapter.startup()
+
+
+def test_get_fees_are_venue_specific() -> None:
+    uni = UniswapEthAdapter()
+    pcs = PancakeSwapBscAdapter()
+    aero = AerodromeBaseAdapter()
+    assert uni.get_fees().lp_fee_tiers_bps == [
+        Decimal("1"),
+        Decimal("5"),
+        Decimal("30"),
+        Decimal("100"),
+    ]
+    assert pcs.get_fees().lp_fee_tiers_bps == [
+        Decimal("1"),
+        Decimal("5"),
+        Decimal("25"),
+        Decimal("100"),
+    ]
+    assert aero.get_fees().lp_fee_tiers_bps is None
 
 
 @pytest.mark.asyncio

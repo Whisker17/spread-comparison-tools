@@ -52,11 +52,12 @@ SEL_AERO_V3: Final[bytes] = function_signature_to_4byte_selector(_SIG_AERO_V3)
 SEL_AERO_V2: Final[bytes] = function_signature_to_4byte_selector(_SIG_AERO_V2)
 SEL_GET_AMOUNTS_OUT: Final[bytes] = function_signature_to_4byte_selector(_SIG_GET_AMOUNTS_OUT)
 
-# Fee tier → informational LP bps: Uniswap fee units are 1e-6, so fee/100 = bps.
+# Fee tier probes (Uniswap fee units = 1e-6). Source: WHI-800 §5.1 / §5.3 (2026-08-03).
 UNISWAP_FEE_TIERS: Final[tuple[int, ...]] = (100, 500, 3000, 10000)
-# PancakeSwap v3 official defaults include 2500 (0.25%) rather than 3000.
+# PancakeSwap v3 defaults include 2500 (0.25%); WHI-800 §5.3 bStocks note (2026-08-03).
 PANCAKE_FEE_TIERS: Final[tuple[int, ...]] = (100, 500, 2500, 10000)
-# Aerodrome CL tick spacings commonly used on Base blue-chip pools.
+# Aerodrome CL tick spacings for Base blue-chip pools (WHI-800 §5.2 CL example uses 100;
+# 1/50/100/200 are the standard Slipstream spacings — 2026-08-03).
 AERO_TICK_SPACINGS: Final[tuple[int, ...]] = (1, 50, 100, 200)
 
 _BINANCE_BOOK_TICKER = "https://api.binance.com/api/v3/ticker/bookTicker"
@@ -100,8 +101,27 @@ def from_raw(raw: int, decimals: int) -> Decimal:
     return Decimal(raw) / (Decimal(10) ** decimals)
 
 
+_DOTENV_LOADED = False
+
+
+def load_dotenv_once() -> None:
+    """Load repo-root ``.env`` into ``os.environ`` (idempotent)."""
+    global _DOTENV_LOADED
+    if _DOTENV_LOADED:
+        return
+    from dotenv import load_dotenv
+
+    load_dotenv()  # searches cwd and parents; no-op if file absent
+    _DOTENV_LOADED = True
+
+
 def require_env(name: str) -> str:
-    """Return a non-empty env var or raise with a clear message."""
+    """Return a non-empty env var or raise with a clear message.
+
+    Loads ``.env`` once first so secrets declared there are visible
+    (AGENTS.md runtime-configuration rule).
+    """
+    load_dotenv_once()
     value = os.environ.get(name, "").strip()
     if not value:
         raise RuntimeError(
@@ -224,6 +244,104 @@ def decode_get_amounts_out(data: bytes) -> list[int]:
     """Decode uint256[] from getAmountsOut."""
     (amounts,) = decode(["uint256[]"], data)
     return [int(a) for a in amounts]
+
+
+def prefer_quoter_result(
+    current: QuoterResult | None,
+    candidate: QuoterResult,
+    *,
+    prefer_min_in: bool = False,
+) -> QuoterResult:
+    """Pick the better quoter result.
+
+    ExactIn: higher amount_out wins. ExactOut: lower amount_in wins.
+    When amounts tie (or for ExactIn when within the same amount), prefer a
+    candidate that carries a gasEstimate so total_cost_bps can be filled.
+    """
+    if current is None:
+        return candidate
+    if prefer_min_in:
+        if candidate.amount_in < current.amount_in:
+            return candidate
+        if candidate.amount_in > current.amount_in:
+            return current
+    else:
+        if candidate.amount_out > current.amount_out:
+            return candidate
+        if candidate.amount_out < current.amount_out:
+            return current
+    # Amounts equal: prefer known gas.
+    if candidate.gas_estimate is not None and current.gas_estimate is None:
+        return candidate
+    return current
+
+
+async def probe_quoter_v2(
+    rpc: RpcClient,
+    quoter: str,
+    *,
+    token_base: str,
+    token_quote: str,
+    amount_base_raw: int | None,
+    amount_quote_raw: int | None,
+    fee_tiers: tuple[int, ...],
+    side: Side,
+) -> QuoterResult | None:
+    """Probe Uniswap-family QuoterV2 fee tiers; return the best executable quote.
+
+    Sell: ExactIn base → quote. Buy: ExactOut base ← quote.
+    """
+    best: QuoterResult | None = None
+    if side == "sell":
+        if amount_base_raw is None or amount_base_raw <= 0:
+            return None
+        for fee in fee_tiers:
+            data = encode_quote_exact_input_single(
+                token_base, token_quote, amount_base_raw, fee
+            )
+            try:
+                raw = await rpc.eth_call(quoter, data)
+                amount_out, _, _, gas_est = decode_quoter_v2_result(raw)
+            except (JsonRpcError, ValueError):
+                continue
+            if amount_out <= 0:
+                continue
+            candidate = QuoterResult(
+                amount_in=amount_base_raw,
+                amount_out=amount_out,
+                gas_estimate=gas_est,
+                fee_label=f"pool_{fee}",
+                lp_fee_tier_bps=fee_to_lp_bps(fee),
+                exact_out=False,
+            )
+            best = prefer_quoter_result(best, candidate, prefer_min_in=False)
+        return best
+
+    # Buy ExactOut
+    if amount_base_raw is None or amount_base_raw <= 0:
+        return None
+    _ = amount_quote_raw
+    for fee in fee_tiers:
+        data = encode_quote_exact_output_single(
+            token_quote, token_base, amount_base_raw, fee
+        )
+        try:
+            raw = await rpc.eth_call(quoter, data)
+            amount_in, _, _, gas_est = decode_quoter_v2_result(raw)
+        except (JsonRpcError, ValueError):
+            continue
+        if amount_in <= 0:
+            continue
+        candidate = QuoterResult(
+            amount_in=amount_in,
+            amount_out=amount_base_raw,
+            gas_estimate=gas_est,
+            fee_label=f"pool_{fee}",
+            lp_fee_tier_bps=fee_to_lp_bps(fee),
+            exact_out=True,
+        )
+        best = prefer_quoter_result(best, candidate, prefer_min_in=True)
+    return best
 
 
 class JsonRpcError(AdapterFetchError):
@@ -434,8 +552,10 @@ class AmmDexAdapter(BaseAdapter):
     rpc_env: str
     native_binance_symbol: str  # ETHUSDT or BNBUSDT
     supported: tuple[str, ...] = ("BTC", "ETH")
+    # Venue-specific Uniswap-style fee tiers for get_fees(); override per adapter.
+    lp_fee_tiers: tuple[int, ...] = ()
 
-    def __init__(self, *, timeout: float = 15.0) -> None:
+    def __init__(self, *, timeout: float = 10.0) -> None:
         super().__init__(timeout=timeout)
         self._rpc_url: str | None = None
         self._rpc: RpcClient | None = None
@@ -477,6 +597,7 @@ class AmmDexAdapter(BaseAdapter):
         instrument_type: InstrumentType | None = None,
     ) -> FeeSchedule:
         itype: InstrumentType = instrument_type or "amm_pool"
+        lp_tiers = [fee_to_lp_bps(f) for f in self.lp_fee_tiers] or None
         return FeeSchedule(
             venue=self.venue,
             asset=asset,
@@ -484,7 +605,7 @@ class AmmDexAdapter(BaseAdapter):
             maker_bps=None,
             taker_bps=None,
             default_tier="pool",
-            lp_fee_tiers_bps=[fee_to_lp_bps(f) for f in UNISWAP_FEE_TIERS],
+            lp_fee_tiers_bps=lp_tiers,
             funding_model="none",
             fee_embedded_in_quote=True,
             source_urls=[],

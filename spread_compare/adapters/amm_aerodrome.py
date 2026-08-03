@@ -2,6 +2,9 @@
 
 MixedQuoter has no ExactOut support — buy side uses ExactIn on the quote leg
 with ``qty_method=quote_exact_in_approx`` (WHI-799 §4.4).
+
+CL candidates (with gasEstimate) are preferred over V2/router paths when they
+produce a quote, so ``total_cost_bps`` can be filled whenever CL liquidity exists.
 """
 
 from __future__ import annotations
@@ -20,6 +23,7 @@ from spread_compare.adapters._amm_common import (
     encode_aero_exact_in_v2,
     encode_aero_exact_in_v3,
     encode_get_amounts_out,
+    prefer_quoter_result,
     to_raw,
 )
 from spread_compare.adapters.registry import register_adapter
@@ -38,17 +42,13 @@ _ROUTER = "0xcF77a3Ba9A5CA399B7c97c74d54e5b1Beb874E43"
 # Doc-sourced 2026-08-03 from WHI-800 §5.2 (security page / docs).
 _POOL_FACTORY = "0x420DD381b31aEf6683db6B902084cB0FFECe40Da"
 
-# Token addresses: WHI-798 §3.2 (Base / Aerodrome row).
+# Token addresses: WHI-798 §3.2 (Base / Aerodrome row), inventory date 2026-08-03.
 # cbBTC: https://basescan.org/token/0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf
 _CBBTC = TokenInfo("0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf", 8, "cbBTC")
 # WETH (Base): https://basescan.org/token/0x4200000000000000000000000000000000000006
 _WETH = TokenInfo("0x4200000000000000000000000000000000000006", 18, "WETH")
 # USDC (Base native): https://basescan.org/token/0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913
 _USDC = TokenInfo("0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", 6, "USDC")
-
-# Informational LP fee for V2 pools (not added to trading_component_bps).
-_V2_VOLATILE_LP_BPS = Decimal("30")  # typical 0.30%
-_V2_STABLE_LP_BPS = Decimal("5")  # typical 0.05%
 
 
 @register_adapter
@@ -58,6 +58,8 @@ class AerodromeBaseAdapter(AmmDexAdapter):
     venue: str = "aerodrome_base"
     rpc_env: str = "BASE_RPC_URL"
     native_binance_symbol: str = "ETHUSDT"
+    # No Uniswap-style fee tiers; CL tick spacing ≠ fixed fee table (WHI-800 §5.2).
+    lp_fee_tiers: tuple[int, ...] = ()
 
     def _base_token(self, asset: str) -> TokenInfo:
         if asset == "BTC":
@@ -85,19 +87,21 @@ class AerodromeBaseAdapter(AmmDexAdapter):
             token_in, token_out = base.address, quote.address
         else:
             # Buy: ExactIn on quote leg ≈ notional (USDC ~ $1).
-            # qty_method=quote_exact_in_approx set by AmmDexAdapter.
             amount_in = to_raw(notional_usd, quote.decimals)
             token_in, token_out = quote.address, base.address
 
         if amount_in <= 0:
             return None
 
-        best = await self._probe_mixed_quoter(token_in, token_out, amount_in)
-        if best is not None:
-            return best
-        return await self._probe_router(token_in, token_out, amount_in)
+        # Prefer CL (gasEstimate available) over V2/router when CL quotes exist.
+        cl_best = await self._probe_cl(token_in, token_out, amount_in)
+        if cl_best is not None:
+            return cl_best
 
-    async def _probe_mixed_quoter(
+        v2_best = await self._probe_v2_and_router(token_in, token_out, amount_in)
+        return v2_best
+
+    async def _probe_cl(
         self,
         token_in: str,
         token_out: str,
@@ -105,8 +109,6 @@ class AerodromeBaseAdapter(AmmDexAdapter):
     ) -> QuoterResult | None:
         rpc = self._require_rpc()
         best: QuoterResult | None = None
-
-        # CL pools via quoteExactInputSingleV3 (returns gasEstimate).
         for tick in AERO_TICK_SPACINGS:
             data = encode_aero_exact_in_v3(token_in, token_out, amount_in, tick)
             try:
@@ -121,17 +123,25 @@ class AerodromeBaseAdapter(AmmDexAdapter):
                 amount_out=amount_out,
                 gas_estimate=gas_est,
                 fee_label=f"cl_tick_{tick}",
+                # Actual CL fee is per-pool; not a fixed tier — leave informational null
+                # rather than invent (WHI-812 owns fee numbers).
                 lp_fee_tier_bps=None,
                 exact_out=False,
             )
-            if best is None or candidate.amount_out > best.amount_out:
-                best = candidate
+            best = prefer_quoter_result(best, candidate, prefer_min_in=False)
+        return best
 
-        # V2 volatile / stable via quoteExactInputSingleV2 (no gasEstimate).
-        for stable, label, lp_bps in (
-            (False, "v2_volatile", _V2_VOLATILE_LP_BPS),
-            (True, "v2_stable", _V2_STABLE_LP_BPS),
-        ):
+    async def _probe_v2_and_router(
+        self,
+        token_in: str,
+        token_out: str,
+        amount_in: int,
+    ) -> QuoterResult | None:
+        """V2 MixedQuoter + Router fallback. No gasEstimate → gas_unknown downstream."""
+        rpc = self._require_rpc()
+        best: QuoterResult | None = None
+
+        for stable, label in ((False, "v2_volatile"), (True, "v2_stable")):
             data = encode_aero_exact_in_v2(token_in, token_out, stable, amount_in)
             try:
                 raw = await rpc.eth_call(_MIXED_QUOTER, data)
@@ -143,30 +153,14 @@ class AerodromeBaseAdapter(AmmDexAdapter):
             candidate = QuoterResult(
                 amount_in=amount_in,
                 amount_out=amount_out,
-                gas_estimate=None,  # V2 path has no gasEstimate → gas_unknown unless
-                # we can still estimate via a default; leave None → gas_unknown.
+                gas_estimate=None,
                 fee_label=label,
-                lp_fee_tier_bps=lp_bps,
+                lp_fee_tier_bps=None,  # per-pool fee; do not invent (WHI-812)
                 exact_out=False,
             )
-            if best is None or candidate.amount_out > best.amount_out:
-                best = candidate
+            best = prefer_quoter_result(best, candidate, prefer_min_in=False)
 
-        return best
-
-    async def _probe_router(
-        self,
-        token_in: str,
-        token_out: str,
-        amount_in: int,
-    ) -> QuoterResult | None:
-        """Fallback: Router.getAmountsOut with V2 Route(from,to,stable,factory)."""
-        rpc = self._require_rpc()
-        best: QuoterResult | None = None
-        for stable, label, lp_bps in (
-            (False, "router_volatile", _V2_VOLATILE_LP_BPS),
-            (True, "router_stable", _V2_STABLE_LP_BPS),
-        ):
+        for stable, label in ((False, "router_volatile"), (True, "router_stable")):
             data = encode_get_amounts_out(
                 amount_in,
                 [(token_in, token_out, stable, _POOL_FACTORY)],
@@ -183,9 +177,9 @@ class AerodromeBaseAdapter(AmmDexAdapter):
                 amount_out=amounts[-1],
                 gas_estimate=None,
                 fee_label=label,
-                lp_fee_tier_bps=lp_bps,
+                lp_fee_tier_bps=None,
                 exact_out=False,
             )
-            if best is None or candidate.amount_out > best.amount_out:
-                best = candidate
+            best = prefer_quoter_result(best, candidate, prefer_min_in=False)
+
         return best

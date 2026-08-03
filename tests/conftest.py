@@ -36,8 +36,17 @@ def pytest_collection_modifyitems(
 
 
 @pytest.fixture(autouse=True)
-def _default_amm_rpc_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Provide placeholder RPC URLs when unset so startup_all() works offline."""
+def _default_amm_rpc_env(
+    request: pytest.FixtureRequest,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Provide placeholder RPC URLs when unset so startup_all() works offline.
+
+    Skipped under ``--live`` so missing real RPCs fail fast instead of dialing
+    localhost. Only fills keys that are empty in the process environment.
+    """
+    if request.config.getoption("--live"):
+        return
     for key, default in _AMM_RPC_DEFAULTS.items():
         if not os.environ.get(key, "").strip():
             monkeypatch.setenv(key, default)
