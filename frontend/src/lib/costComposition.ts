@@ -11,8 +11,7 @@
  */
 
 import type { Quote, SizeQuotePair } from "@/lib/api";
-import { compareVenueSlug } from "@/lib/feesTable";
-import { formatBps, formatNotional, parseDecimal } from "@/lib/format";
+import { compareSlug, formatBps, formatNotional, parseDecimal } from "@/lib/format";
 import { isEligibleForBest } from "@/lib/status";
 
 export type CostSegmentId =
@@ -37,12 +36,6 @@ export type CostComposition = {
   feeEmbeddedInPrice: boolean;
   /** Segments that sum to total when every segment is known. */
   segments: CostSegment[];
-  /**
-   * Sum of known segment bps when cost is complete; null when any segment is
-   * unknown or status is not ok. Used only to assert the §5.2 identity in
-   * tests — ranking always reads totalCostBps from the quote.
-   */
-  segmentsSumBps: number | null;
   /** Quote total_cost_bps (backend SSOT). */
   totalCostBps: number | null;
   /** gas_unknown on the quote fee breakdown. */
@@ -51,6 +44,18 @@ export type CostComposition = {
   rankable: boolean;
   quoteStatus: Quote["status"] | "missing";
 };
+
+/** Sum known segments for tests (WHI-799 §5.2 identity); null if any unknown. */
+export function sumKnownSegments(
+  segments: readonly CostSegment[],
+): number | null {
+  let sum = 0;
+  for (const s of segments) {
+    if (s.bps === null) return null;
+    sum += s.bps;
+  }
+  return round4(sum);
+}
 
 export type CostBarRow = CostComposition & {
   /** Display label for the venue (caller-supplied map). */
@@ -88,7 +93,6 @@ export function costCompositionFromQuote(
       venue: venue ?? "",
       feeEmbeddedInPrice: false,
       segments: emptySegments(),
-      segmentsSumBps: null,
       totalCostBps: null,
       gasUnknown: false,
       rankable: false,
@@ -119,24 +123,11 @@ export function costCompositionFromQuote(
     { id: "gas_bps", bps: gas },
   ];
 
-  const totalCostBps = parseDecimal(quote.total_cost_bps);
-  const allKnown = segments.every((s) => s.bps !== null);
-  const segmentsSumBps =
-    quote.status === "ok" && !gasUnknown && totalCostBps !== null && allKnown
-      ? round4(
-          (spread as number) +
-            (tradingComponent as number) +
-            platform +
-            (gas as number),
-        )
-      : null;
-
   return {
     venue: quote.venue || venue || "",
     feeEmbeddedInPrice: embedded,
     segments,
-    segmentsSumBps,
-    totalCostBps,
+    totalCostBps: parseDecimal(quote.total_cost_bps),
     gasUnknown,
     rankable: isEligibleForBest(quote),
     quoteStatus: quote.status,
@@ -192,11 +183,11 @@ export function rankCostComposition(
     const tb = b.totalCostBps ?? Number.POSITIVE_INFINITY;
     if (ta !== tb) return ta - tb;
     // Match summary.ts stable slug tiebreak (lexicographic `<`).
-    return compareVenueSlug(a.venue, b.venue);
+    return compareSlug(a.venue, b.venue);
   });
 
-  incomplete.sort((a, b) => compareVenueSlug(a.venue, b.venue));
-  other.sort((a, b) => compareVenueSlug(a.venue, b.venue));
+  incomplete.sort((a, b) => compareSlug(a.venue, b.venue));
+  other.sort((a, b) => compareSlug(a.venue, b.venue));
 
   return { ranked, incomplete, other };
 }
@@ -205,18 +196,13 @@ export type FeesConclusionOptions = {
   asset: string;
   notionalUsd: string | number;
   side?: "buy" | "sell";
-  /**
-   * Optional label overrides. Prefer labels already on each `CostBarRow.label`
-   * when calling with pre-ranked rows.
-   */
-  venueLabels?: Readonly<Record<string, string>>;
 };
 
 /**
  * Rule-generated conclusion line from already-ranked cost rows.
  *
  * Takes the same `ranked` list the bars render so the sentence cannot diverge
- * from the visual order (no second ranking pass).
+ * from the visual order (no second ranking pass). Uses each row's `label`.
  *
  * Example:
  *   "For a $10k BTC buy right now, total cost is lowest on HumidiFi (2.1 bps);
@@ -233,13 +219,11 @@ export function formatFeesConclusion(
   }
 
   const side = options.side ?? "buy";
-  const labelOf = (row: CostBarRow) =>
-    options.venueLabels?.[row.venue] ?? row.label ?? row.venue;
   const notional = formatNotional(options.notionalUsd);
   const sideWord = side === "sell" ? "sell" : "buy";
   const best = ranked[0]!;
   const bestBps = formatBps(best.totalCostBps);
-  const bestLabel = labelOf(best);
+  const bestLabel = best.label || best.venue;
 
   // Explicit-fee = trading fee not embedded in price (CEX / perp style).
   const explicitBest = ranked.find((r) => !r.feeEmbeddedInPrice);
@@ -250,7 +234,7 @@ export function formatFeesConclusion(
     if (explicitBest.venue === best.venue) {
       sentence += `; it is also the cheapest explicit-fee venue`;
     } else {
-      const eLabel = labelOf(explicitBest);
+      const eLabel = explicitBest.label || explicitBest.venue;
       const eBps = formatBps(explicitBest.totalCostBps);
       sentence += `; the cheapest explicit-fee venue is ${eLabel} (${eBps} bps)`;
     }

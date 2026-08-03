@@ -1,11 +1,19 @@
 import { describe, expect, it } from "vitest";
 
 import type { FeeSchedule, VenueResponse } from "@/lib/api";
-import {
-  buildFeeTableGroups,
-  feeTableVenueSlugs,
-  fundingModelLabel,
-} from "@/lib/feesTable";
+import { buildFeeTableGroups, fundingModelLabel } from "@/lib/feesTable";
+import type { FeeTableGroup } from "@/lib/feesTable";
+import { compareSlug } from "@/lib/format";
+
+function feeTableVenueSlugs(groups: readonly FeeTableGroup[]): string[] {
+  const slugs = new Set<string>();
+  for (const g of groups) {
+    for (const r of g.rows) {
+      slugs.add(r.venue);
+    }
+  }
+  return [...slugs].sort(compareSlug);
+}
 
 const venues: VenueResponse[] = [
   {

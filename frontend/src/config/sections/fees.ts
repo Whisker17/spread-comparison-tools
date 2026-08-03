@@ -1,6 +1,6 @@
 import { NOTIONAL_TIERS_USD } from "@/config/notionals";
 import type { AssetResponse } from "@/lib/api";
-import { compareVenueSlug } from "@/lib/feesTable";
+import { compareSlug } from "@/lib/format";
 
 /**
  * Fees page config (WHI-813).
@@ -8,6 +8,9 @@ import { compareVenueSlug } from "@/lib/feesTable";
  * Cost-composition switcher defaults + poll interval live here so the
  * section component does not hardcode product tunables (frontend/README.md
  * layout convention: config/sections/<id>.ts).
+ *
+ * Not a full `SectionConfig` — `/fees` has no SpreadMatrix / TOB block; only
+ * the shared notionals + poll seams are mirrored here as FEES_* constants.
  */
 
 /** Default asset for the live cost view. */
@@ -39,14 +42,14 @@ export function assetSwitcherOptions(
   if (!assets || assets.length === 0) {
     return [...FEES_FALLBACK_ASSETS];
   }
+  const catalog = new Set(assets.map((a) => a.id.toUpperCase()));
+  // Preserve FEES_FALLBACK_ASSETS order for majors present in the catalog.
+  const majors = FEES_FALLBACK_ASSETS.filter((id) => catalog.has(id));
   const preferred = new Set<string>(FEES_FALLBACK_ASSETS);
-  const majors = assets
-    .map((a) => a.id.toUpperCase())
-    .filter((id) => preferred.has(id));
   const rest = assets
     .map((a) => a.id.toUpperCase())
     .filter((id) => !preferred.has(id))
-    .sort(compareVenueSlug);
+    .sort(compareSlug);
   const seen = new Set<string>();
   const out: string[] = [];
   for (const id of [...majors, ...rest]) {

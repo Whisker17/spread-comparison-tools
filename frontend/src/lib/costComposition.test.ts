@@ -5,6 +5,7 @@ import {
   costCompositionFromQuote,
   formatFeesConclusion,
   rankCostComposition,
+  sumKnownSegments,
 } from "@/lib/costComposition";
 
 function quote(
@@ -86,9 +87,9 @@ describe("costCompositionFromQuote", () => {
       { id: "platform_fee_bps", bps: 0 },
       { id: "gas_bps", bps: 0 },
     ]);
-    expect(c.segmentsSumBps).toBe(14.4);
+    expect(sumKnownSegments(c.segments)).toBe(14.4);
     expect(c.totalCostBps).toBe(14.4);
-    expect(c.segmentsSumBps).toBe(c.totalCostBps);
+    expect(sumKnownSegments(c.segments)).toBe(c.totalCostBps);
   });
 
   it("embedded-fee venue has zero trading segment (fee lives in spread)", () => {
@@ -112,8 +113,8 @@ describe("costCompositionFromQuote", () => {
     expect(c.segments.find((s) => s.id === "trading_component_bps")?.bps).toBe(
       0,
     );
-    expect(c.segmentsSumBps).toBe(4.4);
-    expect(c.segmentsSumBps).toBe(c.totalCostBps);
+    expect(sumKnownSegments(c.segments)).toBe(4.4);
+    expect(sumKnownSegments(c.segments)).toBe(c.totalCostBps);
   });
 
   it("gas_unknown leaves total null, gas segment null (not 0), not rankable", () => {
@@ -135,7 +136,7 @@ describe("costCompositionFromQuote", () => {
     const c = costCompositionFromQuote(q);
     expect(c.gasUnknown).toBe(true);
     expect(c.totalCostBps).toBeNull();
-    expect(c.segmentsSumBps).toBeNull();
+    expect(sumKnownSegments(c.segments)).toBeNull();
     expect(c.rankable).toBe(false);
     expect(c.segments.find((s) => s.id === "gas_bps")?.bps).toBeNull();
   });
@@ -158,8 +159,8 @@ describe("costCompositionFromQuote", () => {
     });
     const c = costCompositionFromQuote(q);
     expect(c.segments.find((s) => s.id === "spread_bps")?.bps).toBe(-1.5);
-    expect(c.segmentsSumBps).toBe(-1.5);
-    expect(c.segmentsSumBps).toBe(c.totalCostBps);
+    expect(sumKnownSegments(c.segments)).toBe(-1.5);
+    expect(sumKnownSegments(c.segments)).toBe(c.totalCostBps);
   });
 });
 

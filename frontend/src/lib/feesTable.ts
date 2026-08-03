@@ -7,6 +7,7 @@
 
 import type { FeeSchedule, VenueResponse } from "@/lib/api";
 import type { VenueClass } from "@/config/sections/types";
+import { compareSlug } from "@/lib/format";
 
 export type FeeTableVenueClass = VenueClass | "unknown";
 
@@ -72,11 +73,6 @@ const FUNDING_LABEL: Record<FeeSchedule["funding_model"], string> = {
   perp_continuous: "continuous funding",
 };
 
-/** Stable venue-slug comparator (matches summary.ts / costComposition). */
-export function compareVenueSlug(a: string, b: string): number {
-  return a < b ? -1 : a > b ? 1 : 0;
-}
-
 function normalizeVenueClass(
   raw: string | undefined | null,
 ): FeeTableVenueClass {
@@ -120,7 +116,7 @@ export function buildFeeTableGroups(
     const ca = CLASS_ORDER.indexOf(a.venueClass);
     const cb = CLASS_ORDER.indexOf(b.venueClass);
     if (ca !== cb) return ca - cb;
-    if (a.venue !== b.venue) return compareVenueSlug(a.venue, b.venue);
+    if (a.venue !== b.venue) return compareSlug(a.venue, b.venue);
     return (
       (INSTRUMENT_RANK[a.instrumentType] ?? 9) -
       (INSTRUMENT_RANK[b.instrumentType] ?? 9)
@@ -142,17 +138,6 @@ export function buildFeeTableGroups(
     label: CLASS_LABELS[venueClass],
     rows: byClass.get(venueClass) ?? [],
   }));
-}
-
-/** Flat venue slug set present in the table (for coverage tests). */
-export function feeTableVenueSlugs(groups: readonly FeeTableGroup[]): string[] {
-  const slugs = new Set<string>();
-  for (const g of groups) {
-    for (const r of g.rows) {
-      slugs.add(r.venue);
-    }
-  }
-  return [...slugs].sort(compareVenueSlug);
 }
 
 export function fundingModelLabel(
