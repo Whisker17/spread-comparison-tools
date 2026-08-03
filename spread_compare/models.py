@@ -23,6 +23,10 @@ QuoteStatus = Literal[
     "unsupported_asset",
     "error",
 ]
+# /simulate row status (WHI-814):
+# - not_supported: venue pre-filter (asset absent from supported_assets)
+# - unsupported_asset: adapter returned that Quote status after a live call
+SimulateRowStatus = QuoteStatus | Literal["not_supported"]
 InstrumentType = Literal["spot", "perp", "amm_pool", "prop_amm"]
 Side = Literal["buy", "sell"]
 VenueClass = Literal["cex", "perp_dex", "amm_dex", "prop_amm"]

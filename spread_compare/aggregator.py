@@ -25,7 +25,7 @@ from spread_compare.costs import (
     round_trip_spread_bps,
     round_trip_total_cost_bps,
 )
-from spread_compare.mids import MidService, is_mid_stale
+from spread_compare.mids import MidResolutionError, MidService, is_mid_stale
 from spread_compare.models import (
     NOTIONAL_TIERS_USD,
     FeeBreakdown,
@@ -44,7 +44,8 @@ logger = logging.getLogger(__name__)
 _ORDERBOOK_CLASSES: frozenset[VenueClass] = frozenset({"cex", "perp_dex"})
 
 # instrument_type overrides that each venue class can honor (WHI-799 §7).
-_CLASS_INSTRUMENTS: dict[VenueClass, frozenset[InstrumentType]] = {
+# Public so simulator (WHI-814) shares the same map — do not fork.
+CLASS_INSTRUMENTS: dict[VenueClass, frozenset[InstrumentType]] = {
     "cex": frozenset({"spot", "perp"}),
     "perp_dex": frozenset({"perp"}),
     "amm_dex": frozenset({"amm_pool"}),
@@ -52,12 +53,12 @@ _CLASS_INSTRUMENTS: dict[VenueClass, frozenset[InstrumentType]] = {
 }
 
 
-def _effective_instrument_type(
+def effective_instrument_type(
     venue_class: VenueClass,
     requested: InstrumentType | None,
 ) -> InstrumentType:
     """Apply filter only when the venue class can serve that instrument type."""
-    if requested is not None and requested in _CLASS_INSTRUMENTS[venue_class]:
+    if requested is not None and requested in CLASS_INSTRUMENTS[venue_class]:
         return requested
     return default_instrument_type(venue_class)
 
@@ -153,6 +154,98 @@ def error_quote(
         error_code=error_code,
         error_message=error_message,
     )
+
+
+async def resolve_mid_with_budget(
+    mid_service: MidService,
+    asset: str,
+    *,
+    snapshot_id: str,
+    venue_timeout_sec: float,
+) -> ReferenceMid:
+    """Resolve a reference mid with a timeout derived from per-venue budget.
+
+    Mid resolution fans out over HTTP sources; do not let it stall past a
+    multiple of ``venue_timeout_sec``. Shared by aggregator and simulator.
+    """
+    mid_timeout = max(venue_timeout_sec * 4, 10.0)
+    try:
+        async with asyncio.timeout(mid_timeout):
+            return await mid_service.resolve(asset, snapshot_id=snapshot_id)
+    except TimeoutError as exc:
+        raise MidResolutionError(
+            f"mid resolution timed out after {mid_timeout}s for {asset}"
+        ) from exc
+
+
+async def quote_with_timeout(
+    adapter: VenueAdapter,
+    *,
+    asset: str,
+    side: Side,
+    notional_usd: Decimal,
+    mid: ReferenceMid,
+    instrument_type: InstrumentType,
+    timeout: float,
+    log_tag: str = "",
+) -> Quote:
+    """Call ``get_quote`` with a per-venue timeout; degrade to ``status=error``.
+
+    Shared by :class:`QuoteAggregator` and :class:`~spread_compare.simulator.TradeSimulator`.
+    """
+    suffix = f" {log_tag}" if log_tag else ""
+    try:
+        async with asyncio.timeout(timeout):
+            return await adapter.get_quote(
+                asset,
+                side,
+                notional_usd,
+                mid=mid,
+                instrument_type=instrument_type,
+            )
+    except TimeoutError:
+        logger.warning(
+            "venue %s get_quote timed out after %ss (%s %s)%s",
+            adapter.venue,
+            timeout,
+            side,
+            asset,
+            suffix,
+        )
+        return error_quote(
+            mid=mid,
+            venue=adapter.venue,
+            asset=asset,
+            side=side,
+            notional_usd=notional_usd,
+            instrument_type=instrument_type,
+            error_code="timeout",
+            error_message=f"get_quote timed out after {timeout}s",
+        )
+    except AdapterError as exc:
+        logger.warning("venue %s get_quote error%s: %s", adapter.venue, suffix, exc)
+        return error_quote(
+            mid=mid,
+            venue=adapter.venue,
+            asset=asset,
+            side=side,
+            notional_usd=notional_usd,
+            instrument_type=instrument_type,
+            error_code="adapter_error",
+            error_message=str(exc),
+        )
+    except Exception as exc:  # noqa: BLE001 — degrade per venue, never whole package
+        logger.exception("venue %s get_quote unexpected error%s", adapter.venue, suffix)
+        return error_quote(
+            mid=mid,
+            venue=adapter.venue,
+            asset=asset,
+            side=side,
+            notional_usd=notional_usd,
+            instrument_type=instrument_type,
+            error_code="adapter_error",
+            error_message=f"{type(exc).__name__}: {exc}",
+        )
 
 
 def apply_mid_stale(quote: Quote, *, stale_threshold_sec: float) -> Quote:
@@ -276,18 +369,12 @@ class QuoteAggregator:
                 return hit.package
 
         snap = snapshot_id or str(uuid.uuid4())
-        # Mid resolution has its own budget (chain of HTTP sources); don't let it
-        # stall past a multiple of the per-venue timeout.
-        mid_timeout = max(self._agg.venue_timeout_sec * 4, 10.0)
-        try:
-            async with asyncio.timeout(mid_timeout):
-                mid = await self._mids.resolve(asset_key, snapshot_id=snap)
-        except TimeoutError as exc:
-            from spread_compare.mids import MidResolutionError
-
-            raise MidResolutionError(
-                f"mid resolution timed out after {mid_timeout}s for {asset_key}"
-            ) from exc
+        mid = await resolve_mid_with_budget(
+            self._mids,
+            asset_key,
+            snapshot_id=snap,
+            venue_timeout_sec=self._agg.venue_timeout_sec,
+        )
 
         pairs = await asyncio.gather(
             *(
@@ -359,14 +446,14 @@ class QuoteAggregator:
         instrument_type: InstrumentType | None,
     ) -> SizeQuotePair:
         adapter = registry_get(slug)
-        itype = _effective_instrument_type(adapter.venue_class, instrument_type)
+        itype = effective_instrument_type(adapter.venue_class, instrument_type)
         timeout = self._agg.venue_timeout_sec
         stale_threshold = self._mid_settings.stale_threshold_sec
 
         # Concurrent legs + TOB within a venue (each call bounded by venue_timeout).
         side_order: list[Side] = list(sides)
         quote_coros = [
-            self._quote_with_timeout(
+            quote_with_timeout(
                 adapter,
                 asset=asset,
                 side=side,
@@ -430,69 +517,6 @@ class QuoteAggregator:
             top_of_book=top_of_book,
             stale_threshold_sec=stale_threshold,
         )
-
-    async def _quote_with_timeout(
-        self,
-        adapter: VenueAdapter,
-        *,
-        asset: str,
-        side: Side,
-        notional_usd: Decimal,
-        mid: ReferenceMid,
-        instrument_type: InstrumentType,
-        timeout: float,
-    ) -> Quote:
-        try:
-            async with asyncio.timeout(timeout):
-                return await adapter.get_quote(
-                    asset,
-                    side,
-                    notional_usd,
-                    mid=mid,
-                    instrument_type=instrument_type,
-                )
-        except TimeoutError:
-            logger.warning(
-                "venue %s get_quote timed out after %ss (%s %s)",
-                adapter.venue,
-                timeout,
-                side,
-                asset,
-            )
-            return error_quote(
-                mid=mid,
-                venue=adapter.venue,
-                asset=asset,
-                side=side,
-                notional_usd=notional_usd,
-                instrument_type=instrument_type,
-                error_code="timeout",
-                error_message=f"get_quote timed out after {timeout}s",
-            )
-        except AdapterError as exc:
-            logger.warning("venue %s get_quote error: %s", adapter.venue, exc)
-            return error_quote(
-                mid=mid,
-                venue=adapter.venue,
-                asset=asset,
-                side=side,
-                notional_usd=notional_usd,
-                instrument_type=instrument_type,
-                error_code="adapter_error",
-                error_message=str(exc),
-            )
-        except Exception as exc:  # noqa: BLE001 — degrade per venue, never whole package
-            logger.exception("venue %s get_quote unexpected error", adapter.venue)
-            return error_quote(
-                mid=mid,
-                venue=adapter.venue,
-                asset=asset,
-                side=side,
-                notional_usd=notional_usd,
-                instrument_type=instrument_type,
-                error_code="adapter_error",
-                error_message=f"{type(exc).__name__}: {exc}",
-            )
 
     async def _tob_with_timeout(
         self,
