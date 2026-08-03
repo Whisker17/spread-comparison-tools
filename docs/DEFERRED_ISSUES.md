@@ -46,9 +46,10 @@ defines none: `docs/GIT_WORKFLOW.md` § High-risk paths), **Medium**
   `super().__init__(timeout=…)`. Move to typed YAML when DESIGN §2 is written.
 
 - **CEX rate-limit / depth / fee placeholder tunables hardcoded** (Low, WHI-802).
-  `spread_compare/adapters/cex_binance.py::_DEPTH_LIMITS` /
-  `_min_interval_s` / `_MAX_RETRIES` / `_BACKOFF_START_S`,
-  `cex_bybit.py::_ORDERBOOK_LIMIT` / same trio,
+  `spread_compare/adapters/cex_binance.py::_DEPTH_LIMITS` and
+  `BinanceAdapter._min_interval_s`;
+  `cex_bybit.py::_ORDERBOOK_LIMIT` and `BybitAdapter._min_interval_s`;
+  `CexBaseAdapter._max_retries` / `_backoff_start_s` /
   `_cex_common.PLACEHOLDER_TAKER_BPS` — config/README.md wants YAML, but
   DESIGN.md §2 and the typed loader still do not exist. Defer until DESIGN §2 +
   config loader land (or WHI-812 for fees). Fix: `config/cex.yaml` + pydantic

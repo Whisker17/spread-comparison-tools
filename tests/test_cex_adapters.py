@@ -323,3 +323,52 @@ async def test_binance_depth_escalation_on_shallow_first_page(
 
 def test_bybit_is_bybit_adapter() -> None:
     assert isinstance(get("bybit"), BybitAdapter)
+
+
+@pytest.mark.asyncio
+async def test_request_json_retries_on_429_then_succeeds(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Offline coverage for CexBaseAdapter._request_json 429 backoff path."""
+    adapter = BinanceAdapter()
+    # Skip min-interval waits.
+    monkeypatch.setattr(adapter._limiter, "acquire", _async_noop)
+
+    attempts = {"n": 0}
+
+    class FakeResp:
+        def __init__(self, status_code: int, body: dict[str, object]) -> None:
+            self.status_code = status_code
+            self.headers: dict[str, str] = {"x-mbx-used-weight-1m": "10"}
+            self.text = str(body)
+            self._body = body
+
+        def json(self) -> dict[str, object]:
+            return self._body
+
+    class FakeHttp:
+        async def get(
+            self, url: str, params: dict[str, str] | None = None
+        ) -> FakeResp:
+            attempts["n"] += 1
+            if attempts["n"] < 3:
+                return FakeResp(429, {"error": "rate"})
+            return FakeResp(200, {"bids": [["1", "1"]], "asks": [["2", "1"]]})
+
+        async def aclose(self) -> None:
+            return None
+
+    adapter._client = FakeHttp()  # type: ignore[assignment]
+    monkeypatch.setattr(adapter, "_max_retries", 4)
+    monkeypatch.setattr(adapter, "_backoff_start_s", 0.0)
+
+    data = await adapter._request_json(
+        "https://example.test/depth", {"symbol": "BTCUSDT"}
+    )
+    assert data["bids"] == [["1", "1"]]
+    assert attempts["n"] == 3
+    await adapter.aclose()
+
+
+async def _async_noop() -> None:
+    return None

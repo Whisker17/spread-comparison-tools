@@ -345,9 +345,10 @@ class CexBaseAdapter(BaseAdapter, ABC):
                     f"{self.venue} rate limited (HTTP {resp.status_code}) "
                     f"attempt={attempt + 1}"
                 )
-                logger.warning("%s; sleeping %.2fs", last_error, delay)
-                await asyncio.sleep(delay)
-                delay *= 2
+                logger.warning("%s", last_error)
+                if attempt + 1 < self._max_retries:
+                    await asyncio.sleep(delay)
+                    delay *= 2
                 continue
 
             if resp.status_code >= 400:
@@ -368,16 +369,18 @@ class CexBaseAdapter(BaseAdapter, ABC):
                 last_error = AdapterFetchError(
                     f"{self.venue} body rate-limit attempt={attempt + 1}"
                 )
-                logger.warning("%s; sleeping %.2fs", last_error, delay)
-                await asyncio.sleep(delay)
-                delay *= 2
+                logger.warning("%s", last_error)
+                if attempt + 1 < self._max_retries:
+                    await asyncio.sleep(delay)
+                    delay *= 2
                 continue
 
             self._validate_success_payload(payload)
             return payload
 
-        assert last_error is not None
-        raise last_error
+        if last_error is not None:
+            raise last_error
+        raise AdapterFetchError(f"{self.venue} request failed with no response")
 
     async def get_quote(
         self,
