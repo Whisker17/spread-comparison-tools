@@ -81,6 +81,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/fees": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Fees
+         * @description All validated venue fee schedules (WHI-812; frontend contract for WHI-813).
+         */
+        get: operations["get_fees_fees_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -137,6 +157,68 @@ export interface components {
             explicit_fee_bps?: string | null;
             /** Notes */
             notes?: string | null;
+        };
+        /**
+         * FeeSchedule
+         * @description Venue-level fee table shape (WHI-799 §5.5). Numbers filled by WHI-812.
+         */
+        FeeSchedule: {
+            /** Venue */
+            venue: string;
+            /** Asset */
+            asset?: string | null;
+            /**
+             * Instrument Type
+             * @enum {string}
+             */
+            instrument_type: "spot" | "perp" | "amm_pool" | "prop_amm";
+            /** Maker Bps */
+            maker_bps?: string | null;
+            /** Taker Bps */
+            taker_bps?: string | null;
+            /** Tiers */
+            tiers?: components["schemas"]["FeeTier"][] | null;
+            /**
+             * Default Tier
+             * @default default_taker
+             */
+            default_tier: string;
+            /** Lp Fee Tiers Bps */
+            lp_fee_tiers_bps?: string[] | null;
+            /** Gas Estimate Usd */
+            gas_estimate_usd?: string | null;
+            /**
+             * Funding Model
+             * @default none
+             * @enum {string}
+             */
+            funding_model: "none" | "perp_8h" | "perp_continuous";
+            /**
+             * Fee Embedded In Quote
+             * @default false
+             */
+            fee_embedded_in_quote: boolean;
+            /** Source Urls */
+            source_urls?: string[];
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * FeeTier
+         * @description One fee tier inside a FeeSchedule (WHI-799 §5.5).
+         */
+        FeeTier: {
+            /** Name */
+            name: string;
+            /** Maker Bps */
+            maker_bps: string;
+            /** Taker Bps */
+            taker_bps: string;
+            /** Volume Requirement */
+            volume_requirement?: string | null;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -483,6 +565,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AssetResponse"][];
+                };
+            };
+        };
+    };
+    get_fees_fees_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FeeSchedule"][];
                 };
             };
         };
