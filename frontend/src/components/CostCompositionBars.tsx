@@ -42,12 +42,15 @@ export function CostCompositionBars({
   incomplete,
   other = [],
 }: Props) {
-  // Scale from rankable totals only — never from incomplete segment sums
-  // (those would treat missing gas as 0 and shrink incomplete bars).
+  // Scale from rankable totals + known segment magnitudes (including incomplete
+  // known pieces). Null gas never contributes, so unknown is not treated as 0.
   const maxTotal = Math.max(
     0,
     ...ranked.map((r) => Math.abs(r.totalCostBps ?? 0)),
     ...ranked.flatMap((r) =>
+      r.segments.map((s) => (s.bps == null ? 0 : Math.abs(s.bps))),
+    ),
+    ...incomplete.flatMap((r) =>
       r.segments.map((s) => (s.bps == null ? 0 : Math.abs(s.bps))),
     ),
   );

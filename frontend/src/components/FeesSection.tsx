@@ -6,30 +6,27 @@ import { useMemo, useState } from "react";
 import { CostCompositionBars } from "@/components/CostCompositionBars";
 import { FeeStructureTable } from "@/components/FeeStructureTable";
 import {
+  assetSwitcherOptions,
   FEES_DEFAULT_ASSET,
   FEES_DEFAULT_NOTIONAL,
-  FEES_FALLBACK_ASSETS,
   FEES_NOTIONALS,
   FEES_POLL_MS,
 } from "@/config/sections/fees";
 import { useQuotes } from "@/hooks/useQuotes";
-import {
-  fetchAssets,
-  fetchFees,
-  fetchVenues,
-  type AssetResponse,
-  type VenueResponse,
-} from "@/lib/api";
+import { fetchAssets, fetchFees, fetchVenues } from "@/lib/api";
 import {
   formatFeesConclusion,
   rankCostComposition,
 } from "@/lib/costComposition";
-import { buildFeeTableGroups } from "@/lib/feesTable";
+import { buildFeeTableGroups, buildVenueLabelMap } from "@/lib/feesTable";
 import { formatNotional } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 /**
  * Full `/fees` page: static schedule table + live cost composition (WHI-813).
+ *
+ * Side buy/sell is a small extra control beyond the issue's asset/tier
+ * switchers so the same notional can be compared for either leg.
  */
 export function FeesSection() {
   const [asset, setAsset] = useState<string>(FEES_DEFAULT_ASSET);
@@ -54,22 +51,22 @@ export function FeesSection() {
     staleTime: 60_000,
   });
 
-  const quotesQuery = useQuotes({
-    asset,
-    notional,
-    side,
-    refetchInterval: FEES_POLL_MS,
-  });
-
   const assetOptions = useMemo(
     () => assetSwitcherOptions(assetsQuery.data),
     [assetsQuery.data],
   );
 
-  // Keep selected asset valid if catalog loads after first paint.
+  // Single source of truth for quotes + labels (never fetch A and narrate B).
   const activeAsset = assetOptions.includes(asset)
     ? asset
     : (assetOptions[0] ?? FEES_DEFAULT_ASSET);
+
+  const quotesQuery = useQuotes({
+    asset: activeAsset,
+    notional,
+    side,
+    refetchInterval: FEES_POLL_MS,
+  });
 
   const venueLabels = useMemo(
     () => buildVenueLabelMap(venuesQuery.data ?? []),
@@ -97,13 +94,12 @@ export function FeesSection() {
 
   const conclusion = useMemo(
     () =>
-      formatFeesConclusion(pairs, {
+      formatFeesConclusion(ranked, {
         asset: activeAsset,
         notionalUsd: notional,
         side,
-        venueLabels,
       }),
-    [pairs, activeAsset, notional, side, venueLabels],
+    [ranked, activeAsset, notional, side],
   );
 
   const feesLoading = feesQuery.isLoading || venuesQuery.isLoading;
@@ -297,44 +293,4 @@ function Switcher({
       </div>
     </div>
   );
-}
-
-function buildVenueLabelMap(
-  venues: readonly VenueResponse[],
-): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const v of venues) {
-    out[v.slug] = v.display_name;
-  }
-  return out;
-}
-
-/**
- * Asset switcher options from GET /assets (category is a plain string — read
- * at runtime, no exhaustive switch). Fall back to blue-chip defaults offline.
- */
-function assetSwitcherOptions(
-  assets: readonly AssetResponse[] | undefined,
-): string[] {
-  if (!assets || assets.length === 0) {
-    return [...FEES_FALLBACK_ASSETS];
-  }
-  // Prefer liquid majors first for the cost panel, then the rest of the catalog.
-  const preferred = new Set<string>(FEES_FALLBACK_ASSETS);
-  const majors = assets
-    .map((a) => a.id.toUpperCase())
-    .filter((id) => preferred.has(id));
-  const rest = assets
-    .map((a) => a.id.toUpperCase())
-    .filter((id) => !preferred.has(id))
-    .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
-  // Dedupe while preserving majors-first order.
-  const seen = new Set<string>();
-  const out: string[] = [];
-  for (const id of [...majors, ...rest]) {
-    if (seen.has(id)) continue;
-    seen.add(id);
-    out.push(id);
-  }
-  return out.length > 0 ? out : [...FEES_FALLBACK_ASSETS];
 }

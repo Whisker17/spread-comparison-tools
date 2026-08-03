@@ -1,4 +1,6 @@
 import { NOTIONAL_TIERS_USD } from "@/config/notionals";
+import type { AssetResponse } from "@/lib/api";
+import { compareVenueSlug } from "@/lib/feesTable";
 
 /**
  * Fees page config (WHI-813).
@@ -26,3 +28,31 @@ export const FEES_FALLBACK_ASSETS = ["BTC", "ETH", "SOL"] as const;
 
 /** Live quotes poll for the cost-composition panel. */
 export const FEES_POLL_MS = 30_000;
+
+/**
+ * Asset switcher options from GET /assets (category is a plain string — read
+ * at runtime). Majors first, then the rest of the catalog A–Z.
+ */
+export function assetSwitcherOptions(
+  assets: readonly AssetResponse[] | undefined,
+): string[] {
+  if (!assets || assets.length === 0) {
+    return [...FEES_FALLBACK_ASSETS];
+  }
+  const preferred = new Set<string>(FEES_FALLBACK_ASSETS);
+  const majors = assets
+    .map((a) => a.id.toUpperCase())
+    .filter((id) => preferred.has(id));
+  const rest = assets
+    .map((a) => a.id.toUpperCase())
+    .filter((id) => !preferred.has(id))
+    .sort(compareVenueSlug);
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const id of [...majors, ...rest]) {
+    if (seen.has(id)) continue;
+    seen.add(id);
+    out.push(id);
+  }
+  return out.length > 0 ? out : [...FEES_FALLBACK_ASSETS];
+}

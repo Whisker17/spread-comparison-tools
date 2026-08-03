@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import type { FeeSchedule, VenueResponse } from "@/lib/api";
-import { buildFeeTableGroups, fundingModelLabel } from "@/lib/feesTable";
+import {
+  buildFeeTableGroups,
+  feeTableVenueSlugs,
+  fundingModelLabel,
+} from "@/lib/feesTable";
 
 const venues: VenueResponse[] = [
   {
@@ -102,6 +106,58 @@ describe("buildFeeTableGroups", () => {
     expect(groups).toHaveLength(1);
     expect(groups[0]?.venueClass).toBe("unknown");
     expect(groups[0]?.rows[0]?.displayName).toBe("future_venue");
+  });
+
+  it("never drops a schedule row (mock class → mock group)", () => {
+    const groups = buildFeeTableGroups(
+      [
+        schedule({
+          venue: "mock",
+          instrument_type: "spot",
+          maker_bps: "0",
+          taker_bps: "0",
+          source_urls: ["https://example.com/mock"],
+          updated_at: "2026-08-01T00:00:00Z",
+        }),
+      ],
+      [
+        {
+          slug: "mock",
+          display_name: "Mock",
+          venue_class: "mock" as VenueResponse["venue_class"],
+          adapter_registered: true,
+        },
+      ],
+    );
+    // venue_class mock may not be on VenueResponse enum; normalize still keeps row.
+    const slugs = feeTableVenueSlugs(groups);
+    expect(slugs).toContain("mock");
+    const row = groups.flatMap((g) => g.rows).find((r) => r.venue === "mock");
+    expect(row?.sourceUrls).toEqual(["https://example.com/mock"]);
+    expect(row?.updatedAt).toBe("2026-08-01T00:00:00Z");
+  });
+
+  it("preserves citations and updated_at on every row", () => {
+    const groups = buildFeeTableGroups(
+      [
+        schedule({
+          venue: "binance",
+          instrument_type: "spot",
+          maker_bps: "10",
+          taker_bps: "10",
+          source_urls: ["https://a.example/fees", "https://b.example/fees"],
+          updated_at: "2026-07-01T12:00:00Z",
+        }),
+      ],
+      venues,
+    );
+    const row = groups[0]?.rows[0];
+    expect(row?.sourceUrls).toEqual([
+      "https://a.example/fees",
+      "https://b.example/fees",
+    ]);
+    expect(row?.updatedAt).toBe("2026-07-01T12:00:00Z");
+    expect(feeTableVenueSlugs(groups)).toEqual(["binance"]);
   });
 });
 

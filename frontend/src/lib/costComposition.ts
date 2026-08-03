@@ -11,6 +11,7 @@
  */
 
 import type { Quote, SizeQuotePair } from "@/lib/api";
+import { compareVenueSlug } from "@/lib/feesTable";
 import { formatBps, formatNotional, parseDecimal } from "@/lib/format";
 import { isEligibleForBest } from "@/lib/status";
 
@@ -191,11 +192,11 @@ export function rankCostComposition(
     const tb = b.totalCostBps ?? Number.POSITIVE_INFINITY;
     if (ta !== tb) return ta - tb;
     // Match summary.ts stable slug tiebreak (lexicographic `<`).
-    return a.venue < b.venue ? -1 : a.venue > b.venue ? 1 : 0;
+    return compareVenueSlug(a.venue, b.venue);
   });
 
-  incomplete.sort((a, b) => (a.venue < b.venue ? -1 : a.venue > b.venue ? 1 : 0));
-  other.sort((a, b) => (a.venue < b.venue ? -1 : a.venue > b.venue ? 1 : 0));
+  incomplete.sort((a, b) => compareVenueSlug(a.venue, b.venue));
+  other.sort((a, b) => compareVenueSlug(a.venue, b.venue));
 
   return { ranked, incomplete, other };
 }
@@ -204,13 +205,18 @@ export type FeesConclusionOptions = {
   asset: string;
   notionalUsd: string | number;
   side?: "buy" | "sell";
+  /**
+   * Optional label overrides. Prefer labels already on each `CostBarRow.label`
+   * when calling with pre-ranked rows.
+   */
   venueLabels?: Readonly<Record<string, string>>;
-  /** Forwarded to rankCostComposition so conclusion matches filtered bars. */
-  venues?: readonly string[];
 };
 
 /**
- * Rule-generated conclusion line for the cost view.
+ * Rule-generated conclusion line from already-ranked cost rows.
+ *
+ * Takes the same `ranked` list the bars render so the sentence cannot diverge
+ * from the visual order (no second ranking pass).
  *
  * Example:
  *   "For a $10k BTC buy right now, total cost is lowest on HumidiFi (2.1 bps);
@@ -219,25 +225,21 @@ export type FeesConclusionOptions = {
  * Returns empty string when nothing is rankable.
  */
 export function formatFeesConclusion(
-  pairs: readonly SizeQuotePair[],
+  ranked: readonly CostBarRow[],
   options: FeesConclusionOptions,
 ): string {
-  const side = options.side ?? "buy";
-  const { ranked } = rankCostComposition(pairs, {
-    side,
-    venueLabels: options.venueLabels,
-    venues: options.venues,
-  });
   if (ranked.length === 0) {
     return "";
   }
 
-  const labelOf = (slug: string) => options.venueLabels?.[slug] ?? slug;
+  const side = options.side ?? "buy";
+  const labelOf = (row: CostBarRow) =>
+    options.venueLabels?.[row.venue] ?? row.label ?? row.venue;
   const notional = formatNotional(options.notionalUsd);
   const sideWord = side === "sell" ? "sell" : "buy";
   const best = ranked[0]!;
   const bestBps = formatBps(best.totalCostBps);
-  const bestLabel = labelOf(best.venue);
+  const bestLabel = labelOf(best);
 
   // Explicit-fee = trading fee not embedded in price (CEX / perp style).
   const explicitBest = ranked.find((r) => !r.feeEmbeddedInPrice);
@@ -248,7 +250,7 @@ export function formatFeesConclusion(
     if (explicitBest.venue === best.venue) {
       sentence += `; it is also the cheapest explicit-fee venue`;
     } else {
-      const eLabel = labelOf(explicitBest.venue);
+      const eLabel = labelOf(explicitBest);
       const eBps = formatBps(explicitBest.totalCostBps);
       sentence += `; the cheapest explicit-fee venue is ${eLabel} (${eBps} bps)`;
     }

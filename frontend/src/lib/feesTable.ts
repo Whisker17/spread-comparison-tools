@@ -31,13 +31,15 @@ export type FeeTableGroup = {
   rows: FeeTableRow[];
 };
 
-const CLASS_ORDER: FeeTableVenueClass[] = [
+/** Emit order; every FeeTableVenueClass must appear so rows are never dropped. */
+const CLASS_ORDER: readonly FeeTableVenueClass[] = [
   "cex",
   "perp_dex",
   "amm_dex",
   "prop_amm",
+  "mock",
   "unknown",
-];
+] as const;
 
 const CLASS_LABELS: Record<FeeTableVenueClass, string> = {
   cex: "CEX",
@@ -47,6 +49,8 @@ const CLASS_LABELS: Record<FeeTableVenueClass, string> = {
   mock: "Mock",
   unknown: "Other",
 };
+
+const KNOWN_CLASSES = new Set<string>(CLASS_ORDER);
 
 const INSTRUMENT_RANK: Record<FeeSchedule["instrument_type"], number> = {
   spot: 0,
@@ -68,10 +72,25 @@ const FUNDING_LABEL: Record<FeeSchedule["funding_model"], string> = {
   perp_continuous: "continuous funding",
 };
 
+/** Stable venue-slug comparator (matches summary.ts / costComposition). */
+export function compareVenueSlug(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
+function normalizeVenueClass(
+  raw: string | undefined | null,
+): FeeTableVenueClass {
+  if (raw && KNOWN_CLASSES.has(raw)) {
+    return raw as FeeTableVenueClass;
+  }
+  return "unknown";
+}
+
 /**
  * Join fee schedules with venue metadata and group by venue class.
  *
- * Order within a group: venue slug, then instrument_type (spot before perp).
+ * Unmapped or missing classes become `"unknown"` so no schedule is dropped
+ * (acceptance: fee table renders all venues).
  */
 export function buildFeeTableGroups(
   schedules: readonly FeeSchedule[],
@@ -84,7 +103,7 @@ export function buildFeeTableGroups(
     return {
       venue: s.venue,
       displayName: meta?.display_name ?? s.venue,
-      venueClass: (meta?.venue_class as FeeTableVenueClass | undefined) ?? "unknown",
+      venueClass: normalizeVenueClass(meta?.venue_class),
       instrumentType: s.instrument_type,
       makerBps: s.maker_bps ?? null,
       takerBps: s.taker_bps ?? null,
@@ -101,7 +120,7 @@ export function buildFeeTableGroups(
     const ca = CLASS_ORDER.indexOf(a.venueClass);
     const cb = CLASS_ORDER.indexOf(b.venueClass);
     if (ca !== cb) return ca - cb;
-    if (a.venue !== b.venue) return a.venue < b.venue ? -1 : 1;
+    if (a.venue !== b.venue) return compareVenueSlug(a.venue, b.venue);
     return (
       (INSTRUMENT_RANK[a.instrumentType] ?? 9) -
       (INSTRUMENT_RANK[b.instrumentType] ?? 9)
@@ -125,6 +144,17 @@ export function buildFeeTableGroups(
   }));
 }
 
+/** Flat venue slug set present in the table (for coverage tests). */
+export function feeTableVenueSlugs(groups: readonly FeeTableGroup[]): string[] {
+  const slugs = new Set<string>();
+  for (const g of groups) {
+    for (const r of g.rows) {
+      slugs.add(r.venue);
+    }
+  }
+  return [...slugs].sort(compareVenueSlug);
+}
+
 export function fundingModelLabel(
   model: FeeSchedule["funding_model"],
 ): string {
@@ -135,4 +165,15 @@ export function instrumentTypeLabel(
   t: FeeSchedule["instrument_type"],
 ): string {
   return INSTRUMENT_LABEL[t] ?? String(t);
+}
+
+/** Map venue slug → display name from GET /venues. */
+export function buildVenueLabelMap(
+  venues: readonly VenueResponse[],
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const v of venues) {
+    out[v.slug] = v.display_name;
+  }
+  return out;
 }

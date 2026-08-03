@@ -286,7 +286,7 @@ describe("rankCostComposition", () => {
     expect(other.map((r) => r.venue)).toEqual(["humidifi"]);
   });
 
-  it("forwards venue filter to conclusion ranking", () => {
+  it("conclusion uses the same ranked list as the bars (no second rank)", () => {
     const pairs = [
       pair(
         "humidifi",
@@ -322,11 +322,13 @@ describe("rankCostComposition", () => {
         }),
       ),
     ];
-    const prose = formatFeesConclusion(pairs, {
-      asset: "BTC",
-      notionalUsd: "10000",
+    const { ranked } = rankCostComposition(pairs, {
       venues: ["binance"],
       venueLabels: { binance: "Binance", humidifi: "HumidiFi" },
+    });
+    const prose = formatFeesConclusion(ranked, {
+      asset: "BTC",
+      notionalUsd: "10000",
     });
     expect(prose).toContain("Binance");
     expect(prose).not.toContain("HumidiFi");
@@ -334,7 +336,7 @@ describe("rankCostComposition", () => {
 });
 
 describe("formatFeesConclusion", () => {
-  it("names lowest total and cheapest explicit-fee venue", () => {
+  it("names lowest total and cheapest explicit-fee venue from ranked rows", () => {
     const pairs = [
       pair(
         "humidifi",
@@ -370,10 +372,12 @@ describe("formatFeesConclusion", () => {
         }),
       ),
     ];
-    const prose = formatFeesConclusion(pairs, {
+    const { ranked } = rankCostComposition(pairs, {
+      venueLabels: { humidifi: "HumidiFi", binance: "Binance" },
+    });
+    const prose = formatFeesConclusion(ranked, {
       asset: "BTC",
       notionalUsd: "10000",
-      venueLabels: { humidifi: "HumidiFi", binance: "Binance" },
     });
     expect(prose).toBe(
       "For a $10k BTC buy right now, total cost is lowest on HumidiFi (2.10 bps); the cheapest explicit-fee venue is Binance (14.40 bps).",
@@ -381,26 +385,8 @@ describe("formatFeesConclusion", () => {
   });
 
   it("returns empty when no rankable rows", () => {
-    const pairs = [
-      pair(
-        "uniswap_eth",
-        quote({
-          venue: "uniswap_eth",
-          status: "ok",
-          total_cost_bps: null,
-          fee_breakdown: {
-            embedded_in_price: true,
-            trading_fee_bps: null,
-            platform_fee_bps: "0",
-            gas_bps: null,
-            gas_unknown: true,
-            explicit_fee_bps: null,
-          },
-        }),
-      ),
-    ];
     expect(
-      formatFeesConclusion(pairs, { asset: "BTC", notionalUsd: "10000" }),
+      formatFeesConclusion([], { asset: "BTC", notionalUsd: "10000" }),
     ).toBe("");
   });
 });
