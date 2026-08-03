@@ -23,7 +23,7 @@
 | Perp DEX | Hyperliquid | `POST /info` `type=l2Book` | 公开 **无需 key** | **最多每侧 20 档** | weight=2；全量 weight 池 1200/min/IP |
 | Perp DEX | Lighter | `GET /api/v1/orderBookOrders?market_id=&limit=` | 公开 orderbook **无需 auth** | 按 `limit`（live `limit=5` OK） | Standard：60 req/min（未加权）；Builder 更高 |
 | Perp DEX | ApeX Omni | `GET /api/v3/depth?symbol=BTCUSDT` | 公开 **无需 key** | live `limit` 5…200 有效；默认 25 | 符号注意：`crossSymbolName=BTCUSDT` vs 配置内 `symbol=BTC-USDT` |
-| AMM | Uniswap (ETH) | **优先**官方 Trading API `/v1/quote`；备选链上 QuoterV2 | API key（Trading API）/ 仅 RPC（链上） | 净输出报价（非 orderbook） | 单 venue 对比时注意聚合可能掺其他池 |
+| AMM | Uniswap (ETH) | **优先**链上 QuoterV2；Trading API `/v1/quote` 仅作对照 | API key（Trading API）/ 仅 RPC（链上） | 净输出报价（非 orderbook） | Trading API 可能掺非 Uniswap 路由；单 venue 语义用链上 quoter |
 | AMM | Aerodrome (Base) | 链上 Quoter / MixedQuoter；或 QuickNode Aerodrome Swap API | RPC / 商业 addon | 净输出 | 无一等公民公开 REST quoter |
 | AMM | PancakeSwap (BSC) | 链上 QuoterV2 / Smart Router | 仅 RPC | 净输出 | 官方合约地址明确 |
 
@@ -519,16 +519,18 @@ cast call 0x61fFE014bA17989E743c5F6cB21bF9697530B21e \
 | SDK 线索 | Velodrome/Aerodrome sugar-sdk（Base MCP 插件亦用其做 quote） |
 | Rate limit / 延迟 | Base RPC 供应商；`eth_call` RTT 未本调研采样 |
 
-示例 A — **基础池**走 Router `getAmountsOut`（vAMM/sAMM；与 Velodrome 同族）：
+示例 A — **基础池**走 Router `getAmountsOut`（vAMM/sAMM；Velodrome **V2** 系 `Route` 含 factory）：
 
 ```bash
-# Route = (from, to, stable)
+# Route = (from, to, stable, factory)  — 不是 V1 的三元组
+# PoolFactory (doc-sourced，上线前与 security 页复核): 0x420DD381b31aEf6683db6B902084cB0FFECe40Da
 # USDC→WETH 波动池: stable=false
 cast call 0xcF77a3Ba9A5CA399B7c97c74d54e5b1Beb874E43 \
-  "getAmountsOut(uint256,(address,address,bool)[])(uint256[])" \
+  "getAmountsOut(uint256,(address,address,bool,address)[])(uint256[])" \
   1000000 \
-  "[(0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913,0x4200000000000000000000000000000000000006,false)]" \
+  "[(0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913,0x4200000000000000000000000000000000000006,false,0x420DD381b31aEf6683db6B902084cB0FFECe40Da)]" \
   --rpc-url "$BASE_RPC_URL"
+# 上线前用 cast sigs / Basescan ABI 核对选择器（与示例 B 相同 caveat）
 ```
 
 示例 B — **CL / 混合路径**用 Quoter 或 MixedQuoter（ABI 以 [slipstream / contracts](https://github.com/aerodrome-finance/contracts) 部署为准；CL 侧常见 `quoteExactInputSingle` 结构体参数，与 Uniswap V3 periphery 同族）：
@@ -621,10 +623,10 @@ curl -sS "https://api.1inch.dev/swap/v6.0/1/quote?src=0xC02aaA39b223FE8D0A0e5C4F
 | `hyperliquid` | `perp`（+ spot 另名） | POST | `https://api.hyperliquid.xyz/info` `l2Book` | 无 | ≤20/侧 | 1200 weight/min；l2=2 | 官方 SDK + ccxt ✅ | ✅ JSON |
 | `lighter` | `perp` | GET | `https://mainnet.zklighter.elliot.ai/api/v1/orderBookOrders` | 无 | 逐单 + limit | Standard 60/min | 官方 SDK + ccxt ✅ | ✅ JSON |
 | `apex` | `perp` | GET | `https://omni.apex.exchange/api/v3/depth` | 无 | 聚合簿 live `limit`≤200 | IP 600/min | 官方 SDK + ccxt ✅ | ✅ JSON |
-| `uniswap_eth` | — | eth_call / HTTP | QuoterV2 / Trading API | RPC / API key | 净输出 | RPC 或 portal 配额 | 合约 ABI | 调用形状 §5.1 |
-| `aerodrome_base` | — | eth_call | Router / Quoter / MixedQuoter | RPC | 净输出 | RPC | sugar / ABI | 调用形状 §5.2 |
-| `pancakeswap_bsc` | — | eth_call | QuoterV2 | RPC | 净输出 | RPC | ABI / smart-router | 调用形状 §5.3 |
-| `humidifi` / `tessera` / `bisonfi` | — | GET | Jupiter `/quote?dexes=` | 可选 key | 净输出 | 见 WHI-797 | — | WHI-797 |
+| `uniswap_eth` | `amm_pool` | eth_call / HTTP | QuoterV2 / Trading API | RPC / API key | 净输出 | RPC 或 portal 配额 | 合约 ABI | 调用形状 §5.1 |
+| `aerodrome_base` | `amm_pool` | eth_call | Router / Quoter / MixedQuoter | RPC | 净输出 | RPC | sugar / ABI | 调用形状 §5.2 |
+| `pancakeswap_bsc` | `amm_pool` | eth_call | QuoterV2 | RPC | 净输出 | RPC | ABI / smart-router | 调用形状 §5.3 |
+| `humidifi` / `tessera` / `bisonfi` | `prop_amm` | GET | Jupiter `/quote?dexes=` | 可选 key | 净输出 | 见 WHI-797 | — | WHI-797 |
 
 ---
 
@@ -717,3 +719,4 @@ curl -sS 'https://omni.apex.exchange/api/v3/depth?symbol=BTCUSDT&limit=5'
 | 2026-08-03 | 初版：CEX / Perp DEX live 样本 + AMM 合约路径 + 聚合器边界；对齐 WHI-798/799 |
 | 2026-08-03 | Review round 1：`insufficient_liquidity` 词汇对齐；README/产出物清单；ApeX 全路径统一；AMM 调用形状与延迟口径；Bybit limit live 复核；§7 降级为非规范提示 |
 | 2026-08-03 | Review round 2：§6 slug 对齐 WHI-799；FAPI depth weight live 表；Aerodrome 可运行 cast；0x/1inch 请求骨架；§8.3 缺口补全 |
+| 2026-08-03 | Review round 3：§1.1 Uniswap 优先级与 §5 一致；Aerodrome Route 四元组 + factory；§6 `instrument_type` 填 `amm_pool`/`prop_amm` |
