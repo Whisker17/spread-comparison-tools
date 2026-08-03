@@ -307,6 +307,10 @@ async def test_aerodrome_buy_uses_quote_exact_in_approx(
             return _encode_quoter_result(weth_out, gas_estimate=200_000)
         if sel == "c550b186":  # V2
             return _encode_uint256(0)
+        if sel == "5509a1ac":  # router getAmountsOut — no liquidity
+            from spread_compare.adapters._amm_common import JsonRpcError
+
+            raise JsonRpcError("execution reverted", transport=False)
         raise AssertionError(f"unexpected selector {sel}")
 
     adapter._rpc = _FakeRpc(call_handler=handler)  # type: ignore[assignment]
@@ -443,7 +447,7 @@ def test_get_fees_are_venue_specific() -> None:
 
 
 @pytest.mark.asyncio
-async def test_no_quote_when_all_tiers_fail(
+async def test_no_quote_when_all_tiers_revert(
     eth_rpc_env: None,
 ) -> None:
     adapter = UniswapEthAdapter()
@@ -452,12 +456,33 @@ async def test_no_quote_when_all_tiers_fail(
     async def handler(to: str, data: bytes) -> bytes:
         from spread_compare.adapters._amm_common import JsonRpcError
 
-        raise JsonRpcError("execution reverted")
+        raise JsonRpcError("execution reverted", transport=False)
 
     adapter._rpc = _FakeRpc(call_handler=handler)  # type: ignore[assignment]
     try:
         quote = await adapter.get_quote("ETH", "sell", Decimal("1000"), mid=_MID_ETH)
         assert quote.status == "no_quote"
+        assert quote.effective_price is None
+    finally:
+        await adapter.aclose()
+
+
+@pytest.mark.asyncio
+async def test_error_when_rpc_transport_fails(
+    eth_rpc_env: None,
+) -> None:
+    adapter = UniswapEthAdapter()
+    await adapter.startup()
+
+    async def handler(to: str, data: bytes) -> bytes:
+        from spread_compare.adapters._amm_common import JsonRpcError
+
+        raise JsonRpcError("eth_call transport failed: connect", transport=True)
+
+    adapter._rpc = _FakeRpc(call_handler=handler)  # type: ignore[assignment]
+    try:
+        quote = await adapter.get_quote("ETH", "sell", Decimal("1000"), mid=_MID_ETH)
+        assert quote.status == "error"
         assert quote.effective_price is None
     finally:
         await adapter.aclose()

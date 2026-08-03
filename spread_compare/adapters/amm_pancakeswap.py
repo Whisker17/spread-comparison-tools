@@ -70,7 +70,6 @@ class PancakeSwapBscAdapter(AmmDexAdapter):
             token_base=base.address,
             token_quote=quote.address,
             amount_base_raw=amount_base,
-            amount_quote_raw=None,
-            fee_tiers=PANCAKE_FEE_TIERS,
+            fee_tiers=self.lp_fee_tiers,
             side=side,
         )

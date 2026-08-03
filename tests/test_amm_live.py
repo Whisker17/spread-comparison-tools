@@ -15,7 +15,13 @@ import spread_compare.adapters  # noqa: F401
 from spread_compare.adapters import get
 from spread_compare.models import ReferenceMid
 
-_NOTIONALS = (Decimal("1000"), Decimal("10000"), Decimal("100000"))
+# WHI-799 §4.1 tiers; $1M may hit insufficient depth on thin pairs — still exercise.
+_NOTIONALS = (
+    Decimal("1000"),
+    Decimal("10000"),
+    Decimal("100000"),
+    Decimal("1000000"),
+)
 
 
 def _require(name: str) -> str:
@@ -42,6 +48,9 @@ async def test_live_uniswap_eth_usdc() -> None:
         for n in _NOTIONALS:
             for side in ("buy", "sell"):
                 quote = await adapter.get_quote("ETH", side, n, mid=mid)
+                assert quote.status in ("ok", "no_quote"), quote.error_message
+                if n >= Decimal("1000000") and quote.status == "no_quote":
+                    continue  # deep size may lack liquidity
                 assert quote.status == "ok", quote.error_message
                 assert quote.fee_breakdown.gas_usd is not None
                 assert quote.fee_breakdown.gas_bps is not None
@@ -69,9 +78,9 @@ async def test_live_aerodrome_eth_usdc() -> None:
         for n in _NOTIONALS:
             for side in ("buy", "sell"):
                 quote = await adapter.get_quote("ETH", side, n, mid=mid)
+                if n >= Decimal("1000000") and quote.status == "no_quote":
+                    continue
                 assert quote.status == "ok", quote.error_message
-                # Aerodrome CL path should supply gasEstimate; if only V2 wins,
-                # gas_unknown is allowed but prefer non-null when available.
                 assert quote.effective_price is not None
                 assert quote.qty_base is not None
                 if side == "buy":
@@ -101,6 +110,8 @@ async def test_live_pancake_btcb_usdt() -> None:
         for n in _NOTIONALS:
             for side in ("buy", "sell"):
                 quote = await adapter.get_quote("BTC", side, n, mid=mid)
+                if n >= Decimal("1000000") and quote.status == "no_quote":
+                    continue
                 assert quote.status == "ok", quote.error_message
                 assert quote.fee_breakdown.gas_usd is not None
                 assert quote.fee_breakdown.gas_bps is not None

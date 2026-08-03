@@ -26,6 +26,7 @@ from spread_compare.adapters._amm_common import (
     prefer_quoter_result,
     to_raw,
 )
+from spread_compare.adapters.base import AdapterFetchError
 from spread_compare.adapters.registry import register_adapter
 from spread_compare.models import ReferenceMid, Side
 
@@ -93,15 +94,10 @@ class AerodromeBaseAdapter(AmmDexAdapter):
         if amount_in <= 0:
             return None
 
-        # Prefer CL (gasEstimate available) over V2/router when CL quotes exist.
-        cl_best = await self._probe_cl(token_in, token_out, amount_in)
-        if cl_best is not None:
-            return cl_best
+        # Probe CL + V2 + router; best by amount_out, gasEstimate as tiebreak only.
+        return await self._probe_all(token_in, token_out, amount_in)
 
-        v2_best = await self._probe_v2_and_router(token_in, token_out, amount_in)
-        return v2_best
-
-    async def _probe_cl(
+    async def _probe_all(
         self,
         token_in: str,
         token_out: str,
@@ -109,12 +105,20 @@ class AerodromeBaseAdapter(AmmDexAdapter):
     ) -> QuoterResult | None:
         rpc = self._require_rpc()
         best: QuoterResult | None = None
+        saw_success = False
+        transport_failures = 0
+
         for tick in AERO_TICK_SPACINGS:
             data = encode_aero_exact_in_v3(token_in, token_out, amount_in, tick)
             try:
                 raw = await rpc.eth_call(_MIXED_QUOTER, data)
+                saw_success = True
                 amount_out, _, _, gas_est = decode_quoter_v2_result(raw)
-            except (JsonRpcError, ValueError):
+            except JsonRpcError as exc:
+                if exc.transport:
+                    transport_failures += 1
+                continue
+            except ValueError:
                 continue
             if amount_out <= 0:
                 continue
@@ -123,30 +127,23 @@ class AerodromeBaseAdapter(AmmDexAdapter):
                 amount_out=amount_out,
                 gas_estimate=gas_est,
                 fee_label=f"cl_tick_{tick}",
-                # Actual CL fee is per-pool; not a fixed tier — leave informational null
-                # rather than invent (WHI-812 owns fee numbers).
+                # Actual CL fee is per-pool; leave null rather than invent (WHI-812).
                 lp_fee_tier_bps=None,
                 exact_out=False,
             )
             best = prefer_quoter_result(best, candidate, prefer_min_in=False)
-        return best
-
-    async def _probe_v2_and_router(
-        self,
-        token_in: str,
-        token_out: str,
-        amount_in: int,
-    ) -> QuoterResult | None:
-        """V2 MixedQuoter + Router fallback. No gasEstimate → gas_unknown downstream."""
-        rpc = self._require_rpc()
-        best: QuoterResult | None = None
 
         for stable, label in ((False, "v2_volatile"), (True, "v2_stable")):
             data = encode_aero_exact_in_v2(token_in, token_out, stable, amount_in)
             try:
                 raw = await rpc.eth_call(_MIXED_QUOTER, data)
+                saw_success = True
                 amount_out = decode_aero_v2_amount(raw)
-            except (JsonRpcError, ValueError):
+            except JsonRpcError as exc:
+                if exc.transport:
+                    transport_failures += 1
+                continue
+            except ValueError:
                 continue
             if amount_out <= 0:
                 continue
@@ -155,7 +152,7 @@ class AerodromeBaseAdapter(AmmDexAdapter):
                 amount_out=amount_out,
                 gas_estimate=None,
                 fee_label=label,
-                lp_fee_tier_bps=None,  # per-pool fee; do not invent (WHI-812)
+                lp_fee_tier_bps=None,
                 exact_out=False,
             )
             best = prefer_quoter_result(best, candidate, prefer_min_in=False)
@@ -167,8 +164,13 @@ class AerodromeBaseAdapter(AmmDexAdapter):
             )
             try:
                 raw = await rpc.eth_call(_ROUTER, data)
+                saw_success = True
                 amounts = decode_get_amounts_out(raw)
-            except (JsonRpcError, ValueError):
+            except JsonRpcError as exc:
+                if exc.transport:
+                    transport_failures += 1
+                continue
+            except ValueError:
                 continue
             if len(amounts) < 2 or amounts[-1] <= 0:
                 continue
@@ -182,4 +184,9 @@ class AerodromeBaseAdapter(AmmDexAdapter):
             )
             best = prefer_quoter_result(best, candidate, prefer_min_in=False)
 
+        if best is None and not saw_success and transport_failures > 0:
+            raise AdapterFetchError(
+                f"RPC transport failed for all Aerodrome quote paths "
+                f"(transport={transport_failures})"
+            )
         return best

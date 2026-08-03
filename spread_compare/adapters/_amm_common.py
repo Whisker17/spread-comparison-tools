@@ -17,7 +17,12 @@ from eth_abi.abi import decode, encode
 from eth_utils.abi import function_signature_to_4byte_selector
 from eth_utils.address import to_checksum_address
 
-from spread_compare.adapters.base import AdapterError, AdapterFetchError, BaseAdapter
+from spread_compare.adapters.base import (
+    AdapterError,
+    AdapterFetchError,
+    BaseAdapter,
+    default_instrument_type,
+)
 from spread_compare.costs import spread_bps as calc_spread_bps
 from spread_compare.costs import total_cost_bps
 from spread_compare.models import (
@@ -276,76 +281,12 @@ def prefer_quoter_result(
     return current
 
 
-async def probe_quoter_v2(
-    rpc: RpcClient,
-    quoter: str,
-    *,
-    token_base: str,
-    token_quote: str,
-    amount_base_raw: int | None,
-    amount_quote_raw: int | None,
-    fee_tiers: tuple[int, ...],
-    side: Side,
-) -> QuoterResult | None:
-    """Probe Uniswap-family QuoterV2 fee tiers; return the best executable quote.
-
-    Sell: ExactIn base → quote. Buy: ExactOut base ← quote.
-    """
-    best: QuoterResult | None = None
-    if side == "sell":
-        if amount_base_raw is None or amount_base_raw <= 0:
-            return None
-        for fee in fee_tiers:
-            data = encode_quote_exact_input_single(
-                token_base, token_quote, amount_base_raw, fee
-            )
-            try:
-                raw = await rpc.eth_call(quoter, data)
-                amount_out, _, _, gas_est = decode_quoter_v2_result(raw)
-            except (JsonRpcError, ValueError):
-                continue
-            if amount_out <= 0:
-                continue
-            candidate = QuoterResult(
-                amount_in=amount_base_raw,
-                amount_out=amount_out,
-                gas_estimate=gas_est,
-                fee_label=f"pool_{fee}",
-                lp_fee_tier_bps=fee_to_lp_bps(fee),
-                exact_out=False,
-            )
-            best = prefer_quoter_result(best, candidate, prefer_min_in=False)
-        return best
-
-    # Buy ExactOut
-    if amount_base_raw is None or amount_base_raw <= 0:
-        return None
-    _ = amount_quote_raw
-    for fee in fee_tiers:
-        data = encode_quote_exact_output_single(
-            token_quote, token_base, amount_base_raw, fee
-        )
-        try:
-            raw = await rpc.eth_call(quoter, data)
-            amount_in, _, _, gas_est = decode_quoter_v2_result(raw)
-        except (JsonRpcError, ValueError):
-            continue
-        if amount_in <= 0:
-            continue
-        candidate = QuoterResult(
-            amount_in=amount_in,
-            amount_out=amount_base_raw,
-            gas_estimate=gas_est,
-            fee_label=f"pool_{fee}",
-            lp_fee_tier_bps=fee_to_lp_bps(fee),
-            exact_out=True,
-        )
-        best = prefer_quoter_result(best, candidate, prefer_min_in=True)
-    return best
-
-
 class JsonRpcError(AdapterFetchError):
     """JSON-RPC eth_* call failed."""
+
+    def __init__(self, message: str, *, transport: bool = False) -> None:
+        super().__init__(message)
+        self.transport = transport
 
 
 class RpcClient:
@@ -370,10 +311,12 @@ class RpcClient:
             response.raise_for_status()
             body = response.json()
         except (httpx.HTTPError, ValueError) as exc:
-            raise JsonRpcError(f"{method} transport failed: {exc}") from exc
+            raise JsonRpcError(
+                f"{method} transport failed: {exc}", transport=True
+            ) from exc
         if "error" in body and body["error"]:
             err = body["error"]
-            raise JsonRpcError(f"{method} error: {err}")
+            raise JsonRpcError(f"{method} error: {err}", transport=False)
         return body.get("result")
 
     async def eth_call(self, to: str, data: bytes) -> bytes:
@@ -393,6 +336,96 @@ class RpcClient:
         if not isinstance(result, str) or not result.startswith("0x"):
             raise JsonRpcError(f"eth_gasPrice unexpected: {result!r}")
         return int(result, 16)
+
+
+async def probe_quoter_v2(
+    rpc: RpcClient,
+    quoter: str,
+    *,
+    token_base: str,
+    token_quote: str,
+    amount_base_raw: int | None,
+    fee_tiers: tuple[int, ...],
+    side: Side,
+) -> QuoterResult | None:
+    """Probe Uniswap-family QuoterV2 fee tiers; return the best executable quote.
+
+    Sell: ExactIn base → quote. Buy: ExactOut base ← quote.
+    Transport/RPC outage (no successful eth_call) raises AdapterFetchError so the
+    adapter can map to status=error (WHI-799 §6.6). Per-tier reverts stay no_quote.
+    """
+    best: QuoterResult | None = None
+    saw_success = False
+    transport_failures = 0
+    revert_failures = 0
+
+    if amount_base_raw is None or amount_base_raw <= 0:
+        return None
+
+    async def _try_call(data: bytes) -> tuple[int, int] | None:
+        nonlocal saw_success, transport_failures, revert_failures
+        try:
+            raw = await rpc.eth_call(quoter, data)
+            saw_success = True
+            amount, _, _, gas_est = decode_quoter_v2_result(raw)
+            return amount, gas_est
+        except JsonRpcError as exc:
+            if exc.transport:
+                transport_failures += 1
+            else:
+                revert_failures += 1
+            return None
+        except ValueError:
+            revert_failures += 1
+            return None
+
+    if side == "sell":
+        for fee in fee_tiers:
+            data = encode_quote_exact_input_single(
+                token_base, token_quote, amount_base_raw, fee
+            )
+            got = await _try_call(data)
+            if got is None:
+                continue
+            amount_out, gas_est = got
+            if amount_out <= 0:
+                continue
+            candidate = QuoterResult(
+                amount_in=amount_base_raw,
+                amount_out=amount_out,
+                gas_estimate=gas_est,
+                fee_label=f"pool_{fee}",
+                lp_fee_tier_bps=fee_to_lp_bps(fee),
+                exact_out=False,
+            )
+            best = prefer_quoter_result(best, candidate, prefer_min_in=False)
+    else:
+        for fee in fee_tiers:
+            data = encode_quote_exact_output_single(
+                token_quote, token_base, amount_base_raw, fee
+            )
+            got = await _try_call(data)
+            if got is None:
+                continue
+            amount_in, gas_est = got
+            if amount_in <= 0:
+                continue
+            candidate = QuoterResult(
+                amount_in=amount_in,
+                amount_out=amount_base_raw,
+                gas_estimate=gas_est,
+                fee_label=f"pool_{fee}",
+                lp_fee_tier_bps=fee_to_lp_bps(fee),
+                exact_out=True,
+            )
+            best = prefer_quoter_result(best, candidate, prefer_min_in=True)
+
+    if best is None and not saw_success and transport_failures > 0:
+        raise AdapterFetchError(
+            f"RPC transport failed for all fee tiers on {quoter} "
+            f"(transport={transport_failures}, reverts={revert_failures})"
+        )
+    return best
 
 
 async def fetch_binance_mid(
@@ -596,7 +629,7 @@ class AmmDexAdapter(BaseAdapter):
         *,
         instrument_type: InstrumentType | None = None,
     ) -> FeeSchedule:
-        itype: InstrumentType = instrument_type or "amm_pool"
+        itype: InstrumentType = instrument_type or default_instrument_type(self.venue_class)
         lp_tiers = [fee_to_lp_bps(f) for f in self.lp_fee_tiers] or None
         return FeeSchedule(
             venue=self.venue,
@@ -634,10 +667,10 @@ class AmmDexAdapter(BaseAdapter):
         fee_tier: str | None = None,
     ) -> Quote:
         _ = fee_tier
-        itype: InstrumentType = instrument_type or "amm_pool"
+        itype: InstrumentType = instrument_type or default_instrument_type(self.venue_class)
         asset_key = asset.upper()
 
-        if asset_key == "SOL" or asset_key not in self.supported:
+        if asset_key not in self.supported:
             return build_non_ok_quote(
                 venue=self.venue,
                 mid=mid,
