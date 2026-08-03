@@ -40,6 +40,8 @@ env/
 .ruff_cache/
 .coverage
 htmlcov/
+# Discovery tests write this under the package; purge is best-effort (WHI-823).
+spread_compare/adapters/throwaway_whi823_discovery.py
 
 # Docker
 docker-compose.override.yml

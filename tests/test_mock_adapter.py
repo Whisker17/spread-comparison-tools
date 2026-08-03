@@ -1,7 +1,9 @@
-"""Mock adapter + registry acceptance checks (WHI-801)."""
+"""Mock adapter + registry acceptance checks (WHI-801 / WHI-823 async)."""
 
 from datetime import UTC, datetime
 from decimal import Decimal
+
+import pytest
 
 import spread_compare.adapters  # noqa: F401 — ensure self-registration
 from spread_compare.adapters import get
@@ -21,9 +23,10 @@ def test_registry_has_mock() -> None:
     assert adapter.venue == "mock"
 
 
-def test_mock_get_quote_buy_canonical() -> None:
+@pytest.mark.asyncio
+async def test_mock_get_quote_buy_canonical() -> None:
     adapter = get("mock")
-    quote = adapter.get_quote("BTC", "buy", Decimal("10000"), mid=_MID)
+    quote = await adapter.get_quote("BTC", "buy", Decimal("10000"), mid=_MID)
     assert isinstance(quote, Quote)
     assert quote.status == "ok"
     assert quote.effective_price == Decimal("100044")
@@ -34,17 +37,19 @@ def test_mock_get_quote_buy_canonical() -> None:
     assert quote.snapshot_id == _MID.snapshot_id
 
 
-def test_mock_get_quote_sell_canonical() -> None:
+@pytest.mark.asyncio
+async def test_mock_get_quote_sell_canonical() -> None:
     adapter = get("mock")
-    quote = adapter.get_quote("BTC", "sell", Decimal("10000"), mid=_MID)
+    quote = await adapter.get_quote("BTC", "sell", Decimal("10000"), mid=_MID)
     assert quote.status == "ok"
     assert quote.effective_price == Decimal("99956")
     assert quote.spread_bps == Decimal("4.4")
 
 
-def test_mock_orderbook_spread() -> None:
+@pytest.mark.asyncio
+async def test_mock_orderbook_spread() -> None:
     adapter = get("mock")
-    tob = adapter.get_orderbook_spread("BTC", mid=_MID)
+    tob = await adapter.get_orderbook_spread("BTC", mid=_MID)
     assert tob is not None
     assert tob.best_bid == Decimal("99990")
     assert tob.best_ask == Decimal("100010")
