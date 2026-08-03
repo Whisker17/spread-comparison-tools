@@ -284,9 +284,31 @@ def prefer_quoter_result(
 class JsonRpcError(AdapterFetchError):
     """JSON-RPC eth_* call failed."""
 
-    def __init__(self, message: str, *, transport: bool = False) -> None:
+    def __init__(
+        self,
+        message: str,
+        *,
+        transport: bool = False,
+        revert: bool = False,
+    ) -> None:
         super().__init__(message)
         self.transport = transport
+        self.revert = revert
+
+
+def _is_execution_revert(err: object) -> bool:
+    """True when the JSON-RPC error is a contract revert (pool miss / too deep)."""
+    text = str(err).lower()
+    if "execution reverted" in text or "revert" in text:
+        return True
+    if isinstance(err, dict):
+        code = err.get("code")
+        # eth_call reverts commonly surface as code 3 or -32000 with revert data.
+        if code == 3:
+            return True
+        if code == -32000 and "revert" in text:
+            return True
+    return False
 
 
 class RpcClient:
@@ -316,7 +338,11 @@ class RpcClient:
             ) from exc
         if "error" in body and body["error"]:
             err = body["error"]
-            raise JsonRpcError(f"{method} error: {err}", transport=False)
+            raise JsonRpcError(
+                f"{method} error: {err}",
+                transport=False,
+                revert=_is_execution_revert(err),
+            )
         return body.get("result")
 
     async def eth_call(self, to: str, data: bytes) -> bytes:
@@ -370,7 +396,8 @@ async def probe_quoter_v2(
             amount, _, _, gas_est = decode_quoter_v2_result(raw)
             return amount, gas_est
         except JsonRpcError as exc:
-            if exc.transport:
+            if exc.transport or not exc.revert:
+                # Transport or infra (rate-limit / -32603 / etc.) — not a pool miss.
                 transport_failures += 1
             else:
                 revert_failures += 1
@@ -588,8 +615,11 @@ class AmmDexAdapter(BaseAdapter):
     # Venue-specific Uniswap-style fee tiers for get_fees(); override per adapter.
     lp_fee_tiers: tuple[int, ...] = ()
 
-    def __init__(self, *, timeout: float = 10.0) -> None:
-        super().__init__(timeout=timeout)
+    def __init__(self, *, timeout: float | None = None) -> None:
+        if timeout is None:
+            super().__init__()
+        else:
+            super().__init__(timeout=timeout)
         self._rpc_url: str | None = None
         self._rpc: RpcClient | None = None
 

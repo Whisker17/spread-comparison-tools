@@ -310,7 +310,7 @@ async def test_aerodrome_buy_uses_quote_exact_in_approx(
         if sel == "5509a1ac":  # router getAmountsOut — no liquidity
             from spread_compare.adapters._amm_common import JsonRpcError
 
-            raise JsonRpcError("execution reverted", transport=False)
+            raise JsonRpcError("execution reverted", transport=False, revert=True)
         raise AssertionError(f"unexpected selector {sel}")
 
     adapter._rpc = _FakeRpc(call_handler=handler)  # type: ignore[assignment]
@@ -346,11 +346,11 @@ async def test_aerodrome_router_fallback(
     usdc_out = 995_000_000
 
     async def handler(to: str, data: bytes) -> bytes:
+        from spread_compare.adapters._amm_common import JsonRpcError
+
         sel = data[:4].hex()
         if sel in ("891e50c6", "c550b186"):
-            raise __import__(
-                "spread_compare.adapters._amm_common", fromlist=["JsonRpcError"]
-            ).JsonRpcError("no pool")
+            raise JsonRpcError("no pool", transport=False, revert=True)
         if sel == "5509a1ac":  # getAmountsOut
             return _encode_amounts_out([10**17, usdc_out])
         raise AssertionError(sel)
@@ -456,7 +456,7 @@ async def test_no_quote_when_all_tiers_revert(
     async def handler(to: str, data: bytes) -> bytes:
         from spread_compare.adapters._amm_common import JsonRpcError
 
-        raise JsonRpcError("execution reverted", transport=False)
+        raise JsonRpcError("execution reverted", transport=False, revert=True)
 
     adapter._rpc = _FakeRpc(call_handler=handler)  # type: ignore[assignment]
     try:
@@ -484,5 +484,30 @@ async def test_error_when_rpc_transport_fails(
         quote = await adapter.get_quote("ETH", "sell", Decimal("1000"), mid=_MID_ETH)
         assert quote.status == "error"
         assert quote.effective_price is None
+    finally:
+        await adapter.aclose()
+
+
+@pytest.mark.asyncio
+async def test_error_when_rpc_rate_limited(
+    eth_rpc_env: None,
+) -> None:
+    adapter = UniswapEthAdapter()
+    await adapter.startup()
+
+    async def handler(to: str, data: bytes) -> bytes:
+        from spread_compare.adapters._amm_common import JsonRpcError
+
+        # Infra error that is NOT an execution revert.
+        raise JsonRpcError(
+            "eth_call error: {'code': -32005, 'message': 'rate limited'}",
+            transport=False,
+            revert=False,
+        )
+
+    adapter._rpc = _FakeRpc(call_handler=handler)  # type: ignore[assignment]
+    try:
+        quote = await adapter.get_quote("ETH", "sell", Decimal("1000"), mid=_MID_ETH)
+        assert quote.status == "error"
     finally:
         await adapter.aclose()

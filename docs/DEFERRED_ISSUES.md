@@ -60,6 +60,31 @@ defines none: `docs/GIT_WORKFLOW.md` § High-risk paths), **Medium**
   if a slug is started then removed from `_REGISTRY` without `aclose_all`, the
   count can go stale — clear both sets together when unregister is added.
 
+- **AMM fee-tier / tick-spacing probe lists are module constants** (Low, WHI-804).
+  `spread_compare/adapters/_amm_common.py::UNISWAP_FEE_TIERS` (and
+  `PANCAKE_FEE_TIERS`, `AERO_TICK_SPACINGS`) — AGENTS.md wants non-secret tunables
+  in `config/` traced to DESIGN.md §2, but DESIGN §2 is still empty and WHI-812
+  owns fee numbers. Constants are cited to WHI-800 (2026-08-03). Move to typed
+  YAML when DESIGN §2 / WHI-812 lands.
+
+- **Native gas USD uses Binance spot bookTicker inside AMM helpers** (Low, WHI-804).
+  `spread_compare/adapters/_amm_common.py::fetch_binance_mid` — WHI-804 requires
+  `gasEstimate × gasPrice × native USD` via Binance ETHUSDT/BNBUSDT; not the
+  reference-mid path (WHI-807). Acceptable coupling for Phase 1; extract a shared
+  CEX mid helper when WHI-802/807 land to avoid shotgun edits on URL/field renames.
+
+- **AMM ExactOut / deep-size reverts map to `no_quote`, not `insufficient_liquidity`**
+  (Medium, WHI-804).
+  `spread_compare/adapters/_amm_common.py::probe_quoter_v2` — WHI-799 §4.2/§6.6
+  distinguish thin depth from missing routes, but a QuoterV2 eth_call revert does
+  not tell them apart without an extra small-size probe RPC. Left as `no_quote` for
+  reverts; upgrade when a cheap pool-existence probe is worth the RTT.
+
+- **AMM Quote builders not yet unified with mock `_quote_shell`** (Low, WHI-804).
+  `spread_compare/adapters/_amm_common.py::build_ok_quote` / `build_non_ok_quote` —
+  same shape as mock's helper (WHI-801 deferred entry). Promote one shared builder
+  when a third adapter family duplicates the pattern again.
+
 ---
 
 ## Resolved

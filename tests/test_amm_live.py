@@ -25,6 +25,9 @@ _NOTIONALS = (
 
 
 def _require(name: str) -> str:
+    from spread_compare.adapters._amm_common import load_dotenv_once
+
+    load_dotenv_once()
     value = os.environ.get(name, "").strip()
     if not value:
         pytest.fail(f"live test requires {name}")

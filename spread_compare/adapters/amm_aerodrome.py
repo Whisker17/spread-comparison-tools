@@ -115,7 +115,7 @@ class AerodromeBaseAdapter(AmmDexAdapter):
                 saw_success = True
                 amount_out, _, _, gas_est = decode_quoter_v2_result(raw)
             except JsonRpcError as exc:
-                if exc.transport:
+                if exc.transport or not exc.revert:
                     transport_failures += 1
                 continue
             except ValueError:
@@ -140,7 +140,7 @@ class AerodromeBaseAdapter(AmmDexAdapter):
                 saw_success = True
                 amount_out = decode_aero_v2_amount(raw)
             except JsonRpcError as exc:
-                if exc.transport:
+                if exc.transport or not exc.revert:
                     transport_failures += 1
                 continue
             except ValueError:
@@ -167,7 +167,7 @@ class AerodromeBaseAdapter(AmmDexAdapter):
                 saw_success = True
                 amounts = decode_get_amounts_out(raw)
             except JsonRpcError as exc:
-                if exc.transport:
+                if exc.transport or not exc.revert:
                     transport_failures += 1
                 continue
             except ValueError:
