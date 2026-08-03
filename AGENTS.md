@@ -47,16 +47,18 @@ Tailwind + typed OpenAPI client (`openapi-typescript`), `SpreadMatrix` /
 `/status-fixtures`, TanStack Query polling; backend CORS for localhost:3000.
 M3 blue chips section (WHI-809): `/blue-chips` BTC/ETH/SOL live matrices +
 representation labels + snapshot summary (WHI-799 §5.2) + 30s poll; SOL hides
-EVM AMM rows.
+EVM AMM rows. M3 stocks section (WHI-810): `/stocks` P0-A bStocks BSC three-way
+(QQQB/SPCXB/NVDAB/NVDAON × Binance spot × Pancake × Tessera) + P0-B equity perps
+(TSLA/NVDA/AAPL/MSFT × five orderbook venues); US market-hours badge, mid-source
+emphasis, bStocks rebase footnote; reuses AssetSpreadBlock + summary engine.
 M4 fee schedules (WHI-812): `config/fees/*.yaml` + `fees.py` loader, adapters'
 `get_fees` config-backed, `GET /fees`. M3 asset catalog expansion (WHI-826): Phase 1
 stocks / equity perps / others in `assets.py`; instrument-aware `cex_symbols.CexSymbol`
 + contract multipliers; HL HIP-3 `xyz:` meta + `kPEPE`/`kBONK` scaling; PancakeSwap BSC
 bStocks tokens; `perp_symbols` shared maps.
 
-**Not implemented:** remaining venue adapters (WHI-805), collector, section page
-content (WHI-810/811), fees/simulate UI. Do not assume a module exists until
-its issue lands.
+**Not implemented:** remaining venue adapters (WHI-805), collector, Others section
+page (WHI-811), fees/simulate UI. Do not assume a module exists until its issue lands.
 
 **Blocking gap:** `docs/DESIGN.md` is still mostly the empty template stub (§4.2 module
 layout is filled by WHI-801). Produce the rest via `/grill-me` + `/to-spec` — the PR

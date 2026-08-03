@@ -37,6 +37,18 @@ export type AssetSpreadBlockProps = {
   summaryVenueLabels?: Readonly<Record<string, string>>;
   /** Subset of `venues` that can produce TopOfBook (orderbook classes). */
   orderbookVenues?: readonly string[];
+  /**
+   * Optional display title (defaults to `asset`). Sections use this for
+   * annotations like "NVDAON · Ondo" without branching on section id.
+   */
+  assetTitle?: string;
+  /** Optional secondary line under the title. */
+  assetSubtitle?: string;
+  /**
+   * When true, mid-source is rendered as a prominent warning-style badge
+   * (stocks mid chain is weaker than crypto P0 — WHI-799 §3.3 / WHI-810).
+   */
+  emphasizeMidSource?: boolean;
 };
 
 export function AssetSpreadBlock({
@@ -46,6 +58,9 @@ export function AssetSpreadBlock({
   venueLabels,
   summaryVenueLabels,
   orderbookVenues: orderbookVenuesProp,
+  assetTitle,
+  assetSubtitle,
+  emphasizeMidSource = false,
 }: AssetSpreadBlockProps) {
   const [sideView, setSideView] = useState<SideView>(section.defaultSideView);
 
@@ -107,7 +122,14 @@ export function AssetSpreadBlock({
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold tracking-tight">{asset}</h2>
+          <h2 className="text-lg font-semibold tracking-tight">
+            {assetTitle ?? asset}
+          </h2>
+          {assetSubtitle ? (
+            <p className="mt-0.5 text-xs text-zinc-600 dark:text-zinc-400">
+              {assetSubtitle}
+            </p>
+          ) : null}
           <p className="mt-0.5 text-xs text-zinc-500">
             All venue classes · {section.notionals.length} notional tiers ·{" "}
             {sideView.replace("_", " ")}
@@ -171,12 +193,27 @@ export function AssetSpreadBlock({
           </span>
         ) : null}
         {mid?.mid_source ? (
-          <span>
-            Mid source:{" "}
-            <code className="rounded bg-zinc-100 px-1 py-0.5 text-[11px] text-zinc-700 dark:bg-zinc-900 dark:text-zinc-300">
-              {mid.mid_source}
-            </code>
-          </span>
+          emphasizeMidSource ? (
+            <span
+              className="inline-flex items-center gap-1.5 rounded-md border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-900 dark:border-amber-800 dark:bg-amber-950/50 dark:text-amber-100"
+              data-testid={`mid-source-badge-${asset}`}
+              title="Stock mid sources (cex_tradfi_index / proxy_perp_mark_median / CEX spot TOB) are weaker than crypto P0 index mids (WHI-799 §3.3)."
+            >
+              <span className="uppercase tracking-wide opacity-80">
+                Mid source
+              </span>
+              <code className="rounded bg-amber-100/80 px-1 py-px text-[11px] dark:bg-amber-900/60">
+                {mid.mid_source}
+              </code>
+            </span>
+          ) : (
+            <span>
+              Mid source:{" "}
+              <code className="rounded bg-zinc-100 px-1 py-0.5 text-[11px] text-zinc-700 dark:bg-zinc-900 dark:text-zinc-300">
+                {mid.mid_source}
+              </code>
+            </span>
+          )
         ) : null}
         {mid?.mid !== undefined && mid?.mid !== null ? (
           <span>
