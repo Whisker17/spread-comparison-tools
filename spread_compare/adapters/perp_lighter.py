@@ -13,14 +13,12 @@ from typing import Any, Literal
 
 from spread_compare.adapters._perp_common import (
     DEFAULT_FEE_TIER,
-    PLACEHOLDER_TAKER_BPS,
     OrderbookLevels,
     RollingWindowRateLimiter,
     aggregate_orders_by_price,
     build_quote_from_book,
     build_top_of_book,
     build_unsupported_quote,
-    placeholder_fee_schedule,
     request_json,
     require_mid_asset,
     resolve_perp_instrument,
@@ -31,10 +29,10 @@ from spread_compare.adapters.base import (
     BaseAdapter,
     UnsupportedAssetError,
     default_instrument_type,
+    require_taker_bps,
 )
 from spread_compare.adapters.registry import register_adapter
 from spread_compare.models import (
-    FeeSchedule,
     InstrumentType,
     Quote,
     ReferenceMid,
@@ -136,6 +134,7 @@ class LighterAdapter(BaseAdapter):
             )
 
         bids, asks = await self._fetch_orders(meta.market_id)
+        schedule = self.get_fees(asset_key, instrument_type=itype)
         return build_quote_from_book(
             venue=self.venue,
             asset=asset_key,
@@ -147,7 +146,7 @@ class LighterAdapter(BaseAdapter):
             bids=bids,
             asks=asks,
             fee_tier=tier,
-            trading_fee_bps=PLACEHOLDER_TAKER_BPS,
+            trading_fee_bps=require_taker_bps(self.venue, schedule),
             funding_rate_8h=None,  # not exposed on orderBookDetails (Phase 1)
             venue_mark=meta.mark_price,
             multiplier=resolved.multiplier,
@@ -179,19 +178,6 @@ class LighterAdapter(BaseAdapter):
             asks=asks,
             instrument_type="perp",
             multiplier=resolved.multiplier,
-        )
-
-    def get_fees(
-        self,
-        asset: str | None = None,
-        *,
-        instrument_type: InstrumentType | None = None,
-    ) -> FeeSchedule:
-        itype = instrument_type or default_instrument_type(self.venue_class)
-        return placeholder_fee_schedule(
-            venue=self.venue,
-            asset=asset.upper() if asset else None,
-            instrument_type=itype,
         )
 
     def supported_assets(

@@ -193,8 +193,10 @@ async def test_apex_section_4_7_vectors() -> None:
         assert buy.status == "ok"
         assert buy.effective_price == Decimal("100044")
         assert buy.spread_bps == Decimal("4.4")
-        assert buy.total_cost_bps == Decimal("14.4")
-        # ApeX funding period not documented in WHI-800 — leave null (WHI-812).
+        # spread 4.4 + Level-1 taker 5.0
+        assert buy.total_cost_bps == Decimal("9.4")
+        assert buy.fee_breakdown.trading_fee_bps == Decimal("5")
+        # funding_rate_8h still not joined on quote path; model is perp_continuous.
         assert buy.fee_breakdown.funding_rate_8h is None
         assert buy.venue_mark == Decimal("100050")
         assert sell.status == "ok"

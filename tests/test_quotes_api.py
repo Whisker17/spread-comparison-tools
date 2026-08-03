@@ -1,4 +1,4 @@
-"""HTTP API tests for /quotes, /venues, /assets (WHI-807)."""
+"""HTTP API tests for /quotes, /venues, /assets, /fees."""
 
 from __future__ import annotations
 
@@ -62,6 +62,29 @@ def test_get_assets(client: TestClient) -> None:
     assert tsla["representations"]["hyperliquid"] == "xyz:TSLA"
     doge = next(r for r in rows if r["id"] == "DOGE")
     assert doge["category"] == "other"
+
+
+def test_get_fees(client: TestClient) -> None:
+    resp = client.get("/fees")
+    assert resp.status_code == 200
+    rows = resp.json()
+    assert isinstance(rows, list)
+    by_key = {(r["venue"], r["instrument_type"]): r for r in rows}
+    assert ("binance", "spot") in by_key
+    assert ("binance", "perp") in by_key
+    assert ("hyperliquid", "perp") in by_key
+    assert ("uniswap_eth", "amm_pool") in by_key
+    assert ("humidifi", "prop_amm") in by_key
+    bn_spot = by_key[("binance", "spot")]
+    assert Decimal(bn_spot["taker_bps"]) == Decimal("10")
+    assert bn_spot["source_urls"]
+    assert bn_spot["updated_at"]
+    hl = by_key[("hyperliquid", "perp")]
+    assert Decimal(hl["taker_bps"]) == Decimal("4.5")
+    assert hl["funding_model"] == "perp_continuous"
+    prop = by_key[("humidifi", "prop_amm")]
+    assert prop["fee_embedded_in_quote"] is True
+    assert prop["taker_bps"] is None
 
 
 def test_quotes_happy_path_with_injected_mid(client: TestClient) -> None:

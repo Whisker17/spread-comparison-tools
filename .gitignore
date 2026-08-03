@@ -48,8 +48,22 @@ docker-compose.override.yml
 
 # Per-deployment config overrides (see config/README.md)
 config/*.local.yaml
+config/**/*.local.yaml
 
 # Editors / OS
 .vscode/
 .idea/
 .DS_Store
+
+# Node / Next.js (frontend/)
+node_modules/
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/.turbo/
+frontend/coverage/
+frontend/.env.local
+frontend/.env*.local
+*.tsbuildinfo
+next-env.d.ts
+!frontend/next-env.d.ts

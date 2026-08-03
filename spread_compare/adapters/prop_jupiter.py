@@ -23,7 +23,6 @@ from spread_compare.adapters._prop_common import (
     build_non_ok_quote,
     exact_in_prop_quote,
     optional_env,
-    prop_fee_schedule,
     require_mid_match,
 )
 from spread_compare.adapters.base import (
@@ -36,7 +35,6 @@ from spread_compare.adapters.base import (
 )
 from spread_compare.adapters.registry import register_adapter
 from spread_compare.models import (
-    FeeSchedule,
     InstrumentType,
     Quote,
     ReferenceMid,
@@ -157,19 +155,6 @@ class JupiterPropAdapter(BaseAdapter):
     ) -> list[str]:
         _ = instrument_type
         return list(self.supported)
-
-    def get_fees(
-        self,
-        asset: str | None = None,
-        *,
-        instrument_type: InstrumentType | None = None,
-    ) -> FeeSchedule:
-        return prop_fee_schedule(
-            self.venue,
-            asset,
-            instrument_type=instrument_type,
-            venue_class=self.venue_class,
-        )
 
     async def get_orderbook_spread(
         self,

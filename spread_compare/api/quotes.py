@@ -1,4 +1,4 @@
-"""HTTP routes: ``GET /quotes``, ``GET /venues``, ``GET /assets`` (WHI-807)."""
+"""HTTP routes: ``GET /quotes``, ``GET /venues``, ``GET /assets``, ``GET /fees``."""
 
 from __future__ import annotations
 
@@ -17,8 +17,10 @@ from spread_compare.aggregator import (
     UnknownVenueError,
 )
 from spread_compare.assets import list_assets
+from spread_compare.fees import list_fee_schedules
 from spread_compare.mids import MidResolutionError
 from spread_compare.models import (
+    FeeSchedule,
     InstrumentType,
     ReferenceMid,
     Side,
@@ -169,6 +171,12 @@ def get_assets() -> list[AssetResponse]:
         )
         for a in list_assets()
     ]
+
+
+@router.get("/fees", response_model=list[FeeSchedule])
+def get_fees() -> list[FeeSchedule]:
+    """All validated venue fee schedules (WHI-812; frontend contract for WHI-813)."""
+    return list_fee_schedules()
 
 
 def _venue_row(info: VenueInfo, registered: set[str]) -> VenueResponse:

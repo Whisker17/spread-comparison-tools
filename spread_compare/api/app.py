@@ -6,13 +6,19 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from spread_compare.adapters import aclose_all, initialized_count, startup_all
 from spread_compare.aggregator import QuoteAggregator
 from spread_compare.api.quotes import router as quotes_router
+from spread_compare.fees import get_fee_catalog
 from spread_compare.mids import MidService
-from spread_compare.settings import load_aggregator_settings, load_mid_settings
+from spread_compare.settings import (
+    load_aggregator_settings,
+    load_api_settings,
+    load_mid_settings,
+)
 
 
 class HealthResponse(BaseModel):
@@ -27,8 +33,10 @@ class HealthResponse(BaseModel):
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Start mid service + venue adapters on boot; close them on shutdown."""
+    # Fail-fast typed config before any network work (AGENTS.md / WHI-812).
     mid_settings = load_mid_settings()
     agg_settings = load_aggregator_settings()
+    get_fee_catalog()
     mid_service = MidService(mid_settings)
     aggregator = QuoteAggregator(
         mid_service,
@@ -52,6 +60,14 @@ def create_app() -> FastAPI:
         version="0.1.0",
         description="Cross-venue execution quality / spread comparison API",
         lifespan=lifespan,
+    )
+    api_settings = load_api_settings()
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=list(api_settings.cors_origins),
+        allow_credentials=False,
+        allow_methods=["GET", "OPTIONS"],
+        allow_headers=["*"],
     )
 
     @app.get("/health", response_model=HealthResponse)

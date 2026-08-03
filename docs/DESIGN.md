@@ -63,7 +63,7 @@ renaming these responsibilities. `AGENTS.md` §Architecture mirrors this list.
 | `spread_compare/assets.py` | Logical asset catalog + per-venue representation labels (WHI-798 §3.3) for `GET /assets`. |
 | `spread_compare/bookwalk.py` | **Sole** walk-the-book → VWAP implementation (WHI-799 §4.3). CEX/perp adapters import this; no per-adapter copies. |
 | `spread_compare/costs.py` | **Sole** `spread_bps` / `total_cost_bps` formulas (WHI-799 §4.5 / §5.2). Aggregator never recomputes. |
-| `spread_compare/settings.py` | Typed loaders for `config/mid.yaml` and `config/aggregator.yaml` (fail-fast pydantic). |
+| `spread_compare/settings.py` | Typed loaders for `config/mid.yaml`, `config/aggregator.yaml`, `config/api.yaml` (fail-fast pydantic). |
 | `spread_compare/mids.py` | Reference-mid service (WHI-799 §3): P0–P3 chain, stocks median marks, short cache. |
 | `spread_compare/aggregator.py` | Concurrent adapter fan-out, per-venue timeout → `status=error`, SizeQuotePair assembly, response cache. |
 | `spread_compare/adapters/__init__.py` | Auto-discovers adapter modules via `pkgutil` (no hand-maintained import list). |
@@ -71,8 +71,9 @@ renaming these responsibilities. `AGENTS.md` §Architecture mirrors this list.
 | `spread_compare/adapters/registry.py` | `@register_adapter` self-registration; `get` / `list_venues`; `startup_all` / `aclose_all`. |
 | `spread_compare/adapters/mock.py` | Deterministic `mock` adapter (WHI-799 §4.7 fixture book) for aggregation development. |
 | `spread_compare/adapters/<venue>.py` | One module per real venue adapter (WHI-802…806); each self-registers on import — no edit to existing files. |
-| `spread_compare/api/app.py` | FastAPI app factory with lifespan (`startup_all`/`aclose_all`); wires mid service + aggregator on `app.state`. |
+| `spread_compare/api/app.py` | FastAPI app factory with lifespan (`startup_all`/`aclose_all`); CORS from `config/api.yaml`; wires mid service + aggregator on `app.state`. |
 | `spread_compare/api/quotes.py` | `GET /quotes`, `GET /venues`, `GET /assets` (WHI-807). |
+| `frontend/` | Next.js App Router dashboard (WHI-808): typed OpenAPI client, SpreadMatrix, section config modules, route shell. Section content in WHI-809+. |
 | `main.py` | CLI entry: `--dry-run` validates app (no network); live mode serves uvicorn. |
 
 Out of package (docs/research remains SSOT for formulas until DESIGN.md is fully written):

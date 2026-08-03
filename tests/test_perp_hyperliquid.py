@@ -143,7 +143,9 @@ async def test_hl_section_4_7_buy_vector() -> None:
         assert quote.instrument_type == "perp"
         assert quote.effective_price == Decimal("100044")
         assert quote.spread_bps == Decimal("4.4")
-        assert quote.total_cost_bps == Decimal("14.4")
+        # spread 4.4 + HL Tier-0 taker 4.5
+        assert quote.total_cost_bps == Decimal("8.9")
+        assert quote.fee_breakdown.trading_fee_bps == Decimal("4.5")
         assert quote.fee_breakdown.funding_rate_8h == Decimal("0.0001")  # 0.0000125 * 8
         assert quote.venue_mark == Decimal("100050")
         assert quote.basis_bps == Decimal("5")  # (100050-100000)/100000*10000

@@ -1,0 +1,76 @@
+# Bybit fee schedules (WHI-812).
+# Phase 1 quote path uses default_taker = Non-VIP / VIP 0 (no MNT discount).
+# VIP tiers listed for display only (WHI-799 §11 Q3).
+venue: bybit
+schedules:
+  - instrument_type: spot
+    maker_bps: "10"
+    taker_bps: "10"
+    default_tier: default_taker
+    funding_model: none
+    fee_embedded_in_quote: false
+    tiers:
+      - name: default_taker
+        maker_bps: "10"
+        taker_bps: "10"
+        volume_requirement: "Non-VIP / VIP 0"
+      - name: vip1
+        maker_bps: "6.75"
+        taker_bps: "8"
+        volume_requirement: "VIP 1"
+      - name: vip2
+        maker_bps: "6.5"
+        taker_bps: "7.75"
+        volume_requirement: "VIP 2"
+      - name: vip3
+        maker_bps: "6.25"
+        taker_bps: "7.5"
+        volume_requirement: "VIP 3"
+      - name: vip4
+        maker_bps: "5"
+        taker_bps: "6"
+        volume_requirement: "VIP 4"
+      - name: vip5
+        maker_bps: "4"
+        taker_bps: "5"
+        volume_requirement: "VIP 5"
+    source_urls:
+      - https://www.bybit.com/en/help-center/article/Trading-Fee-Structure
+      - https://www.bybit.com/en/announcement-info/fee-rate/
+    updated_at: "2026-08-03T00:00:00Z"
+  - instrument_type: perp
+    # USDT linear perpetual Non-VIP rates.
+    maker_bps: "2"
+    taker_bps: "5.5"
+    default_tier: default_taker
+    funding_model: perp_8h
+    fee_embedded_in_quote: false
+    tiers:
+      - name: default_taker
+        maker_bps: "2"
+        taker_bps: "5.5"
+        volume_requirement: "Non-VIP / VIP 0 (USDT perpetual)"
+      - name: vip1
+        maker_bps: "1.8"
+        taker_bps: "4"
+        volume_requirement: "VIP 1 (USDT perpetual)"
+      - name: vip2
+        maker_bps: "1.6"
+        taker_bps: "3.75"
+        volume_requirement: "VIP 2 (USDT perpetual)"
+      - name: vip3
+        maker_bps: "1.4"
+        taker_bps: "3.5"
+        volume_requirement: "VIP 3 (USDT perpetual)"
+      - name: vip4
+        maker_bps: "1.2"
+        taker_bps: "3.2"
+        volume_requirement: "VIP 4 (USDT perpetual)"
+      - name: vip5
+        maker_bps: "1"
+        taker_bps: "3.2"
+        volume_requirement: "VIP 5 (USDT perpetual)"
+    source_urls:
+      - https://www.bybit.com/en/help-center/article/Trading-Fee-Structure
+      - https://www.bybit.com/en/announcement-info/fee-rate/
+    updated_at: "2026-08-03T00:00:00Z"

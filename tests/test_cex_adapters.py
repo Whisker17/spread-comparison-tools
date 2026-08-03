@@ -142,7 +142,7 @@ async def test_perp_instrument_type(monkeypatch: pytest.MonkeyPatch, slug: str) 
 @pytest.mark.parametrize("slug", _VENUES)
 @pytest.mark.asyncio
 async def test_fee_tier_label_echoed(monkeypatch: pytest.MonkeyPatch, slug: str) -> None:
-    """fee_tier is labelled on the quote; bps stay default_taker until WHI-812."""
+    """fee_tier is labelled on the quote; Phase 1 bps stay default_taker (WHI-799 §11 Q3)."""
     adapter = get(slug)
     assert isinstance(adapter, CexBaseAdapter)
     _patch_book(monkeypatch, adapter, _BIDS, _ASKS)
@@ -151,6 +151,7 @@ async def test_fee_tier_label_echoed(monkeypatch: pytest.MonkeyPatch, slug: str)
     )
     assert quote.status == "ok"
     assert quote.fee_breakdown.fee_tier == "vip1"
+    # Spot default_taker remains 10 bps even when vip1 label is echoed.
     assert quote.fee_breakdown.trading_fee_bps == Decimal("10")
 
 
@@ -223,16 +224,20 @@ async def test_get_orderbook_spread_fetch_failure_raises(
 
 
 @pytest.mark.parametrize("slug", _VENUES)
-def test_get_fees_placeholder(slug: str) -> None:
+def test_get_fees_config_backed(slug: str) -> None:
     adapter = get(slug)
     fees = adapter.get_fees("BTC")
     assert fees.venue == slug
-    assert fees.taker_bps == Decimal("10")
+    assert fees.asset == "BTC"
+    assert fees.taker_bps == Decimal("10")  # spot default_taker
     assert fees.default_tier == "default_taker"
     assert fees.fee_embedded_in_quote is False
     assert fees.funding_model == "none"
+    assert fees.source_urls
     fees_perp = adapter.get_fees("BTC", instrument_type="perp")
     assert fees_perp.funding_model == "perp_8h"
+    assert fees_perp.taker_bps is not None
+    assert fees_perp.taker_bps > 0
 
 
 def test_adapters_import_bookwalk_and_costs() -> None:
@@ -303,6 +308,33 @@ async def test_quote_uses_fee_schedule_taker(
     assert quote.status == "ok"
     assert quote.fee_breakdown.trading_fee_bps == Decimal("7.5")
     assert quote.total_cost_bps == Decimal("11.9")  # 4.4 + 7.5
+
+
+@pytest.mark.asyncio
+async def test_cex_perp_quote_uses_config_taker(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Perp trading_fee_bps match config/fees default_taker (not spot 10 bps)."""
+    adapter = get("binance")
+    assert isinstance(adapter, CexBaseAdapter)
+    _patch_book(monkeypatch, adapter, _BIDS, _ASKS)
+    quote = await adapter.get_quote(
+        "BTC", "buy", Decimal("10000"), mid=_MID, instrument_type="perp"
+    )
+    assert quote.status == "ok"
+    assert quote.instrument_type == "perp"
+    assert quote.fee_breakdown.trading_fee_bps == Decimal("5")
+    assert quote.total_cost_bps == Decimal("9.4")  # 4.4 + 5
+
+    bybit = get("bybit")
+    assert isinstance(bybit, CexBaseAdapter)
+    _patch_book(monkeypatch, bybit, _BIDS, _ASKS)
+    bq = await bybit.get_quote(
+        "BTC", "buy", Decimal("10000"), mid=_MID, instrument_type="perp"
+    )
+    assert bq.status == "ok"
+    assert bq.fee_breakdown.trading_fee_bps == Decimal("5.5")
+    assert bq.total_cost_bps == Decimal("9.9")  # 4.4 + 5.5
 
 
 @pytest.mark.asyncio

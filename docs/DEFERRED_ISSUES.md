@@ -66,11 +66,10 @@ defines none: `docs/GIT_WORKFLOW.md` § High-risk paths), **Medium**
   mid-routing seeds (`TOKENIZED_*`, `EQUITY_PERP_ASSETS`) but not returned by
   `/assets`. Expand with WHI-810.
 
-- **Perp adapter rate/depth/taker constants live in source, not `config/`** (Low, WHI-803).
-  `spread_compare/adapters/_perp_common.py`, `perp_*.py` — placeholders and rate floors
-  (`PLACEHOLDER_TAKER_BPS`, min intervals, depth limits) cite WHI-800 / TODO(WHI-812)
-  until `docs/DESIGN.md` §2 exists. Move into typed `config/` once that section is
-  written (same blocking gap called out in AGENTS.md Status).
+- **Perp adapter rate/depth constants live in source, not `config/`** (Low, WHI-803).
+  `spread_compare/adapters/_perp_common.py`, `perp_*.py` — min intervals and depth
+  limits still cite WHI-800 until `docs/DESIGN.md` §2 exists. Taker bps moved to
+  `config/fees/` in WHI-812; rate/depth still deferred.
 
 - **Perp `venue_mark` / funding cached at startup, not per-quote** (Medium, WHI-803).
   HL/Lighter marks (and ApeX mark via blue-chip ticker warm-up) are populated in
@@ -82,10 +81,11 @@ defines none: `docs/GIT_WORKFLOW.md` § High-risk paths), **Medium**
   WHI-799 §8 mentions lot/tick for perp DEX; Phase 1 walks `q_star = N/mid` raw.
   Fix when fee/size config lands (WHI-812) or when a size-precision matrix is added.
 
-- **ApeX `funding_rate_8h` left null** (Low, WHI-803).
-  WHI-800 §4.3 documents the ticker field but not the funding period (hourly vs 8h).
-  Adapter omits the field rather than invent a conversion; WHI-812 should fill it
-  with a cited period.
+- **ApeX `funding_rate_8h` left null on quote path** (Low, WHI-803 / WHI-812).
+  `config/fees/apex.yaml` now records `funding_model: perp_continuous` (hourly on
+  the hour, cited). Quote path still does not join the ticker funding field into
+  `FeeBreakdown.funding_rate_8h` (would need hourly→8h normalization for the
+  WHI-799 field name). Wire when funding display is needed.
 
 - **Shared Quote assembly helper not extracted** (Low, WHI-801).
   `spread_compare/adapters/mock.py::_quote_shell` — mapping `ReferenceMid` + status
@@ -113,15 +113,12 @@ defines none: `docs/GIT_WORKFLOW.md` § High-risk paths), **Medium**
   loader nor DESIGN §2 exists yet. Subclasses can override via
   `super().__init__(timeout=…)`. Move to typed YAML when DESIGN §2 is written.
 
-- **CEX rate-limit / depth / fee placeholder tunables hardcoded** (Low, WHI-802).
+- **CEX rate-limit / depth tunables hardcoded** (Low, WHI-802).
   `spread_compare/adapters/cex_binance.py::_DEPTH_LIMITS` and
   `BinanceAdapter._min_interval_s`;
   `cex_bybit.py::_ORDERBOOK_LIMIT` and `BybitAdapter._min_interval_s`;
-  `CexBaseAdapter._max_retries` / `_backoff_start_s` /
-  `_cex_common.PLACEHOLDER_TAKER_BPS` — config/README.md wants YAML, but
-  DESIGN.md §2 and the typed loader still do not exist. Defer until DESIGN §2 +
-  config loader land (or WHI-812 for fees). Fix: `config/cex.yaml` + pydantic
-  model, loaded at adapter startup.
+  `CexBaseAdapter._max_retries` / `_backoff_start_s` — fee placeholders moved to
+  `config/fees/` (WHI-812); rate/depth still need DESIGN.md §2 + `config/cex.yaml`.
 
 - **`funding_rate_8h` not fetched on CEX quote path** (Low, WHI-802).
   Spec allows null "when not cheaply available". Depth endpoints do not carry
@@ -139,10 +136,9 @@ defines none: `docs/GIT_WORKFLOW.md` § High-risk paths), **Medium**
 
 - **AMM fee-tier / tick-spacing probe lists are module constants** (Low, WHI-804).
   `spread_compare/adapters/_amm_common.py::UNISWAP_FEE_TIERS` (and
-  `PANCAKE_FEE_TIERS`, `AERO_TICK_SPACINGS`) — AGENTS.md wants non-secret tunables
-  in `config/` traced to DESIGN.md §2, but DESIGN §2 is still empty and WHI-812
-  owns fee numbers. Constants are cited to WHI-800 (2026-08-03). Move to typed
-  YAML when DESIGN §2 / WHI-812 lands.
+  `PANCAKE_FEE_TIERS`, `AERO_TICK_SPACINGS`) — these drive which pools the quoter
+  probes at runtime. WHI-812 put the display `lp_fee_tiers_bps` into
+  `config/fees/`; probe lists remain source constants until DESIGN.md §2.
 
 - **Native gas USD uses Binance spot bookTicker inside AMM helpers** (Low, WHI-804).
   `spread_compare/adapters/_amm_common.py::fetch_binance_mid` — WHI-804 requires
@@ -165,6 +161,11 @@ defines none: `docs/GIT_WORKFLOW.md` § High-risk paths), **Medium**
 ---
 
 ## Resolved
+
+- **CEX / perp `PLACEHOLDER_TAKER_BPS` + empty `source_urls`** (Low, WHI-802/803 →
+  fixed in WHI-812). Venue default_taker schedules live in `config/fees/*.yaml`,
+  loaded by `spread_compare/fees.py`; adapters' `get_fees` and quote paths use
+  config-backed taker bps. `TODO(WHI-812)` markers removed.
 
 - **`mid_stale` is never computed by adapters** (Low, WHI-801 → fixed in WHI-807).
   Aggregator stamps `mid_stale` via `spread_compare.mids.is_mid_stale` /

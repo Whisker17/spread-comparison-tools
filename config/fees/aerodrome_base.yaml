@@ -1,0 +1,18 @@
+# Aerodrome (Base) fee schedule (WHI-812).
+# No Uniswap-style fixed fee-tier table — CL tick spacing ≠ fixed fee schedule.
+# LP fee is embedded in quoter prices. gas_estimate_usd is a static display fallback.
+venue: aerodrome_base
+schedules:
+  - instrument_type: amm_pool
+    maker_bps: null
+    taker_bps: null
+    default_tier: pool
+    lp_fee_tiers_bps: null
+    # unvalidated engineering estimate (display fallback only; live quotes use quoter/route gas)
+    gas_estimate_usd: "0.10"
+    funding_model: none
+    fee_embedded_in_quote: true
+    source_urls:
+      - https://aerodrome.finance/security
+      - https://docs.aerodrome.finance/
+    updated_at: "2026-08-03T00:00:00Z"
