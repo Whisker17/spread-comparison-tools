@@ -7,12 +7,12 @@ import {
   EVM_AMM_VENUES,
   ON_CHAIN_VENUE_CLASSES,
   REPRESENTATIONS,
-  BLUE_CHIP_VENUE_META,
   TESSERA_EVM_VENUES,
   venueSummaryLabel,
 } from "@/config/sections/blue-chips";
 import {
   hiddenVenuesForAsset,
+  VENUE_META,
   venuesForAsset,
 } from "@/config/sections/helpers";
 
@@ -71,6 +71,12 @@ describe("blue-chips section config (WHI-809)", () => {
     expect(eth.pancakeswap_bsc.split(" · ")).not.toContain("ETH");
   });
 
+  it("omits the CEX/perp venue symbol — the logical ticker already is it", () => {
+    const labels = buildVenueLabels("BTC", ["binance", "hyperliquid"]);
+    expect(labels.binance).toBe("Binance · spot · USDT");
+    expect(labels.hyperliquid).toBe("Hyperliquid · perp · USDC");
+  });
+
   it("annotates quote currency correctly (HL/Lighter USDC)", () => {
     const labels = buildVenueLabels("ETH", [
       "humidifi",
@@ -98,7 +104,7 @@ describe("blue-chips section config (WHI-809)", () => {
     for (const asset of blueChipsSection.assets) {
       const venues = venuesForAsset(blueChipsSection, asset);
       for (const slug of venues) {
-        const cls = BLUE_CHIP_VENUE_META[slug]?.venueClass;
+        const cls = VENUE_META[slug]?.venueClass;
         if (!cls || !ON_CHAIN_VENUE_CLASSES.has(cls)) continue;
         const rep = REPRESENTATIONS[asset as "BTC" | "ETH" | "SOL"]?.[slug];
         expect(

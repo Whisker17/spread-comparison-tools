@@ -1,15 +1,25 @@
 import { NOTIONAL_TIERS_USD } from "@/config/notionals";
 import {
+  buildVenueRowLabels,
+  buildVenueSummaryLabel,
+  isOrderbookVenue,
   ON_CHAIN_VENUE_CLASSES,
   ORDERBOOK_VENUE_CLASSES,
+  VENUE_META,
 } from "@/config/sections/helpers";
-import type {
-  SectionConfig,
-  VenueClass,
-  VenueMeta,
-} from "@/config/sections/types";
+import type { SectionConfig } from "@/config/sections/types";
 
-export { ON_CHAIN_VENUE_CLASSES, ORDERBOOK_VENUE_CLASSES };
+/**
+ * Re-exported for callers that already import section config from here.
+ * The SSOT is `config/sections/helpers.ts` — do not redefine venue metadata
+ * or venue-class sets per section.
+ */
+export {
+  isOrderbookVenue,
+  ON_CHAIN_VENUE_CLASSES,
+  ORDERBOOK_VENUE_CLASSES,
+  VENUE_META,
+};
 
 /**
  * Crypto blue chips section (WHI-809).
@@ -50,83 +60,6 @@ export const BLUE_CHIP_VENUES = [
 ] as const;
 
 export type BlueChipAsset = "BTC" | "ETH" | "SOL";
-
-/**
- * Static venue metadata for labels / quote-currency annotation.
- * Display names mirror `spread_compare/venues.py` (GET /venues). Quote
- * currency is FE-only annotation (WHI-798 §7.1). Representation labels
- * prefer `GET /assets` when BlueChipsSection has fetched them; the
- * static `REPRESENTATIONS` table is the offline / test fallback kept in
- * lockstep with `spread_compare/assets.py`.
- */
-export const BLUE_CHIP_VENUE_META: Readonly<Record<string, VenueMeta>> = {
-  binance: {
-    displayName: "Binance",
-    venueClass: "cex",
-    quoteCurrency: "USDT",
-  },
-  bybit: {
-    displayName: "Bybit",
-    venueClass: "cex",
-    quoteCurrency: "USDT",
-  },
-  hyperliquid: {
-    displayName: "Hyperliquid",
-    venueClass: "perp_dex",
-    // USDC-margined perps (not USDT).
-    quoteCurrency: "USDC",
-  },
-  lighter: {
-    displayName: "Lighter",
-    venueClass: "perp_dex",
-    quoteCurrency: "USDC",
-  },
-  apex: {
-    displayName: "ApeX",
-    venueClass: "perp_dex",
-    quoteCurrency: "USDT",
-  },
-  uniswap_eth: {
-    displayName: "Uniswap (Ethereum)",
-    venueClass: "amm_dex",
-    quoteCurrency: "USDC",
-  },
-  aerodrome_base: {
-    displayName: "Aerodrome (Base)",
-    venueClass: "amm_dex",
-    quoteCurrency: "USDC",
-  },
-  pancakeswap_bsc: {
-    displayName: "PancakeSwap (BSC)",
-    venueClass: "amm_dex",
-    quoteCurrency: "USDT",
-  },
-  humidifi: {
-    displayName: "HumidiFi",
-    venueClass: "prop_amm",
-    quoteCurrency: "USDC",
-  },
-  tessera_solana: {
-    displayName: "Tessera (Solana)",
-    venueClass: "prop_amm",
-    quoteCurrency: "USDC",
-  },
-  tessera_base: {
-    displayName: "Tessera (Base)",
-    venueClass: "prop_amm",
-    quoteCurrency: "USDC",
-  },
-  tessera_bsc: {
-    displayName: "Tessera (BSC)",
-    venueClass: "prop_amm",
-    quoteCurrency: "USDT",
-  },
-  bisonfi: {
-    displayName: "BisonFi",
-    venueClass: "prop_amm",
-    quoteCurrency: "USDC",
-  },
-};
 
 /**
  * Per-asset venue → representation label (WHI-798 §3.3).
@@ -203,14 +136,6 @@ export const blueChipsSection: SectionConfig = {
   pollIntervalMs: BLUE_CHIP_POLL_MS,
 };
 
-function defaultInstrumentType(
-  venueClass: VenueClass | undefined,
-): string | undefined {
-  if (venueClass === "perp_dex") return "perp";
-  if (venueClass === "cex") return "spot";
-  return undefined;
-}
-
 export type BuildVenueLabelsOptions = {
   /**
    * Representation map from `GET /assets` (preferred). Merged over the
@@ -220,52 +145,30 @@ export type BuildVenueLabelsOptions = {
   representationOverrides?: Readonly<Record<string, string>>;
 };
 
+/** Static fallback merged under `GET /assets` overrides for one asset. */
+function representationsFor(
+  asset: string,
+  overrides?: Readonly<Record<string, string>>,
+): Readonly<Record<string, string>> {
+  return { ...(REPRESENTATIONS[asset as BlueChipAsset] ?? {}), ...overrides };
+}
+
 /**
- * Build display labels for matrix rows.
- *
- * - On-chain (AMM / prop AMM): display name + representation + quote currency
- * - CEX / perp: display name + instrument type + quote currency
- * - Representation never collapses to bare logical ticker for wrappers
+ * Matrix / TOB row labels. Shape lives in `helpers.buildVenueRowLabels`;
+ * this section only supplies its representation data. Crypto blue chips omit
+ * the CEX/perp venue symbol — it just repeats the logical ticker.
  */
 export function buildVenueLabels(
   asset: string,
   venues: readonly string[],
   options: BuildVenueLabelsOptions = {},
 ): Record<string, string> {
-  const staticReps =
-    REPRESENTATIONS[asset as BlueChipAsset] ??
-    ({} as Readonly<Record<string, string>>);
-  const reps = { ...staticReps, ...options.representationOverrides };
-  const out: Record<string, string> = {};
-
-  for (const slug of venues) {
-    const meta = BLUE_CHIP_VENUE_META[slug];
-    const display = meta?.displayName ?? slug;
-    const quote = meta?.quoteCurrency;
-    const venueClass = meta?.venueClass;
-    const rep = reps[slug];
-    const instrument = defaultInstrumentType(venueClass);
-
-    const parts: string[] = [display];
-
-    if (venueClass && ON_CHAIN_VENUE_CLASSES.has(venueClass)) {
-      if (rep) {
-        parts.push(rep);
-      }
-    } else if (venueClass === "cex" || venueClass === "perp_dex") {
-      if (instrument) {
-        parts.push(instrument);
-      }
-    }
-
-    if (quote) {
-      parts.push(quote);
-    }
-
-    out[slug] = parts.join(" · ");
-  }
-
-  return out;
+  return buildVenueRowLabels(venues, {
+    representations: representationsFor(
+      asset,
+      options.representationOverrides,
+    ),
+  });
 }
 
 /**
@@ -281,24 +184,9 @@ export function venueSummaryLabel(
     representationOverrides?: Readonly<Record<string, string>>;
   } = {},
 ): string {
-  const meta = BLUE_CHIP_VENUE_META[slug];
-  const name = meta?.displayName ?? slug;
-  if (!meta) return name;
-  if (meta.venueClass === "cex") {
-    return `${name} ${defaultInstrumentType("cex") ?? "spot"}`;
-  }
-  if (meta.venueClass === "perp_dex") {
-    return `${name} perp`;
-  }
-  if (options.asset && ON_CHAIN_VENUE_CLASSES.has(meta.venueClass)) {
-    const staticRep = REPRESENTATIONS[options.asset as BlueChipAsset]?.[slug];
-    const rep = options.representationOverrides?.[slug] ?? staticRep;
-    if (rep) return `${name} (${rep})`;
-  }
-  return name;
-}
-
-export function isOrderbookVenue(slug: string): boolean {
-  const cls = BLUE_CHIP_VENUE_META[slug]?.venueClass;
-  return cls !== undefined && ORDERBOOK_VENUE_CLASSES.has(cls);
+  return buildVenueSummaryLabel(slug, {
+    representations: options.asset
+      ? representationsFor(options.asset, options.representationOverrides)
+      : undefined,
+  });
 }

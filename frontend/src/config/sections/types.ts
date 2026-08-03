@@ -1,3 +1,4 @@
+import type { InstrumentType } from "@/lib/api";
 import type { RankMetric, SideView } from "@/lib/summary";
 
 /**
@@ -41,12 +42,13 @@ export type SectionConfig = {
    */
   pollIntervalMs?: number;
   /**
-   * Optional instrument filter forwarded to `GET /quotes`.
+   * Optional instrument filter forwarded to `GET /quotes` (union derived from
+   * the generated OpenAPI types — see `lib/api.ts::InstrumentType`).
    * Equity-perp boards must pass `"perp"` so CEX adapters resolve TradFi
    * contracts instead of defaulting to spot (WHI-810 / WHI-826 `_perp_only`).
    * Omit to let the backend pick the venue-class default.
    */
-  instrumentType?: "spot" | "perp" | "amm_pool" | "prop_amm";
+  instrumentType?: InstrumentType;
 };
 
 /** Venue class used for label / instrument annotations (mirrors backend VenueClass). */

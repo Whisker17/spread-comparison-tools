@@ -16,6 +16,7 @@ import {
 import {
   fetchQuotes,
   fetchQuotesMultiNotional,
+  type InstrumentType,
   type QuotesResponse,
   type ReferenceMid,
   type SizeQuotePair,
@@ -32,7 +33,7 @@ export type UseQuotesParams = {
   notional: string | number;
   venues?: readonly string[];
   side?: "buy" | "sell";
-  instrument_type?: "spot" | "perp" | "amm_pool" | "prop_amm";
+  instrument_type?: InstrumentType;
   /** Polling interval ms; 0 / false disables. Default DEFAULT_POLL_MS (15s). */
   refetchInterval?: number | false;
   enabled?: boolean;
@@ -82,7 +83,7 @@ export type UseQuotesMatrixParams = {
   notionals: readonly (string | number)[];
   venues?: readonly string[];
   side?: "buy" | "sell";
-  instrument_type?: "spot" | "perp" | "amm_pool" | "prop_amm";
+  instrument_type?: InstrumentType;
   refetchInterval?: number | false;
   enabled?: boolean;
 };

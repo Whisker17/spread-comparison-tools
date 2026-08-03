@@ -1,13 +1,10 @@
 import { NOTIONAL_TIERS_USD } from "@/config/notionals";
 import {
-  ON_CHAIN_VENUE_CLASSES,
-  ORDERBOOK_VENUE_CLASSES,
+  buildVenueRowLabels,
+  buildVenueSummaryLabel,
 } from "@/config/sections/helpers";
-import type {
-  SectionConfig,
-  VenueClass,
-  VenueMeta,
-} from "@/config/sections/types";
+import type { SectionConfig } from "@/config/sections/types";
+import type { InstrumentType } from "@/lib/api";
 
 /**
  * Stocks section (WHI-810): two sub-boards.
@@ -72,44 +69,6 @@ export const STOCK_ASSET_SUBTITLES: Readonly<Record<string, string>> = {
   NVDA: "Equity perp · exact ticker on five venues",
   AAPL: "Equity perp · exact ticker on five venues",
   MSFT: "Equity perp · exact ticker on five venues",
-};
-
-export const STOCKS_VENUE_META: Readonly<Record<string, VenueMeta>> = {
-  binance: {
-    displayName: "Binance",
-    venueClass: "cex",
-    quoteCurrency: "USDT",
-  },
-  bybit: {
-    displayName: "Bybit",
-    venueClass: "cex",
-    quoteCurrency: "USDT",
-  },
-  hyperliquid: {
-    displayName: "Hyperliquid",
-    venueClass: "perp_dex",
-    quoteCurrency: "USDC",
-  },
-  lighter: {
-    displayName: "Lighter",
-    venueClass: "perp_dex",
-    quoteCurrency: "USDC",
-  },
-  apex: {
-    displayName: "ApeX",
-    venueClass: "perp_dex",
-    quoteCurrency: "USDT",
-  },
-  pancakeswap_bsc: {
-    displayName: "PancakeSwap (BSC)",
-    venueClass: "amm_dex",
-    quoteCurrency: "USDT",
-  },
-  tessera_bsc: {
-    displayName: "Tessera (BSC)",
-    venueClass: "prop_amm",
-    quoteCurrency: "USDT",
-  },
 };
 
 /**
@@ -184,9 +143,6 @@ export const stocksPageHeader = {
     "bStocks BSC three-way (CEX spot × AMM × prop AMM) plus equity perps across five orderbook venues. Where is it cheapest to buy the same exposure at your size?",
 } as const;
 
-/** @deprecated Prefer `stocksPageHeader` — kept for any external import of the old name. */
-export const stocksSection = stocksPageHeader;
-
 /**
  * P0-A: tokenized three-way on BSC.
  * NVDAON has no Binance spot — hide that row (WHI-798 §6.2 / assets.py).
@@ -229,129 +185,65 @@ export const equityPerpsBoard: SectionConfig = {
 export type StocksBoardKind = "tokenized" | "equity_perp";
 
 /**
- * CEX/perp instrument label for matrix rows. Prefer `section.instrumentType`
- * (same field that drives GET /quotes) so labels cannot disagree with the
- * request shape.
+ * Everything the label builders need about *where* a row is rendered — one
+ * object instead of the same four fields threaded through every call site.
  */
-function instrumentTypeFor(
-  venueClass: VenueClass | undefined,
-  sectionInstrument: SectionConfig["instrumentType"] | undefined,
-): string | undefined {
-  if (venueClass === "perp_dex") return "perp";
-  if (venueClass === "cex") {
-    if (sectionInstrument === "perp" || sectionInstrument === "spot") {
-      return sectionInstrument;
-    }
-    // Default CEX books are spot when the board does not pin instrumentType.
-    return "spot";
-  }
-  return undefined;
-}
-
-export type BuildStocksVenueLabelsOptions = {
+export type StocksLabelContext = {
+  /** Which sub-board (picks the representation table). */
   board: StocksBoardKind;
-  /** Forward `section.instrumentType` so CEX labels match the quotes request. */
-  instrumentType?: SectionConfig["instrumentType"];
+  /** Logical asset id, e.g. "QQQB" / "TSLA". */
+  asset: string;
+  /**
+   * Forward `section.instrumentType` so CEX labels match the quotes request
+   * (equity perps pin "perp"; the tokenized board leaves CEX on spot).
+   */
+  instrumentType?: InstrumentType;
+  /** Representations from `GET /assets`, merged over the static fallback. */
   representationOverrides?: Readonly<Record<string, string>>;
 };
 
-function staticRepsFor(
-  asset: string,
-  board: StocksBoardKind,
+/** Static per-board table merged under `GET /assets` overrides. */
+function representationsFor(
+  ctx: StocksLabelContext,
 ): Readonly<Record<string, string>> {
-  if (board === "tokenized") {
-    return (
-      TOKENIZED_REPRESENTATIONS[asset as TokenizedStockAsset] ??
-      ({} as Readonly<Record<string, string>>)
-    );
-  }
-  return (
-    EQUITY_PERP_REPRESENTATIONS[asset as EquityPerpAsset] ??
-    ({} as Readonly<Record<string, string>>)
-  );
+  const staticReps =
+    ctx.board === "tokenized"
+      ? TOKENIZED_REPRESENTATIONS[ctx.asset as TokenizedStockAsset]
+      : EQUITY_PERP_REPRESENTATIONS[ctx.asset as EquityPerpAsset];
+  return { ...(staticReps ?? {}), ...ctx.representationOverrides };
 }
 
 /**
- * Matrix / TOB row labels.
+ * Matrix / TOB row labels. Shape lives in `helpers.buildVenueRowLabels`;
+ * this section only supplies the representation data.
+ *
  * - Tokenized on-chain: display + token symbol + USDT
- * - CEX tokenized: display + spot + USDT (+ symbol)
- * - Equity perp: display + perp + quote (+ xyz: coin for HL)
+ * - CEX tokenized: display + spot + venue symbol
+ * - Equity perp: display + perp + venue symbol / `xyz:` coin (+ quote when
+ *   the symbol does not already end in it)
  */
 export function buildStocksVenueLabels(
-  asset: string,
   venues: readonly string[],
-  options: BuildStocksVenueLabelsOptions,
+  ctx: StocksLabelContext,
 ): Record<string, string> {
-  const staticReps = staticRepsFor(asset, options.board);
-  const reps = { ...staticReps, ...options.representationOverrides };
-  const out: Record<string, string> = {};
-
-  for (const slug of venues) {
-    const meta = STOCKS_VENUE_META[slug];
-    const display = meta?.displayName ?? slug;
-    const quote = meta?.quoteCurrency;
-    const venueClass = meta?.venueClass;
-    const rep = reps[slug];
-    const instrument = instrumentTypeFor(venueClass, options.instrumentType);
-
-    const parts: string[] = [display];
-
-    if (venueClass && ON_CHAIN_VENUE_CLASSES.has(venueClass)) {
-      if (rep) parts.push(rep);
-    } else if (venueClass === "cex" || venueClass === "perp_dex") {
-      if (instrument) parts.push(instrument);
-      // Venue symbol / HIP-3 coin so representation is not dropped from the row.
-      if (rep) parts.push(rep);
-    }
-
-    if (quote) parts.push(quote);
-    out[slug] = parts.join(" · ");
-  }
-
-  return out;
+  return buildVenueRowLabels(venues, {
+    representations: representationsFor(ctx),
+    instrumentType: ctx.instrumentType,
+    // Stock boards show the venue symbol: the logical id (NVDAB vs NVDAon,
+    // xyz:TSLA) does not identify the traded instrument on its own.
+    includeOrderbookSymbol: true,
+  });
 }
 
 export function stocksVenueSummaryLabel(
   slug: string,
-  options: {
-    board: StocksBoardKind;
-    asset?: string;
-    instrumentType?: SectionConfig["instrumentType"];
-    representationOverrides?: Readonly<Record<string, string>>;
-  },
+  ctx: StocksLabelContext,
 ): string {
-  const meta = STOCKS_VENUE_META[slug];
-  const name = meta?.displayName ?? slug;
-  if (!meta) return name;
-
-  if (meta.venueClass === "cex") {
-    const inst = instrumentTypeFor("cex", options.instrumentType) ?? "spot";
-    if (options.asset) {
-      const staticRep = staticRepsFor(options.asset, options.board)[slug];
-      const rep = options.representationOverrides?.[slug] ?? staticRep;
-      if (rep) return `${name} ${inst} (${rep})`;
-    }
-    return `${name} ${inst}`;
-  }
-  if (meta.venueClass === "perp_dex") {
-    if (options.asset) {
-      const staticRep = staticRepsFor(options.asset, options.board)[slug];
-      const rep = options.representationOverrides?.[slug] ?? staticRep;
-      if (rep) return `${name} perp (${rep})`;
-    }
-    return `${name} perp`;
-  }
-  if (options.asset && ON_CHAIN_VENUE_CLASSES.has(meta.venueClass)) {
-    const staticRep = staticRepsFor(options.asset, options.board)[slug];
-    const rep = options.representationOverrides?.[slug] ?? staticRep;
-    if (rep) return `${name} (${rep})`;
-  }
-  return name;
-}
-
-export function isStocksOrderbookVenue(slug: string): boolean {
-  const cls = STOCKS_VENUE_META[slug]?.venueClass;
-  return cls !== undefined && ORDERBOOK_VENUE_CLASSES.has(cls);
+  return buildVenueSummaryLabel(slug, {
+    representations: representationsFor(ctx),
+    instrumentType: ctx.instrumentType,
+    includeOrderbookSymbol: true,
+  });
 }
 
 /** Persistent P0-A footnote (WHI-798 §8 Q14). */

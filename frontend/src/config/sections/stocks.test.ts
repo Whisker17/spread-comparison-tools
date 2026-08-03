@@ -7,7 +7,6 @@ import {
   EQUITY_PERP_REPRESENTATIONS,
   EQUITY_PERP_VENUES,
   equityPerpsBoard,
-  isStocksOrderbookVenue,
   STOCK_ASSET_TITLES,
   stocksVenueSummaryLabel,
   TOKENIZED_REPRESENTATIONS,
@@ -17,6 +16,7 @@ import {
 } from "@/config/sections/stocks";
 import {
   hiddenVenuesForAsset,
+  isOrderbookVenue,
   venuesForAsset,
 } from "@/config/sections/helpers";
 import type { SizeQuotePair } from "@/lib/api";
@@ -106,8 +106,9 @@ describe("stocks section config (WHI-810)", () => {
   });
 
   it("surfaces Hyperliquid xyz: representation on equity-perp labels", () => {
-    const labels = buildStocksVenueLabels("TSLA", [...EQUITY_PERP_VENUES], {
+    const labels = buildStocksVenueLabels([...EQUITY_PERP_VENUES], {
       board: "equity_perp",
+      asset: "TSLA",
       instrumentType: equityPerpsBoard.instrumentType,
     });
     expect(labels.hyperliquid).toContain("xyz:TSLA");
@@ -118,23 +119,38 @@ describe("stocks section config (WHI-810)", () => {
     expect(EQUITY_PERP_REPRESENTATIONS.TSLA.hyperliquid).toBe("xyz:TSLA");
   });
 
+  it("drops the quote-currency part when the symbol already ends in it", () => {
+    const labels = buildStocksVenueLabels([...EQUITY_PERP_VENUES], {
+      board: "equity_perp",
+      asset: "TSLA",
+      instrumentType: equityPerpsBoard.instrumentType,
+    });
+    // No "TSLAUSDT · USDT" / "TSLA-USDT · USDT" tail.
+    expect(labels.binance).toBe("Binance · perp · TSLAUSDT");
+    expect(labels.apex).toBe("ApeX · perp · TSLA-USDT");
+    // Still annotated where the symbol does not imply the quote leg.
+    expect(labels.hyperliquid).toBe("Hyperliquid · perp · xyz:TSLA · USDC");
+    expect(labels.lighter).toBe("Lighter · perp · TSLA · USDC");
+  });
+
   it("labels tokenized CEX as spot with venue symbol and on-chain tokens", () => {
-    const labels = buildStocksVenueLabels("NVDAB", [...TOKENIZED_STOCK_VENUES], {
+    const labels = buildStocksVenueLabels([...TOKENIZED_STOCK_VENUES], {
       board: "tokenized",
+      asset: "NVDAB",
     });
     expect(labels.binance).toMatch(/spot/i);
     expect(labels.binance).toContain("NVDABUSDT");
     expect(labels.binance).toMatch(/USDT/);
-    expect(labels.pancakeswap_bsc).toContain("NVDAB");
-    expect(labels.tessera_bsc).toContain("NVDAB");
+    expect(labels.pancakeswap_bsc).toBe("PancakeSwap (BSC) · NVDAB · USDT");
+    expect(labels.tessera_bsc).toBe("Tessera (BSC) · NVDAB · USDT");
     expect(TOKENIZED_REPRESENTATIONS.NVDAON.pancakeswap_bsc).toBe("NVDAon");
   });
 
   it("marks only orderbook classes for TOB rows", () => {
-    expect(isStocksOrderbookVenue("binance")).toBe(true);
-    expect(isStocksOrderbookVenue("hyperliquid")).toBe(true);
-    expect(isStocksOrderbookVenue("pancakeswap_bsc")).toBe(false);
-    expect(isStocksOrderbookVenue("tessera_bsc")).toBe(false);
+    expect(isOrderbookVenue("binance")).toBe(true);
+    expect(isOrderbookVenue("hyperliquid")).toBe(true);
+    expect(isOrderbookVenue("pancakeswap_bsc")).toBe(false);
+    expect(isOrderbookVenue("tessera_bsc")).toBe(false);
   });
 
   it("includes wrapper/symbol in on-chain and CEX summary labels", () => {

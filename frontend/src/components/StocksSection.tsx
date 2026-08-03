@@ -9,7 +9,6 @@ import {
   BSTOCKS_REBASE_FOOTNOTE,
   buildStocksVenueLabels,
   equityPerpsBoard,
-  isStocksOrderbookVenue,
   STOCK_ASSET_SUBTITLES,
   STOCK_ASSET_TITLES,
   STOCKS_MID_SOURCE_HINT,
@@ -17,8 +16,12 @@ import {
   stocksVenueSummaryLabel,
   tokenizedStocksBoard,
   type StocksBoardKind,
+  type StocksLabelContext,
 } from "@/config/sections/stocks";
-import { venuesForAsset } from "@/config/sections/helpers";
+import {
+  isOrderbookVenue,
+  venuesForAsset,
+} from "@/config/sections/helpers";
 import type { SectionConfig } from "@/config/sections/types";
 import { fetchAssets } from "@/lib/api";
 
@@ -175,31 +178,31 @@ function StocksAssetBlock({
     [board, asset],
   );
 
+  const labelContext: StocksLabelContext = useMemo(
+    () => ({
+      board: kind,
+      asset,
+      instrumentType: board.instrumentType,
+      representationOverrides,
+    }),
+    [kind, asset, board.instrumentType, representationOverrides],
+  );
+
   const venueLabels = useMemo(
-    () =>
-      buildStocksVenueLabels(asset, venues, {
-        board: kind,
-        instrumentType: board.instrumentType,
-        representationOverrides,
-      }),
-    [asset, venues, kind, board.instrumentType, representationOverrides],
+    () => buildStocksVenueLabels(venues, labelContext),
+    [venues, labelContext],
   );
 
   const summaryVenueLabels = useMemo(() => {
     const out: Record<string, string> = {};
     for (const slug of venues) {
-      out[slug] = stocksVenueSummaryLabel(slug, {
-        board: kind,
-        asset,
-        instrumentType: board.instrumentType,
-        representationOverrides,
-      });
+      out[slug] = stocksVenueSummaryLabel(slug, labelContext);
     }
     return out;
-  }, [venues, kind, asset, board.instrumentType, representationOverrides]);
+  }, [venues, labelContext]);
 
   const orderbookVenues = useMemo(
-    () => venues.filter((v) => isStocksOrderbookVenue(v)),
+    () => venues.filter((v) => isOrderbookVenue(v)),
     [venues],
   );
 
