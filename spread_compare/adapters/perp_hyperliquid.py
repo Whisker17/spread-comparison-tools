@@ -12,13 +12,11 @@ from typing import Any, Literal
 
 from spread_compare.adapters._perp_common import (
     DEFAULT_FEE_TIER,
-    PLACEHOLDER_TAKER_BPS,
     AsyncRateLimiter,
     OrderbookLevels,
     build_quote_from_book,
     build_top_of_book,
     build_unsupported_quote,
-    placeholder_fee_schedule,
     request_json,
     require_mid_asset,
     resolve_perp_instrument,
@@ -31,6 +29,7 @@ from spread_compare.adapters.base import (
     default_instrument_type,
 )
 from spread_compare.adapters.registry import register_adapter
+from spread_compare.fees import get_fee_schedule
 from spread_compare.models import (
     FeeSchedule,
     InstrumentType,
@@ -112,6 +111,9 @@ class HyperliquidAdapter(BaseAdapter):
         bids, asks = await self._fetch_l2_book(coin)
         funding_8h = self._funding_rate_8h(coin)
         mark = self._mark_px.get(coin)
+        schedule = self.get_fees(asset_key, instrument_type=itype)
+        if schedule.taker_bps is None:
+            raise AdapterError(f"{self.venue}: fee schedule missing taker_bps")
         return build_quote_from_book(
             venue=self.venue,
             asset=asset_key,
@@ -123,7 +125,7 @@ class HyperliquidAdapter(BaseAdapter):
             bids=bids,
             asks=asks,
             fee_tier=tier,
-            trading_fee_bps=PLACEHOLDER_TAKER_BPS,
+            trading_fee_bps=schedule.taker_bps,
             funding_rate_8h=funding_8h,
             venue_mark=mark,
         )
@@ -159,11 +161,14 @@ class HyperliquidAdapter(BaseAdapter):
         instrument_type: InstrumentType | None = None,
     ) -> FeeSchedule:
         itype = instrument_type or default_instrument_type(self.venue_class)
-        return placeholder_fee_schedule(
-            venue=self.venue,
-            asset=asset.upper() if asset and ":" not in asset else asset,
-            instrument_type=itype,
-        )
+        asset_key: str | None
+        if asset is None:
+            asset_key = None
+        elif ":" in asset:
+            asset_key = asset  # HIP-3 form; stamp as-is
+        else:
+            asset_key = asset.upper()
+        return get_fee_schedule(self.venue, itype, asset=asset_key)
 
     def supported_assets(
         self,

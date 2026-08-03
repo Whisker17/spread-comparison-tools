@@ -96,7 +96,7 @@ class VenueAdapter(Protocol):
         *,
         instrument_type: InstrumentType | None = None,
     ) -> FeeSchedule:
-        """Return the static fee schedule for this venue (numbers may be placeholders)."""
+        """Return the static fee schedule for this venue (config-backed, WHI-812)."""
         ...
 
     def supported_assets(

@@ -1,0 +1,22 @@
+# PancakeSwap v3 (BSC) fee schedule (WHI-812).
+# LP fee is embedded in quoter prices — never added to trading_component_bps.
+# Fee tiers match PCS v3 (100/500/2500/10000 units → 1/5/25/100 bps).
+# gas_estimate_usd is a static display fallback; live quotes use quoter gasEstimate.
+venue: pancakeswap_bsc
+schedules:
+  - instrument_type: amm_pool
+    maker_bps: null
+    taker_bps: null
+    default_tier: pool
+    lp_fee_tiers_bps:
+      - "1"    # 0.01% (fee unit 100)
+      - "5"    # 0.05% (fee unit 500)
+      - "25"   # 0.25% (fee unit 2500)
+      - "100"  # 1.00% (fee unit 10000)
+    gas_estimate_usd: "0.25"
+    funding_model: none
+    fee_embedded_in_quote: true
+    source_urls:
+      - https://docs.pancakeswap.finance/products/pancakeswap-exchange/pancakeswap-v3
+      - https://developer.pancakeswap.finance/contracts/v3/addresses
+    updated_at: "2026-08-03T00:00:00Z"

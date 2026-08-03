@@ -59,6 +59,7 @@ def test_aggregate_orders_by_price_sums_same_price() -> None:
 
 def test_build_quote_canonical_section_4_7() -> None:
     mid = _ref_mid()
+    # HL Tier-0 default taker is 4.5 bps (config/fees/hyperliquid.yaml).
     quote = build_quote_from_book(
         venue="hyperliquid",
         asset="BTC",
@@ -69,14 +70,16 @@ def test_build_quote_canonical_section_4_7() -> None:
         venue_symbol="BTC",
         bids=_BIDS,
         asks=_ASKS,
+        trading_fee_bps=Decimal("4.5"),
     )
     assert quote.status == "ok"
     assert quote.effective_price == Decimal("100044")
     assert quote.spread_bps == Decimal("4.4")
-    assert quote.total_cost_bps == Decimal("14.4")
+    assert quote.total_cost_bps == Decimal("8.9")  # 4.4 + 4.5
     assert quote.qty_base == Decimal("0.1")
     assert quote.fee_breakdown.gas_bps == Decimal("0")
     assert quote.fee_breakdown.embedded_in_price is False
+    assert quote.fee_breakdown.trading_fee_bps == Decimal("4.5")
 
 
 def test_build_quote_insufficient_liquidity() -> None:
@@ -92,6 +95,7 @@ def test_build_quote_insufficient_liquidity() -> None:
         venue_symbol="BTC",
         bids=_BIDS,
         asks=shallow,
+        trading_fee_bps=Decimal("4.5"),
     )
     assert quote.status == "insufficient_liquidity"
     assert quote.effective_price is None

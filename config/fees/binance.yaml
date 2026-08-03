@@ -1,0 +1,47 @@
+# Binance fee schedules (WHI-812).
+# Phase 1 quote path uses default_taker = Regular User (no BNB discount).
+# VIP tiers listed for display only (WHI-799 §11 Q3); full ladder on source_urls.
+# Some spot pairs run promotional zero-fee campaigns; rates below are the
+# published standard schedule, not campaign overrides.
+venue: binance
+schedules:
+  - instrument_type: spot
+    maker_bps: "10"
+    taker_bps: "10"
+    default_tier: default_taker
+    funding_model: none
+    fee_embedded_in_quote: false
+    tiers:
+      - name: regular
+        maker_bps: "10"
+        taker_bps: "10"
+        volume_requirement: "< 1,000,000 USD 30d trade volume (or 0 BNB)"
+      - name: vip1
+        maker_bps: "9"
+        taker_bps: "10"
+        volume_requirement: ">= 1,000,000 USD 30d and >= 5 BNB"
+      - name: vip2
+        maker_bps: "8"
+        taker_bps: "10"
+        volume_requirement: ">= 5,000,000 USD 30d and >= 25 BNB"
+    source_urls:
+      - https://www.binance.com/en/fee/trading
+    updated_at: "2026-08-03T00:00:00Z"
+  - instrument_type: perp
+    maker_bps: "2"
+    taker_bps: "5"
+    default_tier: default_taker
+    funding_model: perp_8h
+    fee_embedded_in_quote: false
+    tiers:
+      - name: regular
+        maker_bps: "2"
+        taker_bps: "5"
+        volume_requirement: "< 5,000,000 USD 30d trade volume (or 0 BNB)"
+      - name: vip1
+        maker_bps: "1.8"
+        taker_bps: "5"
+        volume_requirement: ">= 5,000,000 USD 30d and >= 5 BNB"
+    source_urls:
+      - https://www.binance.com/en/fee/futureFee
+    updated_at: "2026-08-03T00:00:00Z"

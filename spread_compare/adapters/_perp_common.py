@@ -31,8 +31,6 @@ from spread_compare.costs import (
 )
 from spread_compare.models import (
     FeeBreakdown,
-    FeeSchedule,
-    FundingModel,
     InstrumentType,
     Quote,
     ReferenceMid,
@@ -40,10 +38,8 @@ from spread_compare.models import (
     TopOfBook,
 )
 
-# TODO(WHI-812): replace placeholder taker with real default_taker schedule.
 # Rate/depth defaults trace to docs/research/WHI-800-venue-api-survey.md §4
 # until DESIGN.md §2 exists (see docs/DEFERRED_ISSUES.md).
-PLACEHOLDER_TAKER_BPS: Decimal = Decimal("10")
 DEFAULT_FEE_TIER: str = "default_taker"
 
 OrderbookLevels = list[tuple[Decimal, Decimal]]
@@ -200,7 +196,7 @@ def build_quote_from_book(
     bids: OrderbookLevels,
     asks: OrderbookLevels,
     fee_tier: str = DEFAULT_FEE_TIER,
-    trading_fee_bps: Decimal = PLACEHOLDER_TAKER_BPS,
+    trading_fee_bps: Decimal,
     funding_rate_8h: Decimal | None = None,
     venue_mark: Decimal | None = None,
     timestamp: datetime | None = None,
@@ -346,28 +342,6 @@ def build_top_of_book(
         spread_bps=top_of_book_spread_bps(best_bid, best_ask, mid.mid),
         spread_bps_local=top_of_book_spread_bps(best_bid, best_ask, mid_local),
         timestamp=now,
-    )
-
-
-def placeholder_fee_schedule(
-    *,
-    venue: str,
-    asset: str | None,
-    instrument_type: InstrumentType,
-    taker_bps: Decimal = PLACEHOLDER_TAKER_BPS,
-) -> FeeSchedule:
-    funding: FundingModel = "perp_8h" if instrument_type == "perp" else "none"
-    return FeeSchedule(
-        venue=venue,
-        asset=asset,
-        instrument_type=instrument_type,
-        maker_bps=Decimal("0"),
-        taker_bps=taker_bps,  # TODO(WHI-812)
-        default_tier=DEFAULT_FEE_TIER,
-        funding_model=funding,
-        fee_embedded_in_quote=False,
-        source_urls=[],
-        updated_at=datetime.now(tz=UTC),
     )
 
 

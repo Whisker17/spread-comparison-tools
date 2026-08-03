@@ -1,0 +1,15 @@
+# HumidiFi (Solana prop AMM) fee schedule (WHI-812).
+# Fees are embedded in the Jupiter quote net output (fee_embedded_in_quote).
+venue: humidifi
+schedules:
+  - instrument_type: prop_amm
+    maker_bps: null
+    taker_bps: null
+    default_tier: embedded
+    funding_model: none
+    fee_embedded_in_quote: true
+    gas_estimate_usd: "0.01"
+    source_urls:
+      - https://station.jup.ag/docs/apis/swap-api
+      - https://docs.jup.ag/docs/apis/swap-api
+    updated_at: "2026-08-03T00:00:00Z"

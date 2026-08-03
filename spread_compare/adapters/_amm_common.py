@@ -659,20 +659,15 @@ class AmmDexAdapter(BaseAdapter):
         *,
         instrument_type: InstrumentType | None = None,
     ) -> FeeSchedule:
-        itype: InstrumentType = instrument_type or default_instrument_type(self.venue_class)
-        lp_tiers = [fee_to_lp_bps(f) for f in self.lp_fee_tiers] or None
-        return FeeSchedule(
-            venue=self.venue,
-            asset=asset,
-            instrument_type=itype,
-            maker_bps=None,
-            taker_bps=None,
-            default_tier="pool",
-            lp_fee_tiers_bps=lp_tiers,
-            funding_model="none",
-            fee_embedded_in_quote=True,
-            source_urls=[],
-            updated_at=datetime.now(tz=UTC),
+        itype: InstrumentType = instrument_type or default_instrument_type(
+            self.venue_class
+        )
+        from spread_compare.fees import get_fee_schedule
+
+        return get_fee_schedule(
+            self.venue,
+            itype,
+            asset=asset.upper() if asset else None,
         )
 
     async def get_orderbook_spread(

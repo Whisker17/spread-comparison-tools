@@ -8,7 +8,6 @@ from __future__ import annotations
 import os
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Final
 
@@ -74,19 +73,14 @@ def prop_fee_schedule(
     instrument_type: InstrumentType | None = None,
     venue_class: VenueClass = "prop_amm",
 ) -> FeeSchedule:
-    """Static fee schedule for prop AMMs (fees embedded in quote price)."""
+    """Config-backed fee schedule for prop AMMs (fees embedded in quote price)."""
+    from spread_compare.fees import get_fee_schedule
+
     itype: InstrumentType = instrument_type or default_instrument_type(venue_class)
-    return FeeSchedule(
-        venue=venue,
-        asset=asset,
-        instrument_type=itype,
-        maker_bps=None,
-        taker_bps=None,
-        default_tier="embedded",
-        funding_model="none",
-        fee_embedded_in_quote=True,
-        source_urls=[],
-        updated_at=datetime.now(tz=UTC),
+    return get_fee_schedule(
+        venue,
+        itype,
+        asset=asset.upper() if asset else None,
     )
 
 

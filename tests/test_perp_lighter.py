@@ -166,7 +166,9 @@ async def test_lighter_per_order_aggregation_section_4_7() -> None:
         assert quote.status == "ok"
         assert quote.effective_price == Decimal("100044")
         assert quote.spread_bps == Decimal("4.4")
-        assert quote.total_cost_bps == Decimal("14.4")
+        # Standard account: 0 maker / 0 taker → total_cost = spread only.
+        assert quote.total_cost_bps == Decimal("4.4")
+        assert quote.fee_breakdown.trading_fee_bps == Decimal("0")
         assert quote.venue_symbol == "BTC"
         assert quote.venue_mark == Decimal("100050")
         assert quote.instrument_type == "perp"
