@@ -1,0 +1,55 @@
+{
+  "inputMint": "So11111111111111111111111111111111111111112",
+  "inAmount": "1000000000",
+  "outputMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+  "outAmount": "72730019",
+  "otherAmountThreshold": "72366369",
+  "swapMode": "ExactIn",
+  "slippageBps": 50,
+  "platformFee": null,
+  "priceImpactPct": "0",
+  "routePlan": [
+    {
+      "swapInfo": {
+        "ammKey": "3JZVoH2kQVGv9LiWCPge65Ju2jEYbo2jtLXEQeQ8oEyW",
+        "label": "Scorch",
+        "inputMint": "So11111111111111111111111111111111111111112",
+        "outputMint": "USD1ttGY1N17NEEHLmELoaybftRBUSErhqYiQzvEmuB",
+        "inAmount": "1000000000",
+        "outAmount": "72805000",
+        "updateContextSlot": "436896595"
+      },
+      "percent": 100,
+      "bps": null
+    },
+    {
+      "swapInfo": {
+        "ammKey": "HrWp3QR3hNeVy6tEZtcpsjwEiGgKJuL1NDP84EaaU2Nh",
+        "label": "Byreal",
+        "inputMint": "USD1ttGY1N17NEEHLmELoaybftRBUSErhqYiQzvEmuB",
+        "outputMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "inAmount": "72805000",
+        "outAmount": "72730019",
+        "updateContextSlot": "436896575"
+      },
+      "percent": 100,
+      "bps": null
+    }
+  ],
+  "contextSlot": 436896595,
+  "timeTaken": 0.001651524,
+  "swapUsdValue": "72.7079602566904",
+  "mostReliableAmmsQuoteReport": {
+    "info": {
+      "BZtgQEyS6eXUXicYPHecYQ7PybqodXQMvkjUbP4R8mUU": "72729697",
+      "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE": "72720045",
+      "BCDdHonby65iduz3Ev3c9v5XjNkzyu5e56KRFHpBM4T9": "72301873"
+    }
+  },
+  "longtailMarketQuoteReport": null,
+  "useIncurredSlippageForQuoting": null,
+  "useRewards": null,
+  "otherRoutePlans": null,
+  "loadedLongtailToken": false,
+  "instructionVersion": null
+}

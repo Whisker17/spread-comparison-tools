@@ -1,0 +1,139 @@
+# asset-matrix.tsv — WHI-797 prop AMM asset probe
+# probe_date_utc: 2026-08-03 (direct sweep) + 2026-08-03 follow-ups (multi-hop / reverse)
+# base_url: https://api.jup.ag/swap/v1
+# auth: keyless (no x-api-key)
+# sleep_between_requests_sec: >= 2.2
+# onlyDirect=true means onlyDirectRoutes=true
+# onlyDirect=false means onlyDirectRoutes omitted (multi-hop allowed)
+# amounts by input symbol (raw units):
+#   SOL=100000000 (0.1), USDC=50000000 (50), USDT=50000000 (50),
+#   JUP=10000000, WIF=5000000, BONK=1000000000, mSOL=100000000, JitoSOL=100000000,
+#   cbBTC=100000 (0.001), WETH=1000000, PYTH=100000000, RAY=10000000,
+#   ORCA=10000000, KMNO=100000000, POPCAT=100000000
+# mints: see docs/research/WHI-797-prop-amm-jupiter-quote-api.md §6.2
+# note: "No routes found" can be size- or inventory-dependent; treat as snapshot
+dex	pair	onlyDirect	http	result
+HumidiFi	SOL:USDC	true	200	OK
+HumidiFi	USDC:SOL	true	200	OK
+HumidiFi	SOL:USDT	true	200	OK
+HumidiFi	USDT:SOL	true	200	OK
+HumidiFi	USDC:USDT	true	400	No routes found
+HumidiFi	USDT:USDC	true	400	No routes found
+HumidiFi	SOL:JUP	true	400	No routes found
+HumidiFi	JUP:SOL	true	400	No routes found
+HumidiFi	USDC:JUP	true	200	OK
+HumidiFi	JUP:USDC	true	200	OK
+HumidiFi	SOL:WIF	true	400	No routes found
+HumidiFi	WIF:SOL	true	400	No routes found
+HumidiFi	SOL:BONK	true	400	No routes found
+HumidiFi	BONK:SOL	true	400	No routes found
+HumidiFi	SOL:mSOL	true	400	No routes found
+HumidiFi	mSOL:SOL	true	400	No routes found
+HumidiFi	SOL:JitoSOL	true	400	No routes found
+HumidiFi	JitoSOL:SOL	true	400	No routes found
+HumidiFi	SOL:cbBTC	true	400	No routes found
+HumidiFi	cbBTC:SOL	true	400	No routes found
+HumidiFi	USDC:cbBTC	true	200	OK
+HumidiFi	cbBTC:USDC	true	200	OK
+HumidiFi	SOL:WETH	true	400	No routes found
+HumidiFi	WETH:SOL	true	400	No routes found
+HumidiFi	USDC:WETH	true	200	OK
+HumidiFi	WETH:USDC	true	200	OK
+HumidiFi	SOL:PYTH	true	400	No routes found
+HumidiFi	PYTH:SOL	true	400	No routes found
+HumidiFi	SOL:RAY	true	400	No routes found
+HumidiFi	RAY:SOL	true	400	No routes found
+HumidiFi	SOL:ORCA	true	400	No routes found
+HumidiFi	ORCA:SOL	true	400	No routes found
+HumidiFi	SOL:KMNO	true	400	No routes found
+HumidiFi	KMNO:SOL	true	400	No routes found
+HumidiFi	SOL:POPCAT	true	400	No routes found
+HumidiFi	POPCAT:SOL	true	400	No routes found
+TesseraV	SOL:USDC	true	200	OK
+TesseraV	USDC:SOL	true	200	OK
+TesseraV	SOL:USDT	true	400	No routes found
+TesseraV	USDT:SOL	true	400	No routes found
+TesseraV	USDC:USDT	true	400	No routes found
+TesseraV	USDT:USDC	true	400	No routes found
+TesseraV	SOL:JUP	true	400	No routes found
+TesseraV	JUP:SOL	true	400	No routes found
+TesseraV	USDC:JUP	true	400	No routes found
+TesseraV	JUP:USDC	true	400	No routes found
+TesseraV	SOL:WIF	true	400	No routes found
+TesseraV	WIF:SOL	true	400	No routes found
+TesseraV	SOL:BONK	true	400	No routes found
+TesseraV	BONK:SOL	true	400	No routes found
+TesseraV	SOL:mSOL	true	400	No routes found
+TesseraV	mSOL:SOL	true	400	No routes found
+TesseraV	SOL:JitoSOL	true	400	No routes found
+TesseraV	JitoSOL:SOL	true	400	No routes found
+TesseraV	SOL:cbBTC	true	400	No routes found
+TesseraV	cbBTC:SOL	true	400	No routes found
+TesseraV	USDC:cbBTC	true	200	OK
+TesseraV	cbBTC:USDC	true	200	OK
+TesseraV	SOL:WETH	true	400	No routes found
+TesseraV	WETH:SOL	true	400	No routes found
+TesseraV	USDC:WETH	true	200	OK
+TesseraV	WETH:USDC	true	200	OK
+TesseraV	SOL:PYTH	true	400	No routes found
+TesseraV	PYTH:SOL	true	400	No routes found
+TesseraV	SOL:RAY	true	400	No routes found
+TesseraV	RAY:SOL	true	400	No routes found
+TesseraV	SOL:ORCA	true	400	No routes found
+TesseraV	ORCA:SOL	true	400	No routes found
+TesseraV	SOL:KMNO	true	400	No routes found
+TesseraV	KMNO:SOL	true	400	No routes found
+TesseraV	SOL:POPCAT	true	400	No routes found
+TesseraV	POPCAT:SOL	true	400	No routes found
+BisonFi	SOL:USDC	true	200	OK
+BisonFi	USDC:SOL	true	200	OK
+BisonFi	SOL:USDT	true	200	OK
+BisonFi	USDT:SOL	true	200	OK
+BisonFi	USDC:USDT	true	400	No routes found
+BisonFi	USDT:USDC	true	400	No routes found
+BisonFi	SOL:JUP	true	400	No routes found
+BisonFi	JUP:SOL	true	400	No routes found
+BisonFi	USDC:JUP	true	400	No routes found
+BisonFi	JUP:USDC	true	400	No routes found
+BisonFi	SOL:WIF	true	400	No routes found
+BisonFi	WIF:SOL	true	400	No routes found
+BisonFi	SOL:BONK	true	400	No routes found
+BisonFi	BONK:SOL	true	400	No routes found
+BisonFi	SOL:mSOL	true	400	No routes found
+BisonFi	mSOL:SOL	true	400	No routes found
+BisonFi	SOL:JitoSOL	true	400	No routes found
+BisonFi	JitoSOL:SOL	true	400	No routes found
+BisonFi	SOL:cbBTC	true	400	No routes found
+BisonFi	cbBTC:SOL	true	400	No routes found
+BisonFi	USDC:cbBTC	true	200	OK
+BisonFi	cbBTC:USDC	true	200	OK
+BisonFi	SOL:WETH	true	400	No routes found
+BisonFi	WETH:SOL	true	400	No routes found
+BisonFi	USDC:WETH	true	200	OK
+BisonFi	WETH:USDC	true	200	OK
+BisonFi	SOL:PYTH	true	400	No routes found
+BisonFi	PYTH:SOL	true	400	No routes found
+BisonFi	SOL:RAY	true	400	No routes found
+BisonFi	RAY:SOL	true	400	No routes found
+BisonFi	SOL:ORCA	true	400	No routes found
+BisonFi	ORCA:SOL	true	400	No routes found
+BisonFi	SOL:KMNO	true	400	No routes found
+BisonFi	KMNO:SOL	true	400	No routes found
+BisonFi	SOL:POPCAT	true	400	No routes found
+BisonFi	POPCAT:SOL	true	400	No routes found
+# multi-hop follow-ups (onlyDirect=false)
+HumidiFi	SOL:JUP	false	200	OK multi (SOL->USDC->JUP via HumidiFi x2)
+HumidiFi	JUP:SOL	false	200	OK multi
+HumidiFi	SOL:cbBTC	false	200	OK multi (SOL->USDC->cbBTC)
+HumidiFi	cbBTC:SOL	false	200	OK multi (cbBTC->USDC->SOL)
+HumidiFi	SOL:WETH	false	200	OK multi
+HumidiFi	USDC:USDT	false	200	OK multi (USDC->SOL->USDT)
+BisonFi	USDC:USDT	false	200	OK multi (USDC->SOL->USDT)
+BisonFi	SOL:cbBTC	false	200	OK multi (SOL->USDC->cbBTC)
+BisonFi	SOL:WETH	false	400	No routes found
+TesseraV	SOL:cbBTC	false	200	OK multi (SOL->USDC->cbBTC)
+TesseraV	SOL:WETH	false	200	OK multi (SOL->USDC->WETH)
+TesseraV	SOL:USDT	false	400	No routes found
+TesseraV	USDC:USDT	false	400	No routes found
+TesseraV	SOL:JUP	false	400	No routes found
+BisonFi	USDC:JUP	false	400	No routes found

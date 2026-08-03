@@ -1,0 +1,55 @@
+{
+    "inputMint": "So11111111111111111111111111111111111111112",
+    "inAmount": "100000000",
+    "outputMint": "cbbtcf3aa214zXHbiAZQwf4122FBYbraNdFqgw4iMij",
+    "outAmount": "11582",
+    "otherAmountThreshold": "11525",
+    "swapMode": "ExactIn",
+    "slippageBps": 50,
+    "platformFee": null,
+    "priceImpactPct": "0",
+    "routePlan": [
+        {
+            "swapInfo": {
+                "ammKey": "8FnX3xo2yYw3EUE6w3nQA4GfXGS9wpK6oj3veJpbFzLo",
+                "label": "BisonFi",
+                "inputMint": "So11111111111111111111111111111111111111112",
+                "outputMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+                "inAmount": "100000000",
+                "outAmount": "7277925",
+                "updateContextSlot": "436896762"
+            },
+            "percent": 100,
+            "bps": null
+        },
+        {
+            "swapInfo": {
+                "ammKey": "2vPjbPRnz7V1SLGr56CmLLc7JspzfSfccWp3Th5KbrMJ",
+                "label": "BisonFi",
+                "inputMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+                "outputMint": "cbbtcf3aa214zXHbiAZQwf4122FBYbraNdFqgw4iMij",
+                "inAmount": "7277925",
+                "outAmount": "11582",
+                "updateContextSlot": "436896762"
+            },
+            "percent": 100,
+            "bps": null
+        }
+    ],
+    "contextSlot": 436896762,
+    "timeTaken": 0.001230989,
+    "swapUsdValue": "7.275957486862980",
+    "mostReliableAmmsQuoteReport": {
+        "info": {
+            "BZtgQEyS6eXUXicYPHecYQ7PybqodXQMvkjUbP4R8mUU": "Amm is excluded from request's dexes_selection.",
+            "HxA6SKW5qA4o12fjVgTpXdq2YnZ5Zv1s7SB4FFomsyLM": "Amm is excluded from request's dexes_selection.",
+            "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE": "Amm is excluded from request's dexes_selection."
+        }
+    },
+    "longtailMarketQuoteReport": null,
+    "useIncurredSlippageForQuoting": null,
+    "useRewards": null,
+    "otherRoutePlans": null,
+    "loadedLongtailToken": false,
+    "instructionVersion": null
+}

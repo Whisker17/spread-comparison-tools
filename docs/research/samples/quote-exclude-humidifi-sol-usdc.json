@@ -1,0 +1,41 @@
+{
+    "inputMint": "So11111111111111111111111111111111111111112",
+    "inAmount": "1000000000",
+    "outputMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    "outAmount": "72771857",
+    "otherAmountThreshold": "72407998",
+    "swapMode": "ExactIn",
+    "slippageBps": 50,
+    "platformFee": null,
+    "priceImpactPct": "0.0000521308302598419920492021",
+    "routePlan": [
+        {
+            "swapInfo": {
+                "ammKey": "GMCJvYGf5Ex2ARiMquaBDqU6iKM8uiEQkB8jCnoNfHpC",
+                "label": "GoonFi V2",
+                "inputMint": "So11111111111111111111111111111111111111112",
+                "outputMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+                "inAmount": "1000000000",
+                "outAmount": "72771857",
+                "updateContextSlot": "436896580"
+            },
+            "percent": 100,
+            "bps": null
+        }
+    ],
+    "contextSlot": 436896580,
+    "timeTaken": 0.001481891,
+    "swapUsdValue": "72.7562932472982",
+    "mostReliableAmmsQuoteReport": {
+        "info": {
+            "BZtgQEyS6eXUXicYPHecYQ7PybqodXQMvkjUbP4R8mUU": "72771640",
+            "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE": "72731697"
+        }
+    },
+    "longtailMarketQuoteReport": null,
+    "useIncurredSlippageForQuoting": null,
+    "useRewards": null,
+    "otherRoutePlans": null,
+    "loadedLongtailToken": false,
+    "instructionVersion": null
+}

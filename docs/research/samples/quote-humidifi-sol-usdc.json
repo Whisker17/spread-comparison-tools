@@ -1,0 +1,41 @@
+{
+    "inputMint": "So11111111111111111111111111111111111111112",
+    "inAmount": "1000000000",
+    "outputMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    "outAmount": "72886151",
+    "otherAmountThreshold": "72521721",
+    "swapMode": "ExactIn",
+    "slippageBps": 50,
+    "platformFee": null,
+    "priceImpactPct": "0.0000830250516874543128485761",
+    "routePlan": [
+        {
+            "swapInfo": {
+                "ammKey": "FksffEqnBRixYGR791Qw2MgdU7zNCpHVFYBL4Fa4qVuH",
+                "label": "HumidiFi",
+                "inputMint": "So11111111111111111111111111111111111111112",
+                "outputMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+                "inAmount": "1000000000",
+                "outAmount": "72886151",
+                "updateContextSlot": "436895562"
+            },
+            "percent": 100,
+            "bps": null
+        }
+    ],
+    "contextSlot": 436895562,
+    "timeTaken": 0.000345059,
+    "swapUsdValue": "72.874610042841",
+    "mostReliableAmmsQuoteReport": {
+        "info": {
+            "BZtgQEyS6eXUXicYPHecYQ7PybqodXQMvkjUbP4R8mUU": "Amm is excluded from request's dexes_selection.",
+            "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE": "Amm is excluded from request's dexes_selection."
+        }
+    },
+    "longtailMarketQuoteReport": null,
+    "useIncurredSlippageForQuoting": null,
+    "useRewards": null,
+    "otherRoutePlans": null,
+    "loadedLongtailToken": false,
+    "instructionVersion": null
+}
