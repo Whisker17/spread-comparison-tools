@@ -30,10 +30,10 @@
 ### 1.2 实现默认建议（给 adapter）
 
 1. **Orderbook venue（CEX + Perp DEX）**：REST 快照 walk book 即可满足 WHI-799 的 `effective_price @ notional`；高频刷新再加 WS。
-2. **深度默认**：CEX/ApeX 用 **50–200 档** 足够覆盖 `$1k…$1M` 蓝筹 walk；HL **硬上限 20 档**——大 notional 可能 walk 不满，须返回 `insufficient_depth` 而非假价。
+2. **深度默认**：CEX/ApeX 用 **50–200 档** 足够覆盖 `$1k…$1M` 蓝筹 walk；HL **硬上限 20 档**——大 notional 可能 walk 不满，须返回 WHI-799 状态 **`insufficient_liquidity`**（禁止编造深度）。
 3. **ccxt（4.5.x live 探测）**：`binance` / `bybit` / `hyperliquid` / `apex` / `lighter` 均声明 `fetchOrderBook=True`。CEX 可直接用；Perp DEX 建议 **先直连官方 REST** 再决定是否包一层 ccxt（字段/符号映射仍要自建）。
 4. **AMM**：**不要**用 0x/1inch 当「该 venue 独占报价」的默认源（聚合会混入其他 DEX）。0x/1inch 仅作 **fallback / 对照**；单 venue 语义走 **链上 quoter 固定 factory** 或官方 router（Uniswap Trading API 若无法锁源，也不宜冒充 uniswap-only）。
-5. **延迟（本机 3 次采样中位，2026-08-03）**：Binance FAPI ~380ms、spot depth5 ~600ms；Bybit ~500–660ms；HL ~800ms；Lighter ~610ms；ApeX ~590ms。量级均为数百毫秒 RTT——**批量并行 + 短缓存** 是 M2 必选项。
+5. **延迟（本机 3 次采样中位，2026-08-03，orderbook venue）**：Binance FAPI ~380ms、spot depth5 ~600ms；Bybit ~500–660ms；HL ~800ms；Lighter ~610ms；ApeX ~590ms。AMM 的延迟 **= RPC `eth_call` RTT**（本调研无稳定公共 RPC 密钥，未 live 采样）；公开节点常见 **200–1500ms** 量级，以供应商 SLA 为准——**批量并行 + 短缓存** 是 M2 必选项。
 
 ### 1.3 样本索引
 
@@ -45,9 +45,10 @@
 | [`bybit-spot-orderbook-btcusdt.json`](./samples/venue-api/bybit-spot-orderbook-btcusdt.json) | Spot orderbook |
 | [`bybit-linear-orderbook-btcusdt.json`](./samples/venue-api/bybit-linear-orderbook-btcusdt.json) | Linear orderbook |
 | [`hyperliquid-l2book-btc.json`](./samples/venue-api/hyperliquid-l2book-btc.json) | `l2Book` BTC（截断 5 档） |
-| [`lighter-orderbook-orders-btc.json`](./samples/venue-api/lighter-orderbook-orders-btc.json) | `market_id=1` BTC 档位 |
-| [`lighter-orderbook-details-btc.json`](./samples/venue-api/lighter-orderbook-details-btc.json) | BTC 元数据（mark/index 等） |
-| [`apex-depth-btcusdt.json`](./samples/venue-api/apex-depth-btcusdt.json) | Depth（截断 5 档） |
+| [`lighter-orderbook-orders-btc.json`](./samples/venue-api/lighter-orderbook-orders-btc.json) | `orderBookOrders`：`market_id=1` BTC 档位 |
+| [`lighter-orderbook-details-btc.json`](./samples/venue-api/lighter-orderbook-details-btc.json) | `orderBookDetails`：BTC 元数据（mark/index/decimals） |
+| [`lighter-orderbooks-btc.json`](./samples/venue-api/lighter-orderbooks-btc.json) | `orderBooks` 列表项（发现 `market_id` 的轻量形状；字段为 details 子集） |
+| [`apex-depth-btcusdt.json`](./samples/venue-api/apex-depth-btcusdt.json) | Depth `limit=5` |
 | [`apex-ticker-btcusdt.json`](./samples/venue-api/apex-ticker-btcusdt.json) | Ticker |
 | [`apex-symbol-perpetualcontract-btc.json`](./samples/venue-api/apex-symbol-perpetualcontract-btc.json) | 合约配置片段 |
 
@@ -58,7 +59,7 @@
 ### 2.1 范围内
 
 - Phase 1 对比 venue 的 **只读报价 / depth** 路径：endpoint、认证、rate limit、深度粒度、延迟量级、SDK/ccxt。
-- 每个 venue 至少一份 live 请求/响应样本（AMM 以合约地址 + 调用形状为主，见 §6）。
+- 每个 venue 至少一份 live 请求/响应样本（AMM 以合约地址 + 调用形状为主，见 §5；orderbook JSON 见 `samples/venue-api/`）。
 
 ### 2.2 非目标
 
@@ -168,7 +169,7 @@ FAPI 额外字段：`E`（event time）、`T`（transaction time）。见 [`bina
 | --- | --- | --- |
 | `category` | ✓ | `spot` / `linear` / `inverse` / `option` |
 | `symbol` | ✓ | 如 `BTCUSDT`（大写） |
-| `limit` | | spot/linear：**1–1000**；spot 默认 **1**；linear 默认 **25**；option 最大 25 |
+| `limit` | | 官方文档：spot **[1, 1000]**（默认 1）、linear/inverse **[1, 1000]**（默认 25）、option **[1, 25]**（默认 1）。**Live 2026-08-03**：spot/linear `limit=200/500/1000` 均 200 OK 且返回对应档数 |
 
 #### 响应形状
 
@@ -278,7 +279,7 @@ curl -sS -X POST https://api.hyperliquid.xyz/info \
 
 #### Phase 1 风险
 
-- **20 档可能撑不住 $1M walk**（尤其薄簿 alt / equity HIP-3）。Adapter 必须在耗尽档位时 **显式失败**（WHI-799：禁止编造深度）。
+- **20 档可能撑不住 $1M walk**（尤其薄簿 alt / equity HIP-3）。Adapter 必须在耗尽档位时返回 **`insufficient_liquidity`**（WHI-799 §6.1；禁止编造深度）。
 - 需要更深簿时：没有 REST 更深接口；只能接受 20 档或换数据源（第三方 mirror，**非** Phase 1 默认）。
 
 ---
@@ -356,10 +357,10 @@ GET /api/v1/orderBookOrders?market_id=1&limit=100
 
 | 项目 | 值 |
 | --- | --- |
-| Base | `https://omni.apex.exchange/api/`（路径带 **v3**） |
-| 配置/符号 | `GET /v3/symbols`（`data.contractConfig.perpetualContract` / `stockContract`） |
-| Depth | `GET /v3/depth?symbol={crossSymbolName}` |
-| Ticker | `GET /v3/ticker?symbol=BTCUSDT` |
+| Base | `https://omni.apex.exchange/api` |
+| 配置/符号 | `GET /api/v3/symbols`（`data.contractConfig.perpetualContract` / `stockContract`） |
+| Depth | `GET /api/v3/depth?symbol={crossSymbolName}` |
+| Ticker | `GET /api/v3/ticker?symbol=BTCUSDT` |
 | 认证 | 公开 market：**无**；私有需 `APEX-API-KEY` 等 + HMAC，交易另需 zkKeys |
 | 官方 SDK | [apexpro-openapi](https://github.com/ApeX-Protocol/apexpro-openapi)（Python）、[apexomni-connector-node](https://github.com/ApeX-Protocol/apexomni-connector-node) |
 | 文档 | [api-docs.pro.apex.exchange](https://api-docs.pro.apex.exchange/) |
@@ -411,9 +412,9 @@ Depth topic：`orderBook{25|200}.H.{symbol}`（先 snapshot 后 delta）。
 #### Phase 1 推荐
 
 ```http
-GET /api/v3/symbols                 # 缓存 crossSymbolName / stepSize
-GET /api/v3/depth?symbol=BTCUSDT&limit=50
-GET /api/v3/ticker?symbol=BTCUSDT   # mark/index 辅助
+GET https://omni.apex.exchange/api/v3/symbols
+GET https://omni.apex.exchange/api/v3/depth?symbol=BTCUSDT&limit=50
+GET https://omni.apex.exchange/api/v3/ticker?symbol=BTCUSDT
 ```
 
 RWA / stockContract 下单走 RWA 子账户；**只读 depth 仍用同一 public depth**（符号以 symbols 为准）。
@@ -423,6 +424,8 @@ RWA / stockContract 下单走 RWA 子账户；**只读 depth 仍用同一 public
 ## 5. AMM DEX
 
 > AMM **没有** CEX 式 L2 book。WHI-799：`get_orderbook_spread` → `None`；用 quoter / router 的 **净输出** 反推 `effective_price`。
+>
+> **延迟 / rate limit 口径**：无独立「协议 API RPS」时，记录 **RPC 供应商限流 + 典型 `eth_call` RTT**。本调研 **未** 持有生产 RPC key，故 §5 **无** 与 §3–4 同条件的 live 延迟表；落地时用 CI RPC 补测。
 
 ### 5.1 Uniswap（Ethereum）
 
@@ -435,20 +438,28 @@ RWA / stockContract 下单走 RWA 子账户；**只读 depth 仍用同一 public
 | 其它 header | `x-universal-router-version: 2.0` 等（见官方 API Reference） |
 | 文档 | [Get a quote](https://developers.uniswap.org/docs/api-reference/aggregator_quote)、[Swapping via API](https://developers.uniswap.org/docs/trading/swapping-api/getting-started) |
 | 费用 | 文档宣传 API free / no per-call；以 portal 为准 |
+| **Rate limit** | 公开文档 **未** 给出与 0x 同级的固定 RPS 表；以 [API keys dashboard](https://developers.uniswap.org) / portal 配额为准。**未持 key 实测**——实现前须在 portal 确认档位，代码侧按 429 退避 |
 
-示意 body：
+示意请求：
 
-```json
-{
-  "type": "EXACT_INPUT",
-  "amount": "1000000000",
-  "tokenInChainId": 1,
-  "tokenOutChainId": 1,
-  "tokenIn": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-  "tokenOut": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
-  "swapper": "0x..."
-}
+```bash
+curl --request POST \
+  --url 'https://trade-api.gateway.uniswap.org/v1/quote' \
+  --header 'Content-Type: application/json' \
+  --header 'x-api-key: <API_KEY>' \
+  --header 'x-universal-router-version: 2.0' \
+  --data '{
+    "type": "EXACT_INPUT",
+    "amount": "1000000000",
+    "tokenInChainId": 1,
+    "tokenOutChainId": 1,
+    "tokenIn": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+    "tokenOut": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+    "swapper": "0x0000000000000000000000000000000000000001"
+  }'
 ```
+
+示意成功响应字段（形状以官方 OpenAPI 为准；**未 live 抓取**）：`quote.amount` / `quote.token`、路由步骤、`gasFee` 等。失败常见：`"No quotes available."`（金额过低或不支持路径）。
 
 **风险**：路由可能跨协议；若产品文案是「Uniswap venue」，须确认响应能否 **证明只走 Uniswap 池**，否则标注为 `uniswap_routing_api` 而非纯 on-chain Uniswap。
 
@@ -456,11 +467,25 @@ RWA / stockContract 下单走 RWA 子账户；**只读 depth 仍用同一 public
 
 | 项目 | 值 |
 | --- | --- |
-| QuoterV2（Ethereum） | `0x61fFE014bA17989E743c5F6cB21bF9697530B21e`（业界标准 periphery；部署以 [Uniswap deployments](https://docs.uniswap.org/contracts/v3/reference/deployments) 为准） |
+| QuoterV2（Ethereum） | `0x61fFE014bA17989E743c5F6cB21bF9697530B21e`（业界常用 periphery；**部署以** [Uniswap deployments](https://docs.uniswap.org/contracts/v3/reference/deployments) **为准，上线前再核**） |
 | 调用 | `eth_call`：`quoteExactInputSingle` / `quoteExactInput`（多跳 path） |
 | 依赖 | ETH RPC（自建 / Alchemy / QuickNode…） |
 | Rate limit | **RPC 供应商**限流，非 Uniswap 协议 |
+| 延迟 | ≈ RPC RTT + 节点执行 quoter 模拟（常见数百 ms；未本调研采样） |
 | Gas | `eth_call` 无上链 gas；节点 CPU 成本仍在 |
+
+示例调用形状（`cast`；需 ETH RPC）：
+
+```bash
+# quoteExactInputSingle((tokenIn,tokenOut,amountIn,fee,sqrtPriceLimitX96))
+# fee tiers: 100 | 500 | 3000 | 10000
+cast call 0x61fFE014bA17989E743c5F6cB21bF9697530B21e \
+  "quoteExactInputSingle((address,address,uint256,uint24,uint160))(uint256,uint160,uint32,uint256)" \
+  "(0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48,0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2,1000000000,500,0)" \
+  --rpc-url "$ETH_RPC_URL"
+```
+
+返回：`amountOut`、`sqrtPriceX96After`、`initializedTicksCrossed`、`gasEstimate`（ABI 以 periphery 版本为准）。
 
 #### Phase 1 推荐
 
@@ -474,13 +499,31 @@ RWA / stockContract 下单走 RWA 子账户；**只读 depth 仍用同一 public
 | 项目 | 值 |
 | --- | --- |
 | 架构 | Velodrome V2 系：vAMM / sAMM + CL |
-| Router | `0xcF77a3Ba9A5CA399B7c97c74d54e5b1Beb874E43` |
-| Quoter | `0x254cF9E1E6e233aa1AC962CB9B05b2cfeAaE15b0` |
-| MixedQuoter | `0x0A5aA5D3a4d28014f967Bf0f29EAA3FF9807D5c6` |
+| Router | `0xcF77a3Ba9A5CA399B7c97c74d54e5b1Beb874E43`（[security 页](https://aerodrome.finance/security)列出；**未链上 eth_call 复核**） |
+| Quoter | `0x254cF9E1E6e233aa1AC962CB9B05b2cfeAaE15b0`（同上，doc-sourced） |
+| MixedQuoter | `0x0A5aA5D3a4d28014f967Bf0f29EAA3FF9807D5c6`（同上，doc-sourced） |
 | 来源 | [aerodrome.finance/security](https://aerodrome.finance/security)、[aerodrome-finance/contracts](https://github.com/aerodrome-finance/contracts) |
 | 公开 REST | **无**一等公民免费 quoter HTTP |
-| 商业替代 | QuickNode **Aerodrome Swap API** addon：`GET .../v1/quote?target=base&from_token=&to_token=&amount=`（需 QN endpoint） |
+| 商业替代 | QuickNode **Aerodrome Swap API** addon：`GET .../v1/quote?target=base&from_token=&to_token=&amount=`（需 QN endpoint；RPS/计费随 QN 计划） |
 | SDK 线索 | Velodrome/Aerodrome sugar-sdk（Base MCP 插件亦用其做 quote） |
+| Rate limit / 延迟 | Base RPC 供应商；`eth_call` RTT 未本调研采样 |
+
+示例（MixedQuoter / Quoter 具体函数名以 [contracts](https://github.com/aerodrome-finance/contracts) ABI 为准；常见为 `quoteExactInputSingle` 族）：
+
+```bash
+# 伪代码：Base RPC + MixedQuoter eth_call
+# tokenIn=USDC (Base) 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913
+# tokenOut=WETH (Base) 0x4200000000000000000000000000000000000006
+cast call 0x0A5aA5D3a4d28014f967Bf0f29EAA3FF9807D5c6 \
+  '<quote_method_from_abi>' \
+  --rpc-url "$BASE_RPC_URL"
+```
+
+QuickNode addon 示意：
+
+```http
+GET https://<QN_ENDPOINT>/addon/<id>/v1/quote?target=base&from_token=0x...&to_token=0x...&amount=1
+```
 
 #### Phase 1 推荐
 
@@ -493,11 +536,19 @@ RWA / stockContract 下单走 RWA 子账户；**只读 depth 仍用同一 public
 
 | 项目 | 值 |
 | --- | --- |
-| QuoterV2（BSC） | `0xB048Bbc1Ee6b733FFfCFb9e9CeF7375518e25997` |
-| Smart Router（BSC/ETH 等同址文档列出） | `0x13f4EA83D0bd40E75C8222255bc855a974568Dd4` |
+| QuoterV2（BSC） | `0xB048Bbc1Ee6b733FFfCFb9e9CeF7375518e25997`（[官方 v3 addresses](https://developer.pancakeswap.finance/contracts/v3/addresses)；**未 eth_call 复核**） |
+| Smart Router | `0x13f4EA83D0bd40E75C8222255bc855a974568Dd4`（文档同页列出） |
 | 文档 | [PancakeSwap v3 addresses](https://developer.pancakeswap.finance/contracts/v3/addresses) |
 | 调用 | 与 Uniswap v3 quoter 同族：`quoteExactInputSingle` 等 via `eth_call` |
-| Rate limit | BSC RPC 供应商 |
+| Rate limit / 延迟 | BSC RPC 供应商；未本调研采样 |
+
+```bash
+# 与 Uniswap 同形状；fee tier 以 PCS v3 为准
+cast call 0xB048Bbc1Ee6b733FFfCFb9e9CeF7375518e25997 \
+  "quoteExactInputSingle((address,address,uint256,uint24,uint160))(uint256,uint160,uint32,uint256)" \
+  "(<tokenIn>,<tokenOut>,<amountIn>,<fee>,0)" \
+  --rpc-url "$BSC_RPC_URL"
+```
 
 #### Phase 1 推荐
 
@@ -527,36 +578,38 @@ RWA / stockContract 下单走 RWA 子账户；**只读 depth 仍用同一 public
 
 | Venue | Method | Path / 调用 | Auth | 深度 / 报价形态 | Rate limit（只读） | SDK / ccxt | 样本 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| Binance spot | GET | `/api/v3/depth` | 无 | 聚合簿 ≤5000 | 6000 weight/min | ccxt ✅ / 原生 | ✅ |
-| Binance USDM | GET | `/fapi/v1/depth` | 无 | 聚合簿（常用 ≤1000） | 2400 weight/min | ccxt ✅ | ✅ |
-| Bybit | GET | `/v5/market/orderbook` | 无 | 聚合簿 ≤1000/侧 | IP 600/5s | ccxt ✅ | ✅ |
-| Hyperliquid | POST | `/info` `l2Book` | 无 | ≤20/侧 | 1200 weight/min；l2=2 | 官方 SDK + ccxt ✅ | ✅ |
-| Lighter | GET | `/api/v1/orderBookOrders` | 无 | 逐单 + limit | Standard 60/min | 官方 SDK + ccxt ✅ | ✅ |
-| ApeX | GET | `/api/v3/depth` | 无 | 聚合簿 limit≤200 live | IP 600/min | 官方 SDK + ccxt ✅ | ✅ |
-| Uniswap | eth_call / HTTP | QuoterV2 / Trading API | RPC / API key | 净输出 | RPC 或 portal | 合约 ABI | 地址表 |
-| Aerodrome | eth_call | Quoter/MixedQuoter | RPC | 净输出 | RPC | sugar / ABI | 地址表 |
-| Pancake | eth_call | QuoterV2 | RPC | 净输出 | RPC | ABI / smart-router | 地址表 |
+| Binance spot | GET | `https://api.binance.com/api/v3/depth` | 无 | 聚合簿 ≤5000 | 6000 weight/min | ccxt ✅ / 原生 | ✅ JSON |
+| Binance USDM | GET | `https://fapi.binance.com/fapi/v1/depth` | 无 | 聚合簿（常用 ≤1000） | 2400 weight/min | ccxt ✅ | ✅ JSON |
+| Bybit | GET | `https://api.bybit.com/v5/market/orderbook` | 无 | 聚合簿 ≤1000/侧（live 确认） | IP 600/5s | ccxt ✅ | ✅ JSON |
+| Hyperliquid | POST | `https://api.hyperliquid.xyz/info` `l2Book` | 无 | ≤20/侧 | 1200 weight/min；l2=2 | 官方 SDK + ccxt ✅ | ✅ JSON |
+| Lighter | GET | `https://mainnet.zklighter.elliot.ai/api/v1/orderBookOrders` | 无 | 逐单 + limit | Standard 60/min | 官方 SDK + ccxt ✅ | ✅ JSON |
+| ApeX | GET | `https://omni.apex.exchange/api/v3/depth` | 无 | 聚合簿 live `limit`≤200 | IP 600/min | 官方 SDK + ccxt ✅ | ✅ JSON |
+| Uniswap | eth_call / HTTP | QuoterV2 / Trading API | RPC / API key | 净输出 | RPC 或 portal 配额 | 合约 ABI | 调用形状 §5.1 |
+| Aerodrome | eth_call | Quoter/MixedQuoter | RPC | 净输出 | RPC | sugar / ABI | 调用形状 §5.2 |
+| Pancake | eth_call | QuoterV2 | RPC | 净输出 | RPC | ABI / smart-router | 调用形状 §5.3 |
 | Prop AMM | GET | Jupiter `/quote?dexes=` | 可选 key | 净输出 | 见 WHI-797 | — | WHI-797 |
 
 ---
 
-## 7. Adapter 落地注意事项（对接 WHI-799 / WHI-801）
+## 7. 调研→adapter 的工程提示（非规范）
 
-1. **统一输出**：orderbook venue → walk 到 `q_star` 得 `effective_price`；AMM → `outAmount/inAmount` 得价格；均填同一 `Quote` + `snapshot_id`。
+> 本节是调研衍生的 **工程提示**，**不是** WHI-801/807 的已定规范。并发数字与超时最终以 `config/` + 那两张票为准；此处仅把 rate limit 换算成可讨论的起点。
+
+1. **统一输出**：orderbook venue → walk 到 `q_star` 得 `effective_price`；AMM → `outAmount/inAmount` 得价格；均填同一 `Quote` + `snapshot_id`（WHI-799）。
 2. **符号映射**集中配置（WHI-798）：ApeX `BTCUSDT` vs `BTC-USDT`；HL spot `UBTC`；Lighter `market_id`。
-3. **并发预算**（单 IP 粗算，保守）：
+3. **并发预算起点**（单 IP 粗算，保守；**未**压测证明）：
 
-   | 源 | 建议稳态 |
+   | 源 | 建议稳态起点 |
    | --- | --- |
-   | Binance spot | ≤20 depth/s（limit≤100 → weight 5 → 100 weight/s ≪ 6000/min） |
+   | Binance spot | ≤20 depth/s（limit≤100 → weight 5） |
    | Binance fapi | ≤15 depth/s |
    | Bybit | ≤30 orderbook/s（远低于 600/5s） |
    | HL | ≤5 l2Book/s（weight 2） |
-   | Lighter Standard | ≤1 orderBookOrders/s；**上 Builder 或 WS** |
+   | Lighter Standard | **远低于** 1 req/s 均值（60/min 含抖动）；**上 Builder 或 WS** 后再谈多市场 |
    | ApeX | ≤5 depth/s |
 
-4. **超时**：HTTP 客户端默认 2–3s；聚合层（WHI-807）对慢 venue 短路。
-5. **不要**在 adapter 内用 ccxt 隐藏 rate limit——必须可读 `used-weight` / 429 并退避。
+4. **超时**：HTTP 客户端常见 2–3s 量级起点；聚合层短路策略属 WHI-807。
+5. **限流可观测性**：无论是否包 ccxt，都应保留原生 429 / `x-mbx-used-weight*` / Bybit limit header 的日志与退避。
 
 ---
 
@@ -564,15 +617,20 @@ RWA / stockContract 下单走 RWA 子账户；**只读 depth 仍用同一 public
 
 ### 8.1 官方文档
 
-- Binance Spot depth / limits：`binance-spot-api-docs` REST；`exchangeInfo.rateLimits` live  
-- Bybit V5 orderbook + rate limit pages  
-- Hyperliquid GitBook：info + rate limits  
-- Lighter：`apidocs.lighter.xyz` rate-limits + orderBookOrders  
-- ApeX：`api-docs.pro.apex.exchange`  
-- Uniswap Developers Trading API  
-- Aerodrome security / contracts addresses  
-- PancakeSwap developer contracts v3 addresses  
-- 0x rate limits；1inch portal pricing  
+- Binance Spot depth / weight：[binance-spot-api-docs REST](https://github.com/binance/binance-spot-api-docs/blob/master/rest-api.md)；live `GET https://api.binance.com/api/v3/exchangeInfo` → `rateLimits`
+- Binance USDT-M：live `GET https://fapi.binance.com/fapi/v1/exchangeInfo` → `rateLimits`（REQUEST_WEIGHT 2400/min）
+- Bybit orderbook：https://bybit-exchange.github.io/docs/v5/market/orderbook  
+- Bybit rate limit：https://bybit-exchange.github.io/docs/v5/rate-limit  
+- Hyperliquid info：https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-endpoint  
+- Hyperliquid rate limits：https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/rate-limits-and-user-limits  
+- Lighter get started：https://apidocs.lighter.xyz/docs/get-started  
+- Lighter rate limits：https://apidocs.lighter.xyz/docs/rate-limits  
+- ApeX Omni API：https://api-docs.pro.apex.exchange/  
+- Uniswap Trading API quote：https://developers.uniswap.org/docs/api-reference/aggregator_quote  
+- Aerodrome addresses：https://aerodrome.finance/security  
+- PancakeSwap v3 addresses：https://developer.pancakeswap.finance/contracts/v3/addresses  
+- 0x rate limits：https://docs.0x.org/docs/developer-resources/rate-limits  
+- 1inch pricing：https://business.1inch.com/pricing  
 
 ### 8.2 Live 探测命令（摘要）
 
@@ -593,15 +651,28 @@ curl -sS 'https://omni.apex.exchange/api/v3/depth?symbol=BTCUSDT&limit=5'
 
 | 缺口 | 说明 |
 | --- | --- |
-| AMM live quoter 响应样本 | 本机无稳定公共 ETH/Base/BSC RPC 密钥；落地 WHI-80x 时用 CI 密钥补 JSON 样本 |
-| Uniswap Trading API 是否可 filter 仅 Uniswap | 需持 key 实测响应 `route` 字段 |
+| AMM live quoter 响应 JSON | 无稳定公共 ETH/Base/BSC RPC 密钥；落地 WHI-80x 时用 CI 密钥补样本 + 延迟表 |
+| Uniswap Trading API RPS 与 protocol filter | 需持 key 实测 portal 配额与响应 `route` |
 | Lighter Builder 申请 | 多市场轮询生产路径前置 |
 | HL >20 档 | 协议无官方更深 REST；大 notional 策略未决 |
 
 ---
 
-## 9. 变更记录
+## 9. 产出物清单
+
+| 产物 | 路径 |
+| --- | --- |
+| 本调研文档 | [`docs/research/WHI-800-venue-api-survey.md`](./WHI-800-venue-api-survey.md) |
+| Live 样本目录 | [`docs/research/samples/venue-api/`](./samples/venue-api/) |
+| README Research 表行 | 仓库根 `README.md` |
+
+**范围边界**：不写费率数字（WHI-812）、不写 spread 公式（WHI-799）、不重扫 prop AMM（WHI-797）、不落地 adapter 代码（WHI-802…）。
+
+---
+
+## 10. 修订记录
 
 | 日期 | 变更 |
 | --- | --- |
 | 2026-08-03 | 初版：CEX / Perp DEX live 样本 + AMM 合约路径 + 聚合器边界；对齐 WHI-798/799 |
+| 2026-08-03 | Review round 1：`insufficient_liquidity` 词汇对齐；README/产出物清单；ApeX 全路径统一；AMM 调用形状与延迟口径；Bybit limit live 复核；§7 降级为非规范提示 |
