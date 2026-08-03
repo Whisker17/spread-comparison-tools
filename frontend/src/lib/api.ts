@@ -4,7 +4,7 @@
  * Types come from `api-types.ts` (openapi-typescript). Do not hand-write
  * parallel response shapes — regenerate with `pnpm gen:api`.
  *
- * `/fees` and `/simulate` are stubs until M4/M5 (WHI-813 / WHI-815).
+ * `/simulate` remains a stub until M5 (WHI-815).
  */
 
 import type { components, paths } from "@/lib/api-types";
@@ -12,6 +12,8 @@ import type { components, paths } from "@/lib/api-types";
 export type QuotesResponse = components["schemas"]["QuotesResponse"];
 export type VenueResponse = components["schemas"]["VenueResponse"];
 export type AssetResponse = components["schemas"]["AssetResponse"];
+export type FeeSchedule = components["schemas"]["FeeSchedule"];
+export type FeeTier = components["schemas"]["FeeTier"];
 export type SizeQuotePair = components["schemas"]["SizeQuotePair"];
 export type Quote = components["schemas"]["Quote"];
 export type TopOfBook = components["schemas"]["TopOfBook"];
@@ -199,22 +201,11 @@ export async function fetchAssets(
   return apiGet<AssetResponse[]>("/assets", undefined, options);
 }
 
-/** M4 stub shape — WHI-813 will fill the real `/fees` contract. */
-export type FeesQuery = {
-  asset?: string;
-  venues?: readonly string[];
-};
-
-/** Placeholder until WHI-813 ships `GET /fees`. */
+/** `GET /fees` — all validated venue fee schedules (WHI-812; UI in WHI-813). */
 export async function fetchFees(
-  ..._args: [FeesQuery?, FetchOptions?]
-): Promise<never> {
-  void _args;
-  throw new ApiError(
-    "GET /fees not implemented yet (WHI-813). Stub keeps the client seam ready.",
-    501,
-    null,
-  );
+  options?: FetchOptions,
+): Promise<FeeSchedule[]> {
+  return apiGet<FeeSchedule[]>("/fees", undefined, options);
 }
 
 /** M5 stub shape — WHI-815 will fill the real `/simulate` contract. */
