@@ -1,0 +1,51 @@
+# WHI-797 Tessera EVM (Base / BSC) probe matrix
+# probe date: 2026-08-03 UTC; source: KyberSwap Aggregator API GET /{chain}/api/v1/routes, includedSources=tessera, keyless (no x-client-id)
+# actual swap contract on both chains: TesseraSwap 0x55555522005BcAE1c2424D474BfD5ed477749E3e (pool ids below are Kyber per-pair identifiers)
+# result semantics: direct = single-hop tessera route; multihop = >=2 hops all-tessera; no(4008) = route not found;
+#   no(4000) = bad request — empirically returned when the token is not in tessera's registered token set at all (e.g. TSLAB)
+# NOTE: mixed-case token addresses must be valid EIP-55 checksums (else 4000); all-lowercase is accepted
+# amounts: ~$1.2k-2k notional per probe
+chain	pair	result	kyber_pool_id	note
+base	WETH->USDC	direct	0xf524c1bc1c64a2c99bc7eccf19ede9a1d89d5a7c	native ETH pseudo-address 0xeeee...eeee also routes; reverse OK
+base	cbBTC->USDC	direct	0xed57bacdc2a990b631f8817853935791c122c356	reverse OK
+base	AERO->USDC	direct	0x3b84be4d48888a6bc385eea93e522246b214069e	reverse OK
+base	USDC->VIRTUAL	direct	0xe1191102bdcea1928a93b4d6ea7bf5c4e9207210	top traded tessera pair on base (~32% of sampled TesseraTrade)
+base	USDC->EURC	direct	0x4b963fb4a26f082d94f964fa3c2764821cc06bd4
+base	WETH->cbBTC	multihop	via USDC	all-tessera 2-hop
+base	WETH->AERO	multihop	via USDC	all-tessera 2-hop
+base	cbBTC->AERO	multihop	via USDC	all-tessera 2-hop
+base	WETH->USDT	no(4008)		no tessera USDT pool on base
+base	USDC->USDT	no(4008)
+base	*->wstETH	no(4008)
+base	VVV/USDC, deSPXA/USDC	untested		seen in on-chain TesseraTrade sampling, not verified via Kyber
+bsc	BTCB->USDT	direct	0xe1191102bdcea1928a93b4d6ea7bf5c4e9207210	reverse OK
+bsc	USDT->QQQB	direct	0xc2bdd7d2dbf7e5ffbd9371804755dda85ce7e7b8	bStocks Invesco QQQ; reverse OK; ~94% of sampled tessera BSC swaps
+bsc	USDT->SPCXB	direct	0x016e4491ce6203a61b9cc22c349cbfa8fe545594	bStocks SpaceX
+bsc	USDT->NVDAB	direct	(id not recorded)	bStocks NVIDIA; unfiltered best route is 100% tessera
+bsc	USDT->NVDAon	direct	0x4055346e1886ec083786dcf026cdd21f6b300ddf	Ondo NVIDIA
+bsc	USDT->TSLAB	no(4000)		token not in tessera token set (stable repro)
+bsc	USDT->SKHYB	no(4000)
+bsc	USDT->SNDKB	no(4000)
+bsc	USDT->MUB	no(4000)	 	MUB address from GeckoTerminal, lower confidence
+bsc	WBNB->USDT	no(4008)	 	native BNB pseudo-address also no
+bsc	WBNB->USDC / ETH->* / USDC->* / CAKE->USDT / USD1->USDT / DOGE->USDT / XRP->USDT / SOL->USDT / WBETH->USDT	no(4008)
+bsc	ASTER->USDT	untested		seen in on-chain TesseraTrade sampling
+# token addresses used (canonical, lowercase ok):
+# base: WETH 0x4200000000000000000000000000000000000006 / USDC 0x833589fcd6edb6e08f4c7c32d4f71b54bda02913 / cbBTC 0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf / USDT 0xfde4c96c8593536e31f229ea8f37b2ada2699bb2 / AERO 0x940181a94a35a4569e4529a3cdfb74e38fd98631 / wstETH 0xc1cba3fcea344f92d9239c08c0568f6f2f0ee452 / VIRTUAL 0x0b3e328455c4059eeb9e3f84b5543f74e24e7e1b / EURC 0x60a3e35cc302bfa44cb288bc5a4f316fdb1adb42
+# bsc: WBNB 0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c / USDT 0x55d398326f99059ff775485246999027b3197955 / USDC 0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d / ETH 0x2170ed0880ac9a755fd29b2688956bd959f933f8 / BTCB 0x7130d2a12b9bcbfae4f2634d864a1ee1ce3ead9c / CAKE 0x0e09fabb73bd3ade0a17ecc321fd13a19e81ce82 / USD1 0x8d0d000ee44948fc98c9b98a4fa4921476f08b0d / DOGE 0xba2ae424d960c26247dd6c32edc70b295c744c43 / XRP 0x1d2f0da169ceb9fc7b3144628db156f3f6c60dbe / SOL 0x570a5d26f7765ecb712c0924e4de545b89fd43df / WBETH 0xa2e3356610840701bdf5611a53974510ae27e2e1
+# bsc stocks: QQQB 0x205812cdbed920aff76c6580abd681a46d11efc7 / SPCXB 0xbe9d156892e55e7154bcd3cb0fea677f9d3103e1 / NVDAB 0x02fca66c1d1afb4e2a7884261eb00f63598a7436 / NVDAon 0xa9ee28c80f960b889dfbd1902055218cba016f75 / TSLAB 0x5b1910eaad6450e50f816082aa078c41f10c292f / SKHYB 0xca750ef65f295bbecd685abf54e82caf297bdb61 / SNDKB 0x3ee4df61bd4f867e349beae8bfe07bc31b4850fb / MUB 0xcdf2f3e0fa43c47a6662a91c9e4a7c5f69762699
+# --- other EVM prop AMMs (watchlist probe, 2026-08-03, same method) ---
+# venue	chain	pair	result	kyber_source_id
+# elfomofi	base	WETH->USDC	direct	elfomofi
+# elfomofi	base	cbBTC/AERO/VIRTUAL/USDT legs	no(4008)	elfomofi
+# elfomofi	bsc	BTCB->USDT	direct	elfomofi
+# elfomofi	bsc	WBNB->USDT	direct	elfomofi   <- only prop AMM quoting BNB
+# elfomofi	bsc	ETH->USDT	direct	elfomofi
+# elfomofi	bsc	USDT->QQQB	no(4008)	elfomofi
+# lunarbase	base	WETH->USDC	direct	lunarbase
+# lunarbase	base	cbBTC->USDC	direct	lunarbase
+# lunarbase	base	AERO/VIRTUAL/USDT legs	no(4008)	lunarbase
+# axima	base	WETH->USDC	direct	axima-v2
+# axima	base	cbBTC->USDC	direct	axima-v2
+# axima	base	AERO->USDC	direct	axima-v2
+# native-swap: no kyberswap source id (native/native-v2/native-v3 all 40011); quote via native.org API (key required)

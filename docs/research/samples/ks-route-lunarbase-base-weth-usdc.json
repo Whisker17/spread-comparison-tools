@@ -1,0 +1,51 @@
+{
+    "code": 0,
+    "message": "successfully",
+    "data": {
+        "routeSummary": {
+            "tokenIn": "0x4200000000000000000000000000000000000006",
+            "amountIn": "1000000000000000000",
+            "amountInUsd": "1846.1871060213346",
+            "tokenOut": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+            "amountOut": "1844433537",
+            "amountOutUsd": "1835.1663898534384",
+            "gas": "343831",
+            "gasPrice": "6000000",
+            "gasUsd": "0.003808658153102529",
+            "l1FeeUsd": "0.00002454190752518874",
+            "extraFee": {
+                "feeAmount": "",
+                "chargeFeeBy": "",
+                "isInBps": false,
+                "feeReceiver": ""
+            },
+            "route": [
+                [
+                    {
+                        "pool": "0x0000efc4ec03a7c47d3a38a9be7ff1d52dd01b99",
+                        "tokenIn": "0x4200000000000000000000000000000000000006",
+                        "tokenOut": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+                        "swapAmount": "1000000000000000000",
+                        "amountOut": "1844433537",
+                        "exchange": "lunarbase",
+                        "poolType": "lunarbase",
+                        "poolExtra": {
+                            "blockNumber": 49475695,
+                            "n": true
+                        },
+                        "extra": {
+                            "_cs": "17290454696476079752",
+                            "_ts": "1785740741",
+                            "ri": "1155ba1e32hEnYgN"
+                        }
+                    }
+                ]
+            ],
+            "routeID": "1155ba1e32hEnYgN",
+            "checksum": "17290454696476079752",
+            "timestamp": 1785740741
+        },
+        "routerAddress": "0x6131B5fae19EA4f9D964eAc0408E4408b66337b5"
+    },
+    "requestId": "1155ba1e-df68-449d-880d-7adf37b7e555"
+}

@@ -1,0 +1,51 @@
+{
+    "code": 0,
+    "message": "successfully",
+    "data": {
+        "routeSummary": {
+            "tokenIn": "0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf",
+            "amountIn": "2000000",
+            "amountInUsd": "1247.5147372900608",
+            "tokenOut": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+            "amountOut": "1255367233",
+            "amountOutUsd": "1248.3816931018073",
+            "gas": "693831",
+            "gasPrice": "6000000",
+            "gasUsd": "0.007720060343699433",
+            "l1FeeUsd": "0.000011611222478469732",
+            "extraFee": {
+                "feeAmount": "",
+                "chargeFeeBy": "",
+                "isInBps": false,
+                "feeReceiver": ""
+            },
+            "route": [
+                [
+                    {
+                        "pool": "0xed57bacdc2a990b631f8817853935791c122c356",
+                        "tokenIn": "0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf",
+                        "tokenOut": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+                        "swapAmount": "2000000",
+                        "amountOut": "1255367233",
+                        "exchange": "tessera",
+                        "poolType": "tessera",
+                        "poolExtra": {
+                            "blockNumber": 49472705,
+                            "tesseraSwap": "0x55555522005BcAE1c2424D474BfD5ed477749E3e"
+                        },
+                        "extra": {
+                            "_cs": "8759503240689726909",
+                            "_ts": "1785734761",
+                            "ri": "024c459959JAxJDa"
+                        }
+                    }
+                ]
+            ],
+            "routeID": "024c459959JAxJDa",
+            "checksum": "8759503240689726909",
+            "timestamp": 1785734761
+        },
+        "routerAddress": "0x6131B5fae19EA4f9D964eAc0408E4408b66337b5"
+    },
+    "requestId": "024c4599-e7d2-40c4-90da-5ccd0435f222"
+}
