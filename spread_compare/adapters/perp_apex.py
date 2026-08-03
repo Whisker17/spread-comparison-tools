@@ -262,7 +262,12 @@ class ApexAdapter(BaseAdapter):
         if not isinstance(row, dict):
             return
         if row.get("markPrice") is not None:
-            self._mark_by_cross[cross_symbol] = Decimal(str(row["markPrice"]))
+            try:
+                self._mark_by_cross[cross_symbol] = Decimal(str(row["markPrice"]))
+            except (ArithmeticError, ValueError) as exc:
+                raise AdapterFetchError(
+                    f"apex markPrice not numeric for {cross_symbol}: {exc}"
+                ) from exc
 
     async def _fetch_depth(
         self, cross_symbol: str

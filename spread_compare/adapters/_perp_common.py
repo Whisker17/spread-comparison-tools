@@ -188,6 +188,8 @@ def build_quote_from_book(
     """Walk the book and assemble a ``Quote`` (shared perp path)."""
     now = timestamp or datetime.now(tz=UTC)
     fees = non_ok_fees(fee_tier=fee_tier)
+    if mid.mid <= 0:
+        raise AdapterError(f"mid must be positive, got {mid.mid}")
     q_star = notional_usd / mid.mid
     levels = asks if side == "buy" else bids
     p_star = walk_book(levels, q_star)
