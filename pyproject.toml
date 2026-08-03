@@ -1,7 +1,7 @@
 [project]
-name = "{{PROJECT_NAME}}"
+name = "spread-comparison-tools"
 version = "0.1.0"
-description = "{{PROJECT_DESCRIPTION}}"
+description = "Tools and research for comparing execution quality / spreads across venues (CEX, public DEX, prop AMM) on Solana, Base and BSC."
 requires-python = ">=3.12"
 dependencies = []
 

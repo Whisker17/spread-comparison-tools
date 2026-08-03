@@ -1,4 +1,4 @@
-# {{PROJECT_NAME}} — Design Document / PRD
+# spread-comparison-tools — Design Document / PRD
 
 > This file is the **spec of record** for this project. Every issue, architectural
 > decision, and parameter traces back to a section here. It is produced by grilling the

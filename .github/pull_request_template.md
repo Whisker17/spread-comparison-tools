@@ -30,8 +30,9 @@ release. See docs/GIT_WORKFLOW.md § Choosing a promotion lane. -->
 ## Test plan
 
 - [ ] Local tests run (`uv run pytest` or the relevant subset)
-- [ ] If this touches {{HIGH_RISK_PATHS}}: verification approach documented (dry-run /
-      staging / mocked)
+- [ ] If this adds a money-moving, key-custody, or destructive-migration path (this repo
+      has none today — see `docs/GIT_WORKFLOW.md` § High-risk paths): verification
+      approach documented (dry-run / staging / mocked), and that section updated
 - [ ] No new tunable parameters outside `docs/DESIGN.md` §2, or the deviation is
       explained in the Summary
 

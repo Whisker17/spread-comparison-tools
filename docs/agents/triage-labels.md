@@ -33,6 +33,7 @@ whatever state the issue is in.
 
 ## High-risk-path extra caution (this repo)
 
-Treat any issue touching **{{HIGH_RISK_PATHS}}** as **never** `ready-for-agent` by
-default — route it to `ready-for-human` unless the issue explicitly says otherwise and a
-human has reviewed the plan first.
+**Not applicable today: this project defines no high-risk paths**
+(`docs/GIT_WORKFLOW.md` § High-risk paths). Once it does, the rule is: treat any issue
+touching one as **never** `ready-for-agent` by default — route it to `ready-for-human`
+unless the issue explicitly says otherwise and a human has reviewed the plan first.
