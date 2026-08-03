@@ -222,6 +222,76 @@
           }
         }
       }
+    },
+    "/simulate/pairs": {
+      "get": {
+        "tags": [
+          "simulate"
+        ],
+        "summary": "List valid simulate pair legs",
+        "description": "Return tradeable stables and catalogued assets for pair construction.\n\nDiscovery only \u2014 does not change ``POST /simulate`` validation. Clients\nshould not hardcode USDC/USDT; this list is the SSOT (WHI-833).",
+        "operationId": "get_simulate_pairs_simulate_pairs_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SimulatePairsResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/simulate": {
+      "post": {
+        "tags": [
+          "simulate"
+        ],
+        "summary": "Post Simulate",
+        "description": "Fan out a free-form pair trade to adapters; rank by expected output.",
+        "operationId": "post_simulate_simulate_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SimulateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SimulateResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Pair validation or request body error. Pair failures use SimulatePairErrorDetail ({message, reason}); pydantic body validation uses the default HTTPValidationError shape.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SimulatePairErrorDetail"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Per-client rate limit for on-demand simulation"
+          },
+          "503": {
+            "description": "Reference mid unavailable or simulator not initialized"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -926,6 +996,342 @@
         ],
         "title": "ReferenceMid",
         "description": "Snapshot-scoped reference mid shared by all venues (WHI-799 \u00a73.5)."
+      },
+      "SimulatePairErrorDetail": {
+        "properties": {
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "unknown_asset",
+              "cross_pair"
+            ],
+            "title": "Reason"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "message",
+          "reason"
+        ],
+        "title": "SimulatePairErrorDetail",
+        "description": "Structured 422 body for pair validation failures (WHI-814 / WHI-815 client)."
+      },
+      "SimulatePairsResponse": {
+        "properties": {
+          "stables": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Stables",
+            "description": "Tradeable USD stablecoin symbols accepted as a pair leg (no USD)."
+          },
+          "assets": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Assets",
+            "description": "Catalogued non-stable logical assets for the other leg."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "stables",
+          "assets"
+        ],
+        "title": "SimulatePairsResponse",
+        "description": "``GET /simulate/pairs`` \u2014 valid legs for building a simulate pair (WHI-833).\n\nContract for WHI-815: clients form pairs as (one of ``stables``) \u00d7\n(one of ``assets``), either direction. Exactly one leg must be a tradeable\nstable; ``USD`` is never listed (peg-only, not tradeable)."
+      },
+      "SimulateRequest": {
+        "properties": {
+          "sell_asset": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Sell Asset",
+            "description": "Asset the user sells, e.g. SOL or USDC"
+          },
+          "buy_asset": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Buy Asset",
+            "description": "Asset the user receives, e.g. USDC or SOL"
+          },
+          "amount": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              }
+            ],
+            "title": "Amount",
+            "description": "Quantity of sell_asset (free-form; not snapped to notional tiers)"
+          },
+          "venues": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Venues",
+            "description": "Optional venue slug filter; default = all registered adapters"
+          },
+          "instrument_type": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "spot",
+                  "perp",
+                  "amm_pool",
+                  "prop_amm"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Instrument Type",
+            "description": "Override adapter default instrument type when the class supports it"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "sell_asset",
+          "buy_asset",
+          "amount"
+        ],
+        "title": "SimulateRequest",
+        "description": "``POST /simulate`` body: sell/buy assets and amount in sell-asset units."
+      },
+      "SimulateResponse": {
+        "properties": {
+          "snapshot_id": {
+            "type": "string",
+            "title": "Snapshot Id"
+          },
+          "sell_asset": {
+            "type": "string",
+            "title": "Sell Asset"
+          },
+          "buy_asset": {
+            "type": "string",
+            "title": "Buy Asset"
+          },
+          "amount": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Amount"
+          },
+          "asset": {
+            "type": "string",
+            "title": "Asset",
+            "description": "Non-stable leg passed to adapters"
+          },
+          "side": {
+            "type": "string",
+            "enum": [
+              "buy",
+              "sell"
+            ],
+            "title": "Side",
+            "description": "Adapter side: sell when selling non-stable, buy otherwise"
+          },
+          "notional_usd": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Notional Usd"
+          },
+          "mid": {
+            "$ref": "#/components/schemas/ReferenceMid"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/SimulateRowResponse"
+            },
+            "type": "array",
+            "title": "Rows"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "snapshot_id",
+          "sell_asset",
+          "buy_asset",
+          "amount",
+          "asset",
+          "side",
+          "notional_usd",
+          "mid",
+          "rows"
+        ],
+        "title": "SimulateResponse",
+        "description": "``POST /simulate`` payload \u2014 contract for WHI-815."
+      },
+      "SimulateRowResponse": {
+        "properties": {
+          "venue": {
+            "type": "string",
+            "title": "Venue"
+          },
+          "venue_symbol": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Venue Symbol"
+          },
+          "instrument_type": {
+            "type": "string",
+            "enum": [
+              "spot",
+              "perp",
+              "amm_pool",
+              "prop_amm"
+            ],
+            "title": "Instrument Type"
+          },
+          "expected_output": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Output"
+          },
+          "effective_price": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective Price"
+          },
+          "spread_bps": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Spread Bps"
+          },
+          "fee_breakdown": {
+            "$ref": "#/components/schemas/FeeBreakdown"
+          },
+          "total_cost_bps": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Cost Bps"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Timestamp"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "ok",
+                  "no_quote",
+                  "insufficient_liquidity",
+                  "unsupported_asset",
+                  "error"
+                ]
+              },
+              {
+                "type": "string",
+                "const": "not_supported"
+              }
+            ],
+            "title": "Status"
+          },
+          "best": {
+            "type": "boolean",
+            "title": "Best",
+            "default": false
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message"
+          },
+          "mid_stale": {
+            "type": "boolean",
+            "title": "Mid Stale",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "venue",
+          "instrument_type",
+          "fee_breakdown",
+          "timestamp",
+          "status"
+        ],
+        "title": "SimulateRowResponse",
+        "description": "One ranked venue row in the simulate response."
       },
       "SizeQuotePair": {
         "properties": {

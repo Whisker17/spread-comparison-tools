@@ -66,8 +66,13 @@ expected-output ranking with WHI-799 §5.2 `best` eligibility, per-client rate g
 `not_supported` rows listed not omitted. M5 simulate pair discovery (WHI-833):
 `TRADEABLE_USD_STABLES` (USDC/USDT, no USD) + `GET /simulate/pairs`
 `{stables, assets}` for WHI-815 pair selectors; peg set `USD_STABLES` unchanged.
+M5 simulate UI (WHI-815): `/simulate` aggregator-style pair+amount form from
+`GET /simulate/pairs` (no hardcoded stables), debounced `POST /simulate`, ranked
+rows with backend `best` highlight + delta-vs-best, expandable fee breakdowns,
+skeleton loading, collapsed `not_supported` section, structured 422 inline errors;
+OpenAPI client regenerated for simulate paths.
 
-**Not implemented:** remaining venue adapters (WHI-805), collector, simulate UI (WHI-815).
+**Not implemented:** remaining venue adapters (WHI-805), collector.
 Do not assume a module exists until its issue lands.
 
 **Blocking gap:** `docs/DESIGN.md` is still mostly the empty template stub (§4.2 module
@@ -124,7 +129,7 @@ load-bearing interfaces other modules may depend on.
 - **`spread_compare/simulator.py`** — `POST /simulate` fan-out (WHI-814): pair validation, free-form notional, expected_output derivation, §5.2 best ranking; no response cache; never recomputes bps.
 - **`spread_compare/adapters/`** — async `VenueAdapter` + `BaseAdapter`, auto-discovery, `@register_adapter` registry with `startup_all`/`aclose_all`, `mock` + CEX (`binance`/`bybit`) + perp DEX (`perp_hyperliquid`/`perp_lighter`/`perp_apex`) + AMM DEX (`amm_uniswap`/`amm_aerodrome`/`amm_pancakeswap`) + prop AMM (`prop_jupiter`/`prop_kyberswap`), shared `_cex_common` / `_perp_common` / `_amm_common` / `_prop_common`; one module per real venue (no hand-import list).
 - **`spread_compare/api/`** — FastAPI app factory with lifespan; `/health`, `/quotes`, `/venues`, `/assets`, `/fees`, `POST /simulate`, `GET /simulate/pairs`; CORS for local FE.
-- **`frontend/`** — Next.js dashboard (WHI-808): typed API client, SpreadMatrix, section config modules, route shell.
+- **`frontend/`** — Next.js dashboard (WHI-808): typed API client, SpreadMatrix, section config modules, route shell; `/simulate` UI (WHI-815) via `SimulateSection` + `simulatePairs`/`simulateView` pure libs.
 - **`main.py`** — CLI: `--dry-run` validates; live serves uvicorn.
 
 ## Git workflow (mandatory)

@@ -3,8 +3,6 @@
  *
  * Types come from `api-types.ts` (openapi-typescript). Do not hand-write
  * parallel response shapes — regenerate with `pnpm gen:api`.
- *
- * `/simulate` remains a stub until M5 (WHI-815).
  */
 
 import type { components, paths } from "@/lib/api-types";
@@ -18,6 +16,13 @@ export type SizeQuotePair = components["schemas"]["SizeQuotePair"];
 export type Quote = components["schemas"]["Quote"];
 export type TopOfBook = components["schemas"]["TopOfBook"];
 export type ReferenceMid = components["schemas"]["ReferenceMid"];
+export type SimulateRequest = components["schemas"]["SimulateRequest"];
+export type SimulateResponse = components["schemas"]["SimulateResponse"];
+export type SimulateRowResponse = components["schemas"]["SimulateRowResponse"];
+export type SimulatePairsResponse = components["schemas"]["SimulatePairsResponse"];
+export type SimulatePairErrorDetail =
+  components["schemas"]["SimulatePairErrorDetail"];
+export type FeeBreakdown = components["schemas"]["FeeBreakdown"];
 
 export type QuotesQuery = NonNullable<
   paths["/quotes"]["get"]["parameters"]["query"]
@@ -71,6 +76,54 @@ function buildUrl(
   return url;
 }
 
+function parseResponseBody(text: string): unknown {
+  if (!text) return null;
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    return text;
+  }
+}
+
+/**
+ * Unwrap FastAPI error bodies: `{detail: string | {message} | ValidationError[]}`.
+ * Exported so simulateView (and callers) share one walk instead of re-deriving.
+ */
+export function unwrapApiDetail(body: unknown): {
+  message: string | null;
+  detail: unknown;
+} {
+  if (typeof body !== "object" || body === null || !("detail" in body)) {
+    return { message: null, detail: null };
+  }
+  const detail = (body as { detail: unknown }).detail;
+  if (typeof detail === "string") {
+    return { message: detail, detail };
+  }
+  if (Array.isArray(detail)) {
+    // Pydantic / HTTPValidationError: list of {loc, msg, type}.
+    const first = detail[0] as { msg?: unknown } | undefined;
+    if (first && typeof first.msg === "string") {
+      return { message: first.msg, detail };
+    }
+    return { message: "Request validation failed", detail };
+  }
+  if (
+    typeof detail === "object" &&
+    detail !== null &&
+    "message" in detail &&
+    typeof (detail as { message: unknown }).message === "string"
+  ) {
+    return { message: (detail as { message: string }).message, detail };
+  }
+  return { message: null, detail };
+}
+
+function errorDetailMessage(body: unknown, fallback: string): string {
+  const { message } = unwrapApiDetail(body);
+  return message ?? fallback;
+}
+
 async function apiGet<T>(
   path: string,
   query?: Record<string, string | undefined | null>,
@@ -85,26 +138,42 @@ async function apiGet<T>(
     cache: "no-store",
   });
 
-  let body: unknown = null;
-  const text = await res.text();
-  if (text) {
-    try {
-      body = JSON.parse(text) as unknown;
-    } catch {
-      body = text;
-    }
-  }
+  const body = parseResponseBody(await res.text());
 
   if (!res.ok) {
-    const detail =
-      typeof body === "object" &&
-      body !== null &&
-      "detail" in body &&
-      (body as { detail: unknown }).detail !== undefined
-        ? String((body as { detail: unknown }).detail)
-        : res.statusText;
     throw new ApiError(
-      `GET ${url.pathname} failed: ${res.status} ${detail}`,
+      `GET ${url.pathname} failed: ${res.status} ${errorDetailMessage(body, res.statusText)}`,
+      res.status,
+      body,
+    );
+  }
+
+  return body as T;
+}
+
+async function apiPost<T>(
+  path: string,
+  payload: unknown,
+  options: FetchOptions = {},
+): Promise<T> {
+  const url = buildUrl(path);
+
+  const res = await fetch(url.toString(), {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+    signal: options.signal,
+    cache: "no-store",
+  });
+
+  const body = parseResponseBody(await res.text());
+
+  if (!res.ok) {
+    throw new ApiError(
+      `POST ${url.pathname} failed: ${res.status} ${errorDetailMessage(body, res.statusText)}`,
       res.status,
       body,
     );
@@ -215,22 +284,23 @@ export async function fetchFees(
   return apiGet<FeeSchedule[]>("/fees", undefined, options);
 }
 
-/** M5 stub shape — WHI-815 will fill the real `/simulate` contract. */
-export type SimulateRequest = {
-  asset: string;
-  notional_usd: string | number;
-  side: "buy" | "sell";
-  venues?: readonly string[];
-};
+/**
+ * `GET /simulate/pairs` — tradeable stables × catalog assets for pair pickers
+ * (WHI-833). Do not hardcode USDC/USDT; this list is the SSOT.
+ */
+export async function fetchSimulatePairs(
+  options?: FetchOptions,
+): Promise<SimulatePairsResponse> {
+  return apiGet<SimulatePairsResponse>("/simulate/pairs", undefined, options);
+}
 
-/** Placeholder until WHI-815 ships `POST /simulate`. */
+/**
+ * `POST /simulate` — free-form pair trade fan-out ranked by expected output
+ * (WHI-814; UI in WHI-815). Amount is in sell-asset units.
+ */
 export async function postSimulate(
-  ..._args: [SimulateRequest, FetchOptions?]
-): Promise<never> {
-  void _args;
-  throw new ApiError(
-    "POST /simulate not implemented yet (WHI-815). Stub keeps the client seam ready.",
-    501,
-    null,
-  );
+  body: SimulateRequest,
+  options?: FetchOptions,
+): Promise<SimulateResponse> {
+  return apiPost<SimulateResponse>("/simulate", body, options);
 }

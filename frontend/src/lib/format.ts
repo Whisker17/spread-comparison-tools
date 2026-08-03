@@ -49,7 +49,8 @@ export function formatNotional(usd: string | number): string {
   if (n >= 1_000) {
     return `$${(n / 1_000).toFixed(n % 1_000 === 0 ? 0 : 1)}k`;
   }
-  return `$${n}`;
+  // Free-form simulate notionals (amount × mid) land here — don't dump raw float.
+  return `$${n.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
 }
 
 /** Format an ISO timestamp for compact UI. */
@@ -93,4 +94,27 @@ export function formatPrice(value: string | number | null | undefined): string {
     minimumFractionDigits: 2,
     maximumFractionDigits: 8,
   });
+}
+
+/**
+ * Delta vs best output for the simulate list: signed absolute units + optional bps.
+ * Positive absolute means this row trails best (best − row > 0).
+ * Null absolute → "Δ —"; zero → "Δ 0".
+ */
+export function formatDeltaVsBest(
+  absolute: number | null,
+  bps: number | null,
+  unit: string,
+): string {
+  if (absolute === null) return "Δ —";
+  if (absolute === 0) return "Δ 0";
+  const sign = absolute > 0 ? "−" : "+";
+  const mag = Math.abs(absolute);
+  const magStr =
+    mag >= 1
+      ? mag.toLocaleString(undefined, { maximumFractionDigits: 4 })
+      : mag.toPrecision(4);
+  const bpsStr =
+    bps === null ? "" : ` · ${formatBps(Math.abs(bps))} bps vs ref`;
+  return `Δ ${sign}${magStr} ${unit}${bpsStr}`;
 }

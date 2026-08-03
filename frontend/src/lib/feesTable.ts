@@ -5,8 +5,9 @@
  * Does not invent fee numbers — only arranges the validated catalog.
  */
 
-import type { FeeSchedule, VenueResponse } from "@/lib/api";
+import { VENUE_CLASS_LABELS } from "@/config/sections/helpers";
 import type { VenueClass } from "@/config/sections/types";
+import type { FeeSchedule, VenueResponse } from "@/lib/api";
 import { compareSlug } from "@/lib/format";
 
 export type FeeTableVenueClass = VenueClass | "unknown";
@@ -43,12 +44,7 @@ const CLASS_ORDER: readonly FeeTableVenueClass[] = [
 ] as const;
 
 const CLASS_LABELS: Record<FeeTableVenueClass, string> = {
-  cex: "CEX",
-  perp_dex: "Perp DEX",
-  amm_dex: "Public AMM",
-  prop_amm: "Prop AMM",
-  mock: "Mock",
-  unknown: "Other",
+  ...VENUE_CLASS_LABELS,
 };
 
 const KNOWN_CLASSES = new Set<string>(CLASS_ORDER);
