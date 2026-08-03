@@ -127,20 +127,13 @@ def hl_logical_id(coin: str) -> str:
 
 
 def scaled_1000_logical_id(venue_symbol: str) -> str:
-    """Map ``1000PEPE`` → ``PEPE``; otherwise return uppercased symbol."""
+    """Map known scaled bases (``1000PEPE`` → ``PEPE``); else uppercased symbol.
+
+    Only known overrides are inverted — arbitrary ``1000*`` markets stay as-is
+    so ``supported_assets`` never advertises an unresolvable logical id.
+    """
     sym = venue_symbol.upper()
-    if sym.startswith("1000") and len(sym) > 4:
-        return sym[4:]
+    for logical, entry in _SCALED_1000_OVERRIDES.items():
+        if entry.venue_symbol.upper() == sym:
+            return logical
     return sym
-
-
-def perp_multiplier_for(asset: str, *, venue: str) -> Decimal:
-    """Contract multiplier for a logical asset on a named perp venue."""
-    if venue == "hyperliquid":
-        try:
-            return resolve_hl_coin(asset).multiplier
-        except UnsupportedPerpSymbolError:
-            return Decimal(1)
-    if venue in ("lighter", "apex"):
-        return resolve_scaled_1000_symbol(asset).multiplier
-    return Decimal(1)

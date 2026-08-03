@@ -16,11 +16,13 @@ from spread_compare.adapters._cex_common import (
 )
 from spread_compare.adapters.base import AdapterError, AdapterFetchError
 from spread_compare.adapters.registry import register_adapter
-from spread_compare.models import Side
+from spread_compare.models import InstrumentType, Side
 
 _BASE = "https://api.bybit.com"
 # WHI-802: default limit=200. Tunables deferred — docs/DEFERRED_ISSUES.md (WHI-802).
 _ORDERBOOK_LIMIT = 200
+# bStocks (*B) are Binance-only; Bybit uses *X xStocks (out of Phase 1 — WHI-798 §4.3).
+_BYBIT_NO_SPOT: frozenset[str] = frozenset({"QQQB", "SPCXB", "NVDAB"})
 
 
 @register_adapter
@@ -35,6 +37,15 @@ class BybitAdapter(CexBaseAdapter):
         "X-Bapi-Limit-Status",
         "x-bapi-limit-status",
     )
+
+    def _venue_lists_asset(
+        self,
+        asset: str,
+        instrument_type: InstrumentType | CexBookSide | None,
+    ) -> bool:
+        if asset.upper() in _BYBIT_NO_SPOT and instrument_type in (None, "spot"):
+            return False
+        return True
 
     async def _fetch_book(
         self,

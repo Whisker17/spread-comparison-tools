@@ -259,7 +259,12 @@ def test_adapters_import_bookwalk_and_costs() -> None:
 def test_supported_assets_includes_btc(slug: str) -> None:
     assets = get(slug).supported_assets()
     assert "DOGE" in assets
-    assert "QQQB" in get(slug).supported_assets(instrument_type="spot")
+    # bStocks are Binance-only (WHI-798 §4.3); Bybit must not advertise them.
+    spot = get(slug).supported_assets(instrument_type="spot")
+    if slug == "binance":
+        assert "QQQB" in spot
+    else:
+        assert "QQQB" not in spot
     assert "TSLA" in get(slug).supported_assets(instrument_type="perp")
     assert "TSLA" not in get(slug).supported_assets(instrument_type="spot")
     assert "BTC" in assets

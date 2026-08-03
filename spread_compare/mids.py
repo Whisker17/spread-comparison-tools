@@ -22,6 +22,7 @@ from spread_compare.assets import (
     TOKENIZED_CEX_SPOT,
     TOKENIZED_UNDERLYING,
 )
+from spread_compare.cex_symbols import resolve_cex_multiplier, resolve_cex_symbol
 from spread_compare.models import MidSource, ReferenceMid
 from spread_compare.settings import MidSettings, load_mid_settings
 
@@ -32,8 +33,6 @@ _BINANCE_SPOT = "https://api.binance.com"
 _BYBIT = "https://api.bybit.com"
 _HYPERLIQUID = "https://api.hyperliquid.xyz"
 _PYTH_HERMES = "https://hermes.pyth.network"
-
-_USDT_SYMBOL = "{asset}USDT"
 
 
 class MidResolutionError(Exception):
@@ -114,11 +113,13 @@ class DefaultMarkProvider:
 
     async def marks_for(self, asset: str) -> Sequence[tuple[str, Decimal]]:
         """Sample marks from the five §3.3 venues (skip silently when unavailable)."""
-        symbol = _USDT_SYMBOL.format(asset=asset.upper())
         asset_key = asset.upper()
+        # Prefer perp wire form when listed (e.g. 1000PEPEUSDT); scale to 1×.
+        perp_sym = resolve_cex_symbol(asset_key, "perp")
+        mult = resolve_cex_multiplier(asset_key, "perp")
         labeled = (
-            ("binance", self._binance_mark(symbol)),
-            ("bybit", self._bybit_mark(symbol)),
+            ("binance", self._binance_mark_scaled(perp_sym, mult)),
+            ("bybit", self._bybit_mark_scaled(perp_sym, mult)),
             ("hyperliquid", self._hyperliquid_mark(asset_key)),
             ("lighter", self._lighter_mark(asset_key)),
             ("apex", self._apex_mark(asset_key)),
@@ -135,7 +136,11 @@ class DefaultMarkProvider:
                 samples.append((label, result))
         return samples
 
-    async def _binance_mark(self, symbol: str) -> Decimal | None:
+    async def _binance_mark_scaled(
+        self, symbol: str | None, mult: Decimal
+    ) -> Decimal | None:
+        if not symbol:
+            return None
         resp = await self._client.get(
             f"{_BINANCE_FAPI}/fapi/v1/premiumIndex", params={"symbol": symbol}
         )
@@ -145,9 +150,17 @@ class DefaultMarkProvider:
         raw = data.get("markPrice") or data.get("indexPrice")
         if raw is None:
             return None
-        return _parse_decimal(raw, field="binance.mark")
+        mark = _parse_decimal(raw, field="binance.mark")
+        return mark / mult if mult != 1 else mark
 
-    async def _bybit_mark(self, symbol: str) -> Decimal | None:
+    async def _bybit_mark_scaled(
+        self, symbol: str | None, mult: Decimal
+    ) -> Decimal | None:
+        if not symbol:
+            return None
+        return await self._bybit_mark(symbol, mult=mult)
+
+    async def _bybit_mark(self, symbol: str, *, mult: Decimal = Decimal(1)) -> Decimal | None:
         resp = await self._client.get(
             f"{_BYBIT}/v5/market/tickers",
             params={"category": "linear", "symbol": symbol},
@@ -160,12 +173,13 @@ class DefaultMarkProvider:
         raw = rows[0].get("markPrice") or rows[0].get("lastPrice")
         if raw is None or raw == "":
             return None
-        return _parse_decimal(raw, field="bybit.mark")
+        mark = _parse_decimal(raw, field="bybit.mark")
+        return mark / mult if mult != 1 else mark
 
     async def _hyperliquid_mark(self, asset: str) -> Decimal | None:
         """Resolve mark from main book or HIP-3 ``xyz`` (WHI-826 / WHI-798 §8 Q10).
 
-        Scales contract marks (e.g. kPEPE) to 1× canonical units before return.
+        Scales only when the scaled venue coin (e.g. kPEPE) is what matched.
         """
         from spread_compare.perp_symbols import (
             UnsupportedPerpSymbolError,
@@ -191,12 +205,16 @@ class DefaultMarkProvider:
         meta, ctxs = data[0], data[1]
         universe = meta.get("universe") or []
         bare = coin.split(":", 1)[-1]
-        targets = {coin, bare, bare.upper(), asset.upper()}
+        # Only match the resolved venue coin (and bare HIP-3 name), not a 1× alias.
+        targets = {coin, coin.lower()}
+        if dex:
+            targets.add(bare)
+            targets.add(bare.upper())
         for i, entry in enumerate(universe):
             if i >= len(ctxs):
                 break
             name = str(entry.get("name") or "")
-            candidates = {name, name.upper()}
+            candidates = {name, name.upper(), name.lower()}
             if ":" not in name and dex:
                 candidates.add(f"{dex}:{name.upper()}")
             if candidates.isdisjoint(targets):
@@ -205,6 +223,7 @@ class DefaultMarkProvider:
             if raw is None:
                 return None
             mark = _parse_decimal(raw, field="hyperliquid.mark")
+            # Scale only for known scaled coins (kPEPE); HIP-3 equity is mult=1.
             return mark / mult if mult != 1 else mark
         return None
 
@@ -213,7 +232,7 @@ class DefaultMarkProvider:
         from spread_compare.perp_symbols import resolve_lighter_symbol
 
         resolved = resolve_lighter_symbol(asset)
-        venue_sym = resolved.venue_symbol
+        venue_sym = resolved.venue_symbol.upper()
         mult = resolved.multiplier
         resp = await self._client.get(
             "https://mainnet.zklighter.elliot.ai/api/v1/orderBooks"
@@ -232,16 +251,15 @@ class DefaultMarkProvider:
         for book in books:
             if not isinstance(book, dict):
                 continue
-            name = str(book.get("symbol") or book.get("market_id") or "")
-            name_u = name.upper()
-            if name_u in {venue_sym, asset.upper()} or name_u.startswith(
-                f"{asset.upper()}-"
-            ):
-                raw = book.get("mark_price") or book.get("last_trade_price")
-                if raw is None:
-                    return None
-                mark = _parse_decimal(raw, field="lighter.mark")
-                return mark / mult if mult != 1 else mark
+            name_u = str(book.get("symbol") or book.get("market_id") or "").upper()
+            # Exact venue wire form only — never match 1× PEPE when we need 1000PEPE.
+            if name_u != venue_sym:
+                continue
+            raw = book.get("mark_price") or book.get("last_trade_price")
+            if raw is None:
+                return None
+            mark = _parse_decimal(raw, field="lighter.mark")
+            return mark / mult if mult != 1 else mark
         return None
 
     async def _apex_mark(self, asset: str) -> Decimal | None:
@@ -249,10 +267,12 @@ class DefaultMarkProvider:
 
         resolved = resolve_apex_base(asset)
         mult = resolved.multiplier
-        # Prefer 1000× base wire form when present (e.g. 1000PEPEUSDT).
-        candidates = [f"{resolved.venue_symbol}USDT", f"{asset}USDT", f"{asset}-USDT"]
+        # Only the resolved wire form (1000PEPEUSDT when scaled) — no 1× fallback.
+        symbols = [f"{resolved.venue_symbol}USDT"]
+        if mult == 1:
+            symbols.extend([f"{asset}USDT", f"{asset}-USDT"])
         payload: object | None = None
-        for symbol in candidates:
+        for symbol in symbols:
             resp = await self._client.get(
                 "https://omni.apex.exchange/api/v3/ticker",
                 params={"symbol": symbol},
@@ -414,13 +434,18 @@ class MidService:
         raise MidResolutionError(f"no mid for {asset}: {detail}")
 
     async def _try_binance_usdm_index(self, asset: str) -> _SourceResult | None:
-        symbol = _USDT_SYMBOL.format(asset=asset)
+        symbol = resolve_cex_symbol(asset, "perp")
+        if symbol is None:
+            return None
+        mult = resolve_cex_multiplier(asset, "perp")
         url = f"{_BINANCE_FAPI}/fapi/v1/premiumIndex"
         try:
             resp = await self._http().get(url, params={"symbol": symbol})
             resp.raise_for_status()
             data = resp.json()
             price = _parse_decimal(data["indexPrice"], field="indexPrice")
+            if mult != 1:
+                price = price / mult
             ts = _ms_to_dt(data.get("time"))
             return _SourceResult(price, "binance_usdm_index", ts)
         except (httpx.HTTPError, KeyError, TypeError, MidResolutionError) as exc:
@@ -428,7 +453,10 @@ class MidService:
             return None
 
     async def _try_binance_spot_tob(self, asset: str) -> _SourceResult | None:
-        symbol = _USDT_SYMBOL.format(asset=asset)
+        symbol = resolve_cex_symbol(asset, "spot")
+        if symbol is None:
+            return None
+        mult = resolve_cex_multiplier(asset, "spot")
         url = f"{_BINANCE_SPOT}/api/v3/ticker/bookTicker"
         try:
             resp = await self._http().get(url, params={"symbol": symbol})
@@ -437,13 +465,18 @@ class MidService:
             bid = _parse_decimal(data["bidPrice"], field="bidPrice")
             ask = _parse_decimal(data["askPrice"], field="askPrice")
             mid = (bid + ask) / Decimal("2")
+            if mult != 1:
+                mid = mid / mult
             return _SourceResult(mid, "binance_spot_tob", datetime.now(tz=UTC))
         except (httpx.HTTPError, KeyError, TypeError, MidResolutionError) as exc:
             logger.debug("binance_spot_tob failed for %s: %s", asset, exc)
             return None
 
     async def _try_bybit_spot_tob(self, asset: str) -> _SourceResult | None:
-        symbol = _USDT_SYMBOL.format(asset=asset)
+        symbol = resolve_cex_symbol(asset, "spot")
+        if symbol is None:
+            return None
+        mult = resolve_cex_multiplier(asset, "spot")
         url = f"{_BYBIT}/v5/market/tickers"
         try:
             resp = await self._http().get(
@@ -458,6 +491,8 @@ class MidService:
             bid = _parse_decimal(row["bid1Price"], field="bid1Price")
             ask = _parse_decimal(row["ask1Price"], field="ask1Price")
             mid = (bid + ask) / Decimal("2")
+            if mult != 1:
+                mid = mid / mult
             return _SourceResult(mid, "bybit_spot_tob", datetime.now(tz=UTC))
         except (httpx.HTTPError, KeyError, TypeError, MidResolutionError) as exc:
             logger.debug("bybit_spot_tob failed for %s: %s", asset, exc)

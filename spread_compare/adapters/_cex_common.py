@@ -406,6 +406,7 @@ class CexBaseAdapter(BaseAdapter, ABC):
         instrument_type: InstrumentType | None = None,
         fee_tier: str | None = None,
     ) -> Quote:
+        explicit_itype = instrument_type is not None
         requested = instrument_type or default_instrument_type(self.venue_class)
         asset_key = asset.upper()
         # Echo requested tier name (mock parity); bps always default_taker until WHI-812.
@@ -435,7 +436,17 @@ class CexBaseAdapter(BaseAdapter, ABC):
             )
 
         symbol = resolve_cex_symbol(asset_key, book_side)
-        if symbol is None:
+        # Equity perps have no CEX spot book — when the caller omitted
+        # instrument_type, fall through to the only listed book (WHI-826).
+        if (
+            symbol is None
+            and not explicit_itype
+            and book_side == "spot"
+            and resolve_cex_symbol(asset_key, "perp") is not None
+        ):
+            book_side = "perp"
+            symbol = resolve_cex_symbol(asset_key, "perp")
+        if symbol is None or not self._venue_lists_asset(asset_key, book_side):
             return build_error_quote(
                 venue=self.venue,
                 asset=asset_key,
@@ -525,5 +536,16 @@ class CexBaseAdapter(BaseAdapter, ABC):
         instrument_type: InstrumentType | None = None,
     ) -> list[str]:
         if instrument_type in ("spot", "perp"):
-            return supported_cex_assets(instrument_type)
-        return supported_cex_assets()
+            assets = supported_cex_assets(instrument_type)
+        else:
+            assets = supported_cex_assets()
+        return [a for a in assets if self._venue_lists_asset(a, instrument_type)]
+
+    def _venue_lists_asset(
+        self,
+        asset: str,
+        instrument_type: InstrumentType | CexBookSide | None,
+    ) -> bool:
+        """Per-venue listing filter (override for Bybit bStocks gaps, etc.)."""
+        _ = asset, instrument_type
+        return True
