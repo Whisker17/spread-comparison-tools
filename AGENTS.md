@@ -55,10 +55,12 @@ M4 fee schedules (WHI-812): `config/fees/*.yaml` + `fees.py` loader, adapters'
 `get_fees` config-backed, `GET /fees`. M3 asset catalog expansion (WHI-826): Phase 1
 stocks / equity perps / others in `assets.py`; instrument-aware `cex_symbols.CexSymbol`
 + contract multipliers; HL HIP-3 `xyz:` meta + `kPEPE`/`kBONK` scaling; PancakeSwap BSC
-bStocks tokens; `perp_symbols` shared maps.
+bStocks tokens; `perp_symbols` shared maps. M4 fees page (WHI-813): `/fees` fee-structure
+table + live cost-composition stacked bars (`costComposition` / `feesTable` pure lib +
+fixture tests).
 
 **Not implemented:** remaining venue adapters (WHI-805), collector, stocks
-section (WHI-810), fees/simulate UI. Do not assume a module exists until
+section (WHI-810), simulate UI. Do not assume a module exists until
 its issue lands.
 
 **Blocking gap:** `docs/DESIGN.md` is still mostly the empty template stub (§4.2 module
