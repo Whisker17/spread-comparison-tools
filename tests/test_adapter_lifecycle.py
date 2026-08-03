@@ -72,6 +72,10 @@ async def test_startup_all_initializes_mock() -> None:
     try:
         assert initialized_count() >= 1
         assert "mock" in _INITIALIZED
+        # Second call is safe (per-adapter startup is idempotent).
+        count_after_first = initialized_count()
+        await startup_all()
+        assert initialized_count() == count_after_first
     finally:
         await aclose_all()
         assert initialized_count() == 0

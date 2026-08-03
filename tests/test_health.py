@@ -10,10 +10,8 @@ def test_health_returns_200_with_adapter_count() -> None:
         response = client.get("/health")
         assert response.status_code == 200
         body = response.json()
-        assert body == {
-            "status": "ok",
-            "adapters_initialized": body["adapters_initialized"],
-        }
+        assert set(body) == {"status", "adapters_initialized"}
+        assert body["status"] == "ok"
         assert isinstance(body["adapters_initialized"], int)
         assert body["adapters_initialized"] >= 1
 
