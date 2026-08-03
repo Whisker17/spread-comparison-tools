@@ -288,8 +288,43 @@ describe("formatSnapshotSummary", () => {
       },
     });
     expect(text).toBe(
-      "At $10k, HumidiFi has the lowest total cost for BTC (2.1 bps); at $1M, Binance perp (4.4 bps).",
+      "At $10k, HumidiFi has the lowest total cost to buy BTC (2.1 bps); at $1M, Binance perp (4.4 bps).",
     );
+  });
+
+  it("mentions sell / round-trip side in the first clause", () => {
+    const buy = quote({
+      venue: "binance",
+      status: "ok",
+      side: "buy",
+      total_cost_bps: "9",
+    });
+    const sell = quote({
+      venue: "binance",
+      status: "ok",
+      side: "sell",
+      total_cost_bps: "11",
+    });
+    const pairs = [
+      pair("binance", "1000", buy, {
+        sell,
+        round_trip_total_cost_bps: "20",
+      }),
+    ];
+    expect(
+      formatSnapshotSummary(pairs, {
+        asset: "BTC",
+        side: "sell",
+        venueLabels: { binance: "Binance spot" },
+      }),
+    ).toContain("to sell BTC");
+    expect(
+      formatSnapshotSummary(pairs, {
+        asset: "BTC",
+        side: "round_trip",
+        venueLabels: { binance: "Binance spot" },
+      }),
+    ).toContain("to round-trip BTC");
   });
 
   it("never names non-ok or gas_unknown venues (WHI-799 §5.2)", () => {

@@ -197,14 +197,25 @@ export function formatSnapshotSummary(
   }
 
   const asset = options.asset;
+  const side = options.side ?? "buy";
+  const metric = options.metric ?? "total_cost_bps";
   const labelOf = (slug: string) => options.venueLabels?.[slug] ?? slug;
+
+  const metricPhrase =
+    metric === "spread_bps" ? "lowest spread" : "lowest total cost";
+  const sidePhrase =
+    side === "round_trip"
+      ? "round-trip"
+      : side === "sell"
+        ? "sell"
+        : "buy";
 
   const clauses = picks.map((pick, i) => {
     const notional = formatNotional(pick.notionalUsd);
     const venue = labelOf(pick.venue);
     const bps = pick.valueBps.toFixed(1);
     if (i === 0) {
-      return `At ${notional}, ${venue} has the lowest total cost for ${asset} (${bps} bps)`;
+      return `At ${notional}, ${venue} has the ${metricPhrase} to ${sidePhrase} ${asset} (${bps} bps)`;
     }
     return `at ${notional}, ${venue} (${bps} bps)`;
   });

@@ -1,6 +1,7 @@
 import { NOTIONAL_TIERS_USD } from "@/config/notionals";
 import type {
   SectionConfig,
+  VenueClass,
   VenueMeta,
 } from "@/config/sections/types";
 
@@ -193,10 +194,16 @@ export const REPRESENTATIONS: Readonly<
 };
 
 /** Orderbook venue classes that can produce TopOfBook (WHI-799 §6.3). */
-export const ORDERBOOK_VENUE_CLASSES = new Set(["cex", "perp_dex"]);
+export const ORDERBOOK_VENUE_CLASSES: ReadonlySet<VenueClass> = new Set([
+  "cex",
+  "perp_dex",
+]);
 
 /** On-chain venue classes that need wrapper representation labels. */
-export const ON_CHAIN_VENUE_CLASSES = new Set(["amm_dex", "prop_amm"]);
+export const ON_CHAIN_VENUE_CLASSES: ReadonlySet<VenueClass> = new Set([
+  "amm_dex",
+  "prop_amm",
+]);
 
 export const BLUE_CHIP_POLL_MS = 30_000;
 
@@ -220,31 +227,9 @@ export const blueChipsSection: SectionConfig = {
   pollIntervalMs: BLUE_CHIP_POLL_MS,
 };
 
-/** Merge section-level + per-asset hidden venues for one asset. */
-export function hiddenVenuesForAsset(
-  section: SectionConfig,
-  asset: string,
-): string[] {
-  const global = section.hiddenVenues ?? [];
-  const perAsset = section.hiddenVenuesByAsset?.[asset] ?? [];
-  return [...new Set([...global, ...perAsset])];
-}
-
-/**
- * Visible venue row order for an asset: section venues minus hidden, stable
- * order from `section.venues` (or BLUE_CHIP_VENUES fallback).
- */
-export function venuesForAsset(
-  section: SectionConfig,
-  asset: string,
-): string[] {
-  const hidden = new Set(hiddenVenuesForAsset(section, asset));
-  const ordered =
-    section.venues.length > 0 ? section.venues : [...BLUE_CHIP_VENUES];
-  return ordered.filter((v) => !hidden.has(v));
-}
-
-function defaultInstrumentType(venueClass: string | undefined): string | undefined {
+function defaultInstrumentType(
+  venueClass: VenueClass | undefined,
+): string | undefined {
   if (venueClass === "perp_dex") return "perp";
   if (venueClass === "cex") return "spot";
   return undefined;
@@ -304,35 +289,34 @@ export function buildVenueLabels(
 
 /**
  * Annotate summary venue with instrument type when CEX/perp, matching the
- * example shape "Binance perp".
+ * example shape "Binance perp". On-chain winners include the wrapper
+ * representation so bridge/peg risk is not dropped from the prose.
  */
 export function venueSummaryLabel(
   slug: string,
-  instrumentType?: string | null,
+  options: {
+    asset?: string;
+    instrumentType?: string | null;
+  } = {},
 ): string {
   const meta = BLUE_CHIP_VENUE_META[slug];
   const name = meta?.displayName ?? slug;
   if (!meta) return name;
   if (meta.venueClass === "cex") {
-    const itype = instrumentType ?? "spot";
+    const itype = options.instrumentType ?? "spot";
     return `${name} ${itype}`;
   }
   if (meta.venueClass === "perp_dex") {
     return `${name} perp`;
   }
-  // On-chain: display name only; representation is for matrix rows.
+  if (options.asset && ON_CHAIN_VENUE_CLASSES.has(meta.venueClass)) {
+    const rep = REPRESENTATIONS[options.asset as BlueChipAsset]?.[slug];
+    if (rep) return `${name} (${rep})`;
+  }
   return name;
 }
 
 export function isOrderbookVenue(slug: string): boolean {
   const cls = BLUE_CHIP_VENUE_META[slug]?.venueClass;
   return cls !== undefined && ORDERBOOK_VENUE_CLASSES.has(cls);
-}
-
-/** Representation for an asset×venue, or undefined if not listed. */
-export function representationFor(
-  asset: string,
-  venue: string,
-): string | undefined {
-  return REPRESENTATIONS[asset as BlueChipAsset]?.[venue];
 }

@@ -88,6 +88,8 @@ src/
 
 Section pages (WHI-809/810/811) should only edit their own
 `config/sections/<id>.ts` and page content — not `SpreadMatrix` or nav.
+Shared additive seams used by all sections live in `config/sections/types.ts`,
+`config/sections/helpers.ts`, and `lib/summary.ts` (best-venue / snapshot prose).
 
 ## Data fetching
 

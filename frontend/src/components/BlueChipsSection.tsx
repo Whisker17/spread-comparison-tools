@@ -7,9 +7,9 @@ import {
   blueChipsSection,
   buildVenueLabels,
   isOrderbookVenue,
-  venuesForAsset,
   venueSummaryLabel,
 } from "@/config/sections/blue-chips";
+import { venuesForAsset } from "@/config/sections/helpers";
 
 /**
  * Full `/blue-chips` content: BTC / ETH / SOL blocks with live data (WHI-809).
@@ -78,9 +78,6 @@ function BlueChipAssetBlock({ asset }: { asset: string }) {
     [section, asset],
   );
 
-  // Instrument defaults (CEX spot / perp_dex perp) come from buildVenueLabels;
-  // live instrument_type from pairs is not needed for the static label row —
-  // AssetSpreadBlock does not re-label after fetch (labels are config-driven).
   const venueLabels = useMemo(
     () => buildVenueLabels(asset, venues),
     [asset, venues],
@@ -89,10 +86,10 @@ function BlueChipAssetBlock({ asset }: { asset: string }) {
   const summaryVenueLabels = useMemo(() => {
     const out: Record<string, string> = {};
     for (const slug of venues) {
-      out[slug] = venueSummaryLabel(slug);
+      out[slug] = venueSummaryLabel(slug, { asset });
     }
     return out;
-  }, [venues]);
+  }, [venues, asset]);
 
   const orderbookVenues = useMemo(
     () => venues.filter((v) => isOrderbookVenue(v)),

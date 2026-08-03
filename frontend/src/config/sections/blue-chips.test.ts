@@ -5,13 +5,16 @@ import {
   blueChipsSection,
   buildVenueLabels,
   EVM_AMM_VENUES,
-  hiddenVenuesForAsset,
   ON_CHAIN_VENUE_CLASSES,
   REPRESENTATIONS,
   BLUE_CHIP_VENUE_META,
   TESSERA_EVM_VENUES,
-  venuesForAsset,
+  venueSummaryLabel,
 } from "@/config/sections/blue-chips";
+import {
+  hiddenVenuesForAsset,
+  venuesForAsset,
+} from "@/config/sections/helpers";
 
 describe("blue-chips section config (WHI-809)", () => {
   it("covers exactly BTC, ETH, SOL", () => {
@@ -110,5 +113,14 @@ describe("blue-chips section config (WHI-809)", () => {
 
   it("defaults poll interval to 30s on the section config", () => {
     expect(blueChipsSection.pollIntervalMs).toBe(30_000);
+  });
+
+  it("includes wrapper representation in on-chain summary labels", () => {
+    expect(venueSummaryLabel("humidifi", { asset: "BTC" })).toBe(
+      "HumidiFi (cbBTC)",
+    );
+    expect(venueSummaryLabel("binance", { asset: "BTC" })).toBe(
+      "Binance spot",
+    );
   });
 });

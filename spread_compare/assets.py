@@ -52,13 +52,15 @@ _BLUE_CHIP_ROWS: Final[tuple[AssetInfo, ...]] = (
             "hyperliquid": "ETH",
             "lighter": "ETH",
             "apex": "ETH-USDT",
-            "humidifi": "WETH",
-            "tessera_solana": "WETH",
-            "bisonfi": "WETH",
+            # Solana prop: Wormhole-bridged WETH (WHI-798 §3.3), not bare WETH.
+            "humidifi": "Wormhole WETH",
+            "tessera_solana": "Wormhole WETH",
+            "bisonfi": "Wormhole WETH",
             "tessera_base": "WETH",
             "uniswap_eth": "WETH",
             "aerodrome_base": "WETH",
-            "pancakeswap_bsc": "ETH",
+            # BSC bridged ETH — never bare logical "ETH" (WHI-809 / WHI-798 §3.3).
+            "pancakeswap_bsc": "BSC ETH",
             # tessera_bsc: no ETH main market in WHI-797 v2 matrix — omit (same as SOL).
         },
     ),

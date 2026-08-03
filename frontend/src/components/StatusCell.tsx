@@ -31,7 +31,7 @@ export type StatusCellProps = {
   className?: string;
   /** Extra tooltip lines (effective price, fees, etc.). */
   tooltipExtra?: ReactNode;
-  /** Optional retry handler for error cells (wired by LiveSpreadDemo / section pages). */
+  /** Optional retry handler for error cells (wired by section pages). */
   onRetry?: () => void;
 };
 
