@@ -28,10 +28,13 @@ across Solana/Base/BSC (WHI-797), asset inventory (WHI-798), spread & fee data m
 registry, mock adapter, and FastAPI `GET /health`. M2 async adapter protocol (WHI-823):
 async `VenueAdapter` + lifecycle hooks, `BaseAdapter` shared `httpx.AsyncClient`, registry
 `startup_all`/`aclose_all`, adapter auto-discovery, app lifespan, and `--live` test marker.
+M2 AMM DEX adapters (WHI-804): `uniswap_eth`, `aerodrome_base`, `pancakeswap_bsc` via
+on-chain Quoter `eth_call` (raw JSON-RPC + eth-abi; no web3); RPC env
+`ETH_RPC_URL` / `BASE_RPC_URL` / `BSC_RPC_URL`.
 
-**Not implemented:** real venue adapters (WHI-802…806), `/quotes` + reference-mid
-(WHI-807), fee config numbers (WHI-812), collector, frontend. Do not assume a module
-exists until its issue lands.
+**Not implemented:** CEX/perp/prop adapters (WHI-802, 803, 805, 806), `/quotes` +
+reference-mid (WHI-807), fee config numbers (WHI-812), collector, frontend. Do not
+assume a module exists until its issue lands.
 
 **Blocking gap:** `docs/DESIGN.md` is still mostly the empty template stub (§4.2 module
 layout is filled by WHI-801). Produce the rest via `/grill-me` + `/to-spec` — the PR
@@ -71,7 +74,7 @@ load-bearing interfaces other modules may depend on.
 - **`spread_compare/venues.py`** — static venue slug registry (WHI-799 §6.5).
 - **`spread_compare/bookwalk.py`** — sole walk-the-book VWAP; CEX/perp adapters import only this.
 - **`spread_compare/costs.py`** — sole `spread_bps` / `total_cost_bps`; aggregator never recomputes.
-- **`spread_compare/adapters/`** — async `VenueAdapter` + `BaseAdapter`, auto-discovery, `@register_adapter` registry with `startup_all`/`aclose_all`, `mock` adapter; one module per real venue (no hand-import list).
+- **`spread_compare/adapters/`** — async `VenueAdapter` + `BaseAdapter`, auto-discovery, `@register_adapter` registry with `startup_all`/`aclose_all`, `mock` + AMM DEX adapters (`amm_uniswap` / `amm_aerodrome` / `amm_pancakeswap`, shared `_amm_common`); one module per real venue (no hand-import list).
 - **`spread_compare/api/`** — FastAPI app factory with lifespan (`/health` reports initialized adapter count; `/quotes` later).
 - **`main.py`** — CLI: `--dry-run` validates; live serves uvicorn.
 

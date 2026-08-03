@@ -2,7 +2,17 @@
 
 from __future__ import annotations
 
+import os
+
 import pytest
+
+# Dummy RPCs so AMM adapter startup() succeeds offline (WHI-804 fail-fast env rule).
+# Live tests require real URLs in the process environment before this fixture runs.
+_AMM_RPC_DEFAULTS = {
+    "ETH_RPC_URL": "http://127.0.0.1:8545",
+    "BASE_RPC_URL": "http://127.0.0.1:8545",
+    "BSC_RPC_URL": "http://127.0.0.1:8545",
+}
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
@@ -23,3 +33,11 @@ def pytest_collection_modifyitems(
     for item in items:
         if "live" in item.keywords:
             item.add_marker(skip_live)
+
+
+@pytest.fixture(autouse=True)
+def _default_amm_rpc_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Provide placeholder RPC URLs when unset so startup_all() works offline."""
+    for key, default in _AMM_RPC_DEFAULTS.items():
+        if not os.environ.get(key, "").strip():
+            monkeypatch.setenv(key, default)
