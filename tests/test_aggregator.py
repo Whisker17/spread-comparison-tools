@@ -42,11 +42,20 @@ _MID = ReferenceMid(
 )
 
 
+_TEST_MID_SETTINGS = MidSettings(
+    force_pyth=False,
+    stale_threshold_sec=5,
+    cache_max_age_sec=30,
+    http_timeout_sec=5,
+    pyth_feed_ids={},
+)
+
+
 class _FixedMid(MidService):
     """MidService stub that returns a fixed mid without HTTP."""
 
     def __init__(self, mid: ReferenceMid | None = None, *, fail: bool = False) -> None:
-        super().__init__(MidSettings(pyth_feed_ids={}), client=None)
+        super().__init__(_TEST_MID_SETTINGS, client=None)
         self._fixed = mid or _MID
         self._fail = fail
 
@@ -131,7 +140,7 @@ async def test_collect_happy_path_mock() -> None:
     agg = QuoteAggregator(
         _FixedMid(),
         aggregator_settings=AggregatorSettings(
-            venue_timeout_sec=3, response_cache_ttl_sec=0
+            venue_timeout_sec=3.0, response_cache_ttl_sec=0
         ),
     )
     package = await agg.collect(
@@ -159,7 +168,9 @@ async def test_collect_happy_path_mock() -> None:
 async def test_collect_invalid_notional() -> None:
     agg = QuoteAggregator(
         _FixedMid(),
-        aggregator_settings=AggregatorSettings(response_cache_ttl_sec=0),
+        aggregator_settings=AggregatorSettings(
+            venue_timeout_sec=3.0, response_cache_ttl_sec=0
+        ),
     )
     with pytest.raises(InvalidNotionalError):
         await agg.collect("BTC", Decimal("12345"), venues=["mock"], use_cache=False)
@@ -169,7 +180,9 @@ async def test_collect_invalid_notional() -> None:
 async def test_collect_mid_failure_propagates() -> None:
     agg = QuoteAggregator(
         _FixedMid(fail=True),
-        aggregator_settings=AggregatorSettings(response_cache_ttl_sec=0),
+        aggregator_settings=AggregatorSettings(
+            venue_timeout_sec=3.0, response_cache_ttl_sec=0
+        ),
     )
     with pytest.raises(MidResolutionError):
         await agg.collect("BTC", Decimal("10000"), venues=["mock"], use_cache=False)
@@ -245,7 +258,7 @@ async def test_single_venue_timeout_degrades_to_error(
     agg = QuoteAggregator(
         _FixedMid(),
         aggregator_settings=AggregatorSettings(
-            venue_timeout_sec=0.05, response_cache_ttl_sec=0
+            venue_timeout_sec=0.05, response_cache_ttl_sec=0.0
         ),
     )
     package = await agg.collect(
@@ -277,7 +290,7 @@ async def test_response_cache_hits() -> None:
     agg = QuoteAggregator(
         CountingMid(),
         aggregator_settings=AggregatorSettings(
-            venue_timeout_sec=3, response_cache_ttl_sec=2.0
+            venue_timeout_sec=3.0, response_cache_ttl_sec=2.0
         ),
         clock=lambda: clock["t"],
     )

@@ -29,9 +29,9 @@ logger = logging.getLogger(__name__)
 _BINANCE_FAPI = "https://fapi.binance.com"
 _BINANCE_SPOT = "https://api.binance.com"
 _BYBIT = "https://api.bybit.com"
+_HYPERLIQUID = "https://api.hyperliquid.xyz"
 _PYTH_HERMES = "https://hermes.pyth.network"
 
-# Spot/perp symbol suffixes for major crypto on CEX wire formats.
 _USDT_SYMBOL = "{asset}USDT"
 
 
@@ -48,7 +48,7 @@ class _SourceResult:
 
 
 class MarkProvider(Protocol):
-    """Optional pluggable mark source for ``proxy_perp_mark_median`` (stocks)."""
+    """Pluggable mark source for ``proxy_perp_mark_median`` (stocks)."""
 
     async def marks_for(self, asset: str) -> Sequence[tuple[str, Decimal]]:
         """Return ``(source_label, mark)`` pairs that are currently available."""
@@ -95,6 +95,87 @@ def _parse_decimal(raw: object, *, field: str) -> Decimal:
     return value
 
 
+def _ms_to_dt(raw: object) -> datetime:
+    if raw is None:
+        return datetime.now(tz=UTC)
+    try:
+        ms = int(str(raw))
+        return datetime.fromtimestamp(ms / 1000, tz=UTC)
+    except (TypeError, ValueError, OSError):
+        return datetime.now(tz=UTC)
+
+
+class DefaultMarkProvider:
+    """Fetch available perp marks from public CEX / perp-DEX endpoints (WHI-799 §3.3)."""
+
+    def __init__(self, client: httpx.AsyncClient) -> None:
+        self._client = client
+
+    async def marks_for(self, asset: str) -> Sequence[tuple[str, Decimal]]:
+        symbol = _USDT_SYMBOL.format(asset=asset.upper())
+        samples: list[tuple[str, Decimal]] = []
+        for label, coro in (
+            ("binance", self._binance_mark(symbol)),
+            ("bybit", self._bybit_mark(symbol)),
+            ("hyperliquid", self._hyperliquid_mark(asset.upper())),
+        ):
+            try:
+                price = await coro
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("mark %s failed for %s: %s", label, asset, exc)
+                continue
+            if price is not None:
+                samples.append((label, price))
+        return samples
+
+    async def _binance_mark(self, symbol: str) -> Decimal | None:
+        resp = await self._client.get(
+            f"{_BINANCE_FAPI}/fapi/v1/premiumIndex", params={"symbol": symbol}
+        )
+        if resp.status_code >= 400:
+            return None
+        data = resp.json()
+        raw = data.get("markPrice") or data.get("indexPrice")
+        if raw is None:
+            return None
+        return _parse_decimal(raw, field="binance.mark")
+
+    async def _bybit_mark(self, symbol: str) -> Decimal | None:
+        resp = await self._client.get(
+            f"{_BYBIT}/v5/market/tickers",
+            params={"category": "linear", "symbol": symbol},
+        )
+        if resp.status_code >= 400:
+            return None
+        rows = resp.json().get("result", {}).get("list") or []
+        if not rows:
+            return None
+        raw = rows[0].get("markPrice") or rows[0].get("lastPrice")
+        if raw is None or raw == "":
+            return None
+        return _parse_decimal(raw, field="bybit.mark")
+
+    async def _hyperliquid_mark(self, asset: str) -> Decimal | None:
+        resp = await self._client.post(
+            f"{_HYPERLIQUID}/info",
+            json={"type": "metaAndAssetCtxs"},
+        )
+        if resp.status_code >= 400:
+            return None
+        data = resp.json()
+        if not isinstance(data, list) or len(data) < 2:
+            return None
+        meta, ctxs = data[0], data[1]
+        universe = meta.get("universe") or []
+        for i, entry in enumerate(universe):
+            if entry.get("name") == asset and i < len(ctxs):
+                raw = ctxs[i].get("markPx")
+                if raw is None:
+                    return None
+                return _parse_decimal(raw, field="hyperliquid.mark")
+        return None
+
+
 class MidService:
     """Resolve a single :class:`ReferenceMid` per asset with short internal cache."""
 
@@ -125,8 +206,13 @@ class MidService:
 
     def _http(self) -> httpx.AsyncClient:
         if self._client is None:
-            self._client = httpx.AsyncClient(timeout=5.0)
+            self._client = httpx.AsyncClient(timeout=self._settings.http_timeout_sec)
         return self._client
+
+    def _marks(self) -> MarkProvider:
+        if self._mark_provider is not None:
+            return self._mark_provider
+        return DefaultMarkProvider(self._http())
 
     async def resolve(self, asset: str, *, snapshot_id: str) -> ReferenceMid:
         """Resolve mid for ``asset`` and stamp it with ``snapshot_id``.
@@ -174,22 +260,32 @@ class MidService:
                 return result
             raise MidResolutionError(f"tokenized spot TOB failed for {asset}")
 
+        # Tokenized without a CEX spot book → same path as equity ref (WHI-799 §3.3).
+        if _looks_like_tokenized_without_cex(asset):
+            result = await self._try_proxy_mark_median(
+                asset, mid_source="equity_ref_same_as_perp"
+            )
+            if result is not None:
+                return result
+            raise MidResolutionError(f"equity_ref mid failed for {asset}")
+
         if asset in EQUITY_PERP_ASSETS:
-            result = await self._try_proxy_mark_median(asset)
+            # Prefer proxy mark median (TradFi index endpoints vary by venue; §3.3).
+            result = await self._try_proxy_mark_median(
+                asset, mid_source="proxy_perp_mark_median"
+            )
             if result is not None:
                 return result
             raise MidResolutionError(f"proxy mark median failed for {asset}")
 
-        # Crypto blue chips and "Others" share the §3.2 priority chain.
+        # Crypto blue chips and Others: §3.2 priority chain (Others fall through P0→P3).
         chain: list[FetchFn] = [
             lambda: self._try_binance_usdm_index(asset),
             lambda: self._try_binance_spot_tob(asset),
             lambda: self._try_bybit_spot_tob(asset),
             lambda: self._try_pyth(asset),
         ]
-        if asset not in CRYPTO_BLUE_CHIPS:
-            # Others without index often still have spot TOB; chain still works.
-            pass
+        _ = CRYPTO_BLUE_CHIPS  # documented membership; chain is shared with Others
 
         errors: list[str] = []
         for fetch in chain:
@@ -258,7 +354,6 @@ class MidService:
         feed_id = self._settings.pyth_feed_ids.get(asset)
         if not feed_id:
             return None
-        # Hermes accepts hex with or without 0x; normalize to bare hex.
         feed = feed_id.removeprefix("0x")
         url = f"{_PYTH_HERMES}/v2/updates/price/latest"
         try:
@@ -271,7 +366,6 @@ class MidService:
             price_obj = parsed[0]["price"]
             raw_price = _parse_decimal(price_obj["price"], field="pyth.price")
             expo = int(price_obj["expo"])
-            # price * 10^expo (expo is typically negative)
             mid = raw_price * (Decimal("10") ** Decimal(expo))
             if mid <= 0:
                 return None
@@ -292,11 +386,14 @@ class MidService:
             logger.debug("pyth failed for %s: %s", asset, exc)
             return None
 
-    async def _try_proxy_mark_median(self, asset: str) -> _SourceResult | None:
-        if self._mark_provider is None:
-            return None
+    async def _try_proxy_mark_median(
+        self,
+        asset: str,
+        *,
+        mid_source: MidSource = "proxy_perp_mark_median",
+    ) -> _SourceResult | None:
         try:
-            samples = list(await self._mark_provider.marks_for(asset))
+            samples = list(await self._marks().marks_for(asset))
         except Exception as exc:  # noqa: BLE001
             logger.debug("mark_provider failed for %s: %s", asset, exc)
             return None
@@ -309,17 +406,15 @@ class MidService:
         labels = [label for label, _ in samples]
         return _SourceResult(
             med,
-            "proxy_perp_mark_median",
+            mid_source,
             datetime.now(tz=UTC),
             sources_detail=labels,
         )
 
 
-def _ms_to_dt(raw: object) -> datetime:
-    if raw is None:
-        return datetime.now(tz=UTC)
-    try:
-        ms = int(str(raw))
-        return datetime.fromtimestamp(ms / 1000, tz=UTC)
-    except (TypeError, ValueError, OSError):
-        return datetime.now(tz=UTC)
+def _looks_like_tokenized_without_cex(asset: str) -> bool:
+    """Heuristic for tokenized symbols with no CEX spot mid path (WHI-799 §3.3)."""
+    if asset in TOKENIZED_CEX_SPOT or asset in EQUITY_PERP_ASSETS:
+        return False
+    # Ondo-style suffix; expand catalog with WHI-810.
+    return asset.endswith("ON") and len(asset) > 2

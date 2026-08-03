@@ -13,6 +13,7 @@ def test_load_mid_settings_defaults() -> None:
     assert mid.force_pyth is False
     assert mid.stale_threshold_sec == 5
     assert mid.cache_max_age_sec == 30
+    assert mid.http_timeout_sec == 5.0
     assert "BTC" in mid.pyth_feed_ids
 
 

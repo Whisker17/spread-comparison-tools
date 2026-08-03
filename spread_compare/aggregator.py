@@ -35,10 +35,13 @@ from spread_compare.models import (
     Side,
     SizeQuotePair,
     TopOfBook,
+    VenueClass,
 )
 from spread_compare.settings import AggregatorSettings, MidSettings, load_aggregator_settings
 
 logger = logging.getLogger(__name__)
+
+_ORDERBOOK_CLASSES: frozenset[VenueClass] = frozenset({"cex", "perp_dex"})
 
 
 class AggregatorError(Exception):
@@ -68,6 +71,20 @@ class QuotesPackage:
 class _CacheEntry:
     expires_at: float
     package: QuotesPackage
+
+
+@dataclass(frozen=True, slots=True)
+class _TobOutcome:
+    """Result of a TOB fetch.
+
+    ``book`` is set only on success. ``failed`` is True when an orderbook venue
+    raised/timeout (WHI-799 §6.3 — never conflate with AMM's intentional None).
+    """
+
+    book: TopOfBook | None
+    failed: bool
+    error_code: str | None = None
+    error_message: str | None = None
 
 
 def _error_fee_breakdown() -> FeeBreakdown:
@@ -143,10 +160,10 @@ def assemble_pair(
     if sell is not None:
         sell = apply_mid_stale(sell, stale_threshold_sec=stale_threshold_sec)
 
-    buy_sp = buy.spread_bps if buy is not None and buy.status == "ok" else None
-    sell_sp = sell.spread_bps if sell is not None and sell.status == "ok" else None
-    buy_tc = buy.total_cost_bps if buy is not None and buy.status == "ok" else None
-    sell_tc = sell.total_cost_bps if sell is not None and sell.status == "ok" else None
+    buy_spread = buy.spread_bps if buy is not None and buy.status == "ok" else None
+    sell_spread = sell.spread_bps if sell is not None and sell.status == "ok" else None
+    buy_total = buy.total_cost_bps if buy is not None and buy.status == "ok" else None
+    sell_total = sell.total_cost_bps if sell is not None and sell.status == "ok" else None
 
     return SizeQuotePair(
         snapshot_id=mid.snapshot_id,
@@ -156,9 +173,9 @@ def assemble_pair(
         notional_usd=notional_usd,
         buy=buy,
         sell=sell,
-        round_trip_spread_bps=round_trip_spread_bps(buy_sp, sell_sp),
-        half_spread_bps=half_spread_bps(buy_sp, sell_sp),
-        round_trip_total_cost_bps=round_trip_total_cost_bps(buy_tc, sell_tc),
+        round_trip_spread_bps=round_trip_spread_bps(buy_spread, sell_spread),
+        half_spread_bps=half_spread_bps(buy_spread, sell_spread),
+        round_trip_total_cost_bps=round_trip_total_cost_bps(buy_total, sell_total),
         top_of_book=top_of_book,
     )
 
@@ -219,10 +236,16 @@ class QuoteAggregator:
         venue_slugs = self._resolve_venues(venues)
         sides: tuple[Side, ...] = (side,) if side is not None else ("buy", "sell")
 
+        # Explicit snapshot_id (collector path) must never return a cached foreign id.
+        cache_eligible = (
+            use_cache
+            and snapshot_id is None
+            and self._agg.response_cache_ttl_sec > 0
+        )
         cache_key = self._cache_key(
             asset_key, notional, venue_slugs, sides, instrument_type
         )
-        if use_cache and self._agg.response_cache_ttl_sec > 0:
+        if cache_eligible:
             hit = self._cache.get(cache_key)
             if hit is not None and hit.expires_at > self._clock():
                 return hit.package
@@ -252,7 +275,7 @@ class QuoteAggregator:
             pairs=list(pairs),
         )
 
-        if use_cache and self._agg.response_cache_ttl_sec > 0:
+        if cache_eligible:
             self._cache[cache_key] = _CacheEntry(
                 expires_at=self._clock() + self._agg.response_cache_ttl_sec,
                 package=package,
@@ -302,33 +325,81 @@ class QuoteAggregator:
         adapter = registry_get(slug)
         itype = instrument_type or default_instrument_type(adapter.venue_class)
         timeout = self._agg.venue_timeout_sec
-        stale_thr = self._mid_settings.stale_threshold_sec
+        stale_threshold = self._mid_settings.stale_threshold_sec
 
-        buy: Quote | None = None
-        sell: Quote | None = None
-
-        for s in sides:
-            quote = await self._quote_with_timeout(
+        # Concurrent legs + TOB within a venue (each call bounded by venue_timeout).
+        side_order: list[Side] = list(sides)
+        quote_coros = [
+            self._quote_with_timeout(
                 adapter,
                 asset=asset,
-                side=s,
+                side=side,
                 notional_usd=notional_usd,
                 mid=mid,
                 instrument_type=itype,
                 timeout=timeout,
             )
-            if s == "buy":
-                buy = quote
-            else:
-                sell = quote
-
-        tob = await self._tob_with_timeout(
+            for side in side_order
+        ]
+        tob_coro = self._tob_with_timeout(
             adapter,
             asset=asset,
             mid=mid,
             instrument_type=itype,
             timeout=timeout,
         )
+        gathered = await asyncio.gather(*quote_coros, tob_coro)
+        leg_results = list(gathered[:-1])
+        tob_outcome = gathered[-1]
+        assert isinstance(tob_outcome, _TobOutcome)
+
+        buy: Quote | None = None
+        sell: Quote | None = None
+        for side, result in zip(side_order, leg_results, strict=True):
+            assert isinstance(result, Quote)
+            if side == "buy":
+                buy = result
+            else:
+                sell = result
+
+        # WHI-799 §6.3: orderbook TOB failure must not look like "no TOB concept".
+        # When the book fetch fails for CEX/perp, surface status=error on missing legs
+        # and drop a successful book (there isn't one). Keep ok legs that already
+        # carried spread data — FE sees top_of_book=null + venue_class to flag degradation.
+        top_of_book = tob_outcome.book
+        if tob_outcome.failed and adapter.venue_class in _ORDERBOOK_CLASSES:
+            top_of_book = None
+            # If a leg is missing (side-filtered), fill with tob error so the row is visible.
+            err_code = tob_outcome.error_code or "tob_error"
+            err_msg = tob_outcome.error_message or "orderbook spread fetch failed"
+            if buy is None and "buy" in side_order:
+                buy = error_quote(
+                    mid=mid,
+                    venue=slug,
+                    asset=asset,
+                    side="buy",
+                    notional_usd=notional_usd,
+                    instrument_type=itype,
+                    error_code=err_code,
+                    error_message=err_msg,
+                )
+            if sell is None and "sell" in side_order:
+                sell = error_quote(
+                    mid=mid,
+                    venue=slug,
+                    asset=asset,
+                    side="sell",
+                    notional_usd=notional_usd,
+                    instrument_type=itype,
+                    error_code=err_code,
+                    error_message=err_msg,
+                )
+            # Both legs already present as ok/error — leave them; TOB simply absent.
+            logger.warning(
+                "venue %s orderbook TOB failed (%s); pair returned without top_of_book",
+                slug,
+                err_msg,
+            )
 
         return assemble_pair(
             mid=mid,
@@ -338,8 +409,8 @@ class QuoteAggregator:
             notional_usd=notional_usd,
             buy=buy,
             sell=sell,
-            top_of_book=tob,
-            stale_threshold_sec=stale_thr,
+            top_of_book=top_of_book,
+            stale_threshold_sec=stale_threshold,
         )
 
     async def _quote_with_timeout(
@@ -413,29 +484,44 @@ class QuoteAggregator:
         mid: ReferenceMid,
         instrument_type: InstrumentType,
         timeout: float,
-    ) -> TopOfBook | None:
-        # TOB only applies to spot/perp instrument types.
+    ) -> _TobOutcome:
         try:
             async with asyncio.timeout(timeout):
                 if instrument_type in ("spot", "perp"):
                     tob_itype: Literal["spot", "perp"] = instrument_type
-                    return await adapter.get_orderbook_spread(
+                    book = await adapter.get_orderbook_spread(
                         asset, mid=mid, instrument_type=tob_itype
                     )
-                # AMM / prop: still call — adapter must return None.
-                return await adapter.get_orderbook_spread(asset, mid=mid)
+                else:
+                    book = await adapter.get_orderbook_spread(asset, mid=mid)
+            return _TobOutcome(book=book, failed=False)
         except TimeoutError:
             logger.warning(
                 "venue %s get_orderbook_spread timed out after %ss",
                 adapter.venue,
                 timeout,
             )
-            return None
+            return _TobOutcome(
+                book=None,
+                failed=True,
+                error_code="timeout",
+                error_message=f"get_orderbook_spread timed out after {timeout}s",
+            )
         except AdapterError as exc:
             logger.warning("venue %s get_orderbook_spread error: %s", adapter.venue, exc)
-            return None
-        except Exception:  # noqa: BLE001
+            return _TobOutcome(
+                book=None,
+                failed=True,
+                error_code="tob_error",
+                error_message=str(exc),
+            )
+        except Exception as exc:  # noqa: BLE001
             logger.exception(
                 "venue %s get_orderbook_spread unexpected error", adapter.venue
             )
-            return None
+            return _TobOutcome(
+                book=None,
+                failed=True,
+                error_code="tob_error",
+                error_message=f"{type(exc).__name__}: {exc}",
+            )

@@ -138,17 +138,20 @@ async def get_quotes(
 @router.get("/venues", response_model=list[VenueResponse])
 def get_venues() -> list[VenueResponse]:
     """Static venue registry + whether an adapter is currently registered."""
+    from spread_compare.adapters.registry import get as registry_get
+
     registered = set(list_registered_adapters())
     rows: list[VenueResponse] = []
     for info in VENUES.values():
         rows.append(_venue_row(info, registered))
-    # Scaffold-only adapters (e.g. mock) not in WHI-799 §6.5 still appear when registered.
+    # Scaffold-only adapters (e.g. mock) not in WHI-799 §6.5: use adapter.venue_class.
     for slug in sorted(registered - set(VENUES)):
+        adapter = registry_get(slug)
         rows.append(
             VenueResponse(
                 slug=slug,
                 display_name=slug,
-                venue_class="cex",
+                venue_class=adapter.venue_class,
                 chain=None,
                 adapter_registered=True,
             )

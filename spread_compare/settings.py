@@ -2,6 +2,9 @@
 
 Secrets stay in ``.env``; non-secret tunables live here. Values marked unvalidated
 in WHI-799 §3.2 / WHI-807 are engineering defaults pending DESIGN.md §2.
+
+YAML is authoritative — pydantic fields have **no** Python-side default values so a
+missing key fails at startup instead of silently diverging from the file.
 """
 
 from __future__ import annotations
@@ -22,10 +25,11 @@ class MidSettings(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    force_pyth: bool = False
-    stale_threshold_sec: float = Field(default=5.0, gt=0)
-    cache_max_age_sec: float = Field(default=30.0, gt=0)
-    pyth_feed_ids: dict[str, str] = Field(default_factory=dict)
+    force_pyth: bool
+    stale_threshold_sec: float = Field(gt=0)
+    cache_max_age_sec: float = Field(gt=0)
+    http_timeout_sec: float = Field(gt=0)
+    pyth_feed_ids: dict[str, str]
 
     @field_validator("pyth_feed_ids", mode="before")
     @classmethod
@@ -40,8 +44,8 @@ class AggregatorSettings(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    venue_timeout_sec: float = Field(default=3.0, gt=0)
-    response_cache_ttl_sec: float = Field(default=2.0, ge=0)
+    venue_timeout_sec: float = Field(gt=0)
+    response_cache_ttl_sec: float = Field(ge=0)
 
 
 def _read_yaml(path: Path) -> dict[str, Any]:
@@ -57,7 +61,10 @@ def _read_yaml(path: Path) -> dict[str, Any]:
 
 def _merge_local(name: str) -> dict[str, Any]:
     """Load ``config/<name>.yaml`` then overlay ``config/<name>.local.yaml`` if present."""
-    base = _read_yaml(_CONFIG_DIR / f"{name}.yaml")
+    base_path = _CONFIG_DIR / f"{name}.yaml"
+    if not base_path.is_file():
+        raise FileNotFoundError(f"required config file missing: {base_path}")
+    base = _read_yaml(base_path)
     local = _read_yaml(_CONFIG_DIR / f"{name}.local.yaml")
     return {**base, **local}
 

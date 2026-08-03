@@ -1,9 +1,12 @@
 # Reference-mid service (WHI-799 §3.2 / WHI-807).
 # Defaults are **unvalidated** pending docs/DESIGN.md §2 — engineering starting points only.
+# YAML is the sole source of these values (no silent Python Field defaults).
 
 force_pyth: false
 stale_threshold_sec: 5
 cache_max_age_sec: 30
+# HTTP timeout for mid upstream calls (Binance / Bybit / Pyth).
+http_timeout_sec: 5.0
 
 # Pyth price-feed IDs (Hermes). Used for P3 and when force_pyth is true.
 # https://pyth.network/developers/price-feed-ids

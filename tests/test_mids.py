@@ -11,6 +11,14 @@ import pytest
 from spread_compare.mids import MidResolutionError, MidService, is_mid_stale, median_marks
 from spread_compare.settings import MidSettings
 
+_TEST_MID = MidSettings(
+    force_pyth=False,
+    stale_threshold_sec=5,
+    cache_max_age_sec=30,
+    http_timeout_sec=5,
+    pyth_feed_ids={},
+)
+
 
 def test_median_marks_odd() -> None:
     assert median_marks([Decimal("3"), Decimal("1"), Decimal("2")]) == Decimal("2")
@@ -60,10 +68,7 @@ async def test_resolve_p0_binance_usdm_index() -> None:
         else httpx.Response(500)
     )
     async with httpx.AsyncClient(transport=transport) as client:
-        svc = MidService(
-            MidSettings(force_pyth=False, pyth_feed_ids={}),
-            client=client,
-        )
+        svc = MidService(_TEST_MID, client=client)
         mid = await svc.resolve("BTC", snapshot_id="snap-1")
     assert mid.snapshot_id == "snap-1"
     assert mid.asset == "BTC"
@@ -85,7 +90,7 @@ async def test_resolve_falls_through_to_binance_spot_tob() -> None:
         return httpx.Response(404)
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
-        svc = MidService(MidSettings(pyth_feed_ids={}), client=client)
+        svc = MidService(_TEST_MID, client=client)
         mid = await svc.resolve("BTC", snapshot_id="s2")
     assert mid.mid_source == "binance_spot_tob"
     assert mid.mid == Decimal("101")
@@ -95,7 +100,7 @@ async def test_resolve_falls_through_to_binance_spot_tob() -> None:
 async def test_resolve_all_fail_raises() -> None:
     transport = httpx.MockTransport(lambda _r: httpx.Response(503))
     async with httpx.AsyncClient(transport=transport) as client:
-        svc = MidService(MidSettings(pyth_feed_ids={}), client=client)
+        svc = MidService(_TEST_MID, client=client)
         with pytest.raises(MidResolutionError, match="no mid"):
             await svc.resolve("BTC", snapshot_id="s3")
 
@@ -122,6 +127,9 @@ async def test_force_pyth() -> None:
 
     settings = MidSettings(
         force_pyth=True,
+        stale_threshold_sec=5,
+        cache_max_age_sec=30,
+        http_timeout_sec=5,
         pyth_feed_ids={
             "BTC": "e62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43"
         },
@@ -151,7 +159,7 @@ async def test_mid_cache_reuses_source_within_ttl() -> None:
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
         svc = MidService(
-            MidSettings(cache_max_age_sec=30, pyth_feed_ids={}),
+            _TEST_MID.model_copy(update={"cache_max_age_sec": 30}),
             client=client,
             clock=lambda: clock["t"],
         )
@@ -185,7 +193,7 @@ async def test_proxy_perp_mark_median_for_equity() -> None:
     transport = httpx.MockTransport(lambda _r: httpx.Response(503))
     async with httpx.AsyncClient(transport=transport) as client:
         svc = MidService(
-            MidSettings(pyth_feed_ids={}),
+            _TEST_MID,
             client=client,
             mark_provider=_Marks(),
         )
