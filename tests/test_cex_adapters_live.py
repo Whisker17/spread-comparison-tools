@@ -49,6 +49,75 @@ async def _approx_mid(adapter: BaseAdapter, venue: str) -> ReferenceMid:
 
 
 @pytest.mark.live
+@pytest.mark.asyncio
+async def test_live_doge_and_qqqb_cex() -> None:
+    """WHI-826 AC: DOGE (spot) and QQQB (tokenized spot) return ok on CEX."""
+    notional = Decimal("10000")
+    for slug in _VENUES:
+        adapter = get(slug)
+        assert isinstance(adapter, BaseAdapter)
+        await adapter.startup()
+        try:
+            # DOGE mid from venue TOB when listed.
+            seed = ReferenceMid(
+                snapshot_id="live-seed",
+                asset="DOGE",
+                mid=Decimal("0.15"),
+                mid_source="binance_spot_tob",
+                timestamp=datetime.now(tz=UTC),
+            )
+            tob = await adapter.get_orderbook_spread(
+                "DOGE", mid=seed, instrument_type="spot"
+            )
+            assert tob is not None
+            mid = ReferenceMid(
+                snapshot_id=f"live-doge-{slug}",
+                asset="DOGE",
+                mid=tob.mid_local,
+                mid_source="binance_spot_tob",
+                timestamp=datetime.now(tz=UTC),
+            )
+            quote = await adapter.get_quote(
+                "DOGE", "buy", notional, mid=mid, instrument_type="spot"
+            )
+            assert quote.status == "ok", (
+                f"{slug} DOGE: {quote.status} {quote.error_message}"
+            )
+        finally:
+            await adapter.aclose()
+
+    # QQQB is Binance-spot only in the catalog (Bybit has no bStocks).
+    adapter = get("binance")
+    assert isinstance(adapter, BaseAdapter)
+    await adapter.startup()
+    try:
+        seed = ReferenceMid(
+            snapshot_id="live-seed",
+            asset="QQQB",
+            mid=Decimal("500"),
+            mid_source="binance_spot_tob",
+            timestamp=datetime.now(tz=UTC),
+        )
+        tob = await adapter.get_orderbook_spread(
+            "QQQB", mid=seed, instrument_type="spot"
+        )
+        assert tob is not None
+        mid = ReferenceMid(
+            snapshot_id="live-qqqb",
+            asset="QQQB",
+            mid=tob.mid_local,
+            mid_source="binance_spot_tob",
+            timestamp=datetime.now(tz=UTC),
+        )
+        quote = await adapter.get_quote(
+            "QQQB", "buy", notional, mid=mid, instrument_type="spot"
+        )
+        assert quote.status == "ok", f"binance QQQB: {quote.status} {quote.error_message}"
+    finally:
+        await adapter.aclose()
+
+
+@pytest.mark.live
 @pytest.mark.parametrize("slug", _VENUES)
 @pytest.mark.asyncio
 async def test_live_quotes_all_tiers_sides_instruments(slug: str) -> None:

@@ -26,7 +26,7 @@ from spread_compare.adapters.base import (
     UnsupportedAssetError,
     default_instrument_type,
 )
-from spread_compare.bookwalk import walk_book
+from spread_compare.bookwalk import scale_book_to_canonical, walk_book
 from spread_compare.cex_symbols import (
     resolve_cex_multiplier,
     resolve_cex_symbol,
@@ -84,22 +84,6 @@ def parse_levels(raw: Sequence[Sequence[object]]) -> OrderbookLevels:
             raise AdapterError(f"negative level size: {size}")
         levels.append((price, size))
     return levels
-
-
-def scale_book_to_canonical(
-    levels: OrderbookLevels,
-    multiplier: Decimal,
-) -> OrderbookLevels:
-    """Convert contract-unit levels to 1× canonical (price/mult, size×mult).
-
-    ``1000PEPE`` books quote price per 1000 PEPE; after scaling, walk/bps use
-    the same units as the 1× reference mid (WHI-826 / WHI-798 §5.3).
-    """
-    if multiplier == 1:
-        return levels
-    if multiplier <= 0:
-        raise AdapterError(f"contract multiplier must be positive, got {multiplier}")
-    return [(price / multiplier, size * multiplier) for price, size in levels]
 
 
 def non_ok_fees(*, fee_tier: str) -> FeeBreakdown:

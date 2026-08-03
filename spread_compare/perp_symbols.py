@@ -31,18 +31,19 @@ _HL_OVERRIDES: Final[dict[str, PerpVenueSymbol]] = {
     "BONK": PerpVenueSymbol("kBONK", Decimal(1000)),
 }
 
-# Lighter / ApeX: 1000× meme bases; equity and others match the logical id.
-_LIGHTER_OVERRIDES: Final[dict[str, PerpVenueSymbol]] = {
-    "PEPE": PerpVenueSymbol("1000PEPE", Decimal(1000)),
-    "BONK": PerpVenueSymbol("1000BONK", Decimal(1000)),
+# Inverse of scaled HL coins (venue → logical) derived from overrides.
+_HL_COIN_TO_LOGICAL: Final[dict[str, str]] = {
+    entry.venue_symbol: logical for logical, entry in _HL_OVERRIDES.items()
 }
 
-_APEX_OVERRIDES: Final[dict[str, PerpVenueSymbol]] = {
+# Lighter / ApeX: 1000× meme bases; equity and others match the logical id.
+_SCALED_1000_OVERRIDES: Final[dict[str, PerpVenueSymbol]] = {
     "PEPE": PerpVenueSymbol("1000PEPE", Decimal(1000)),
     "BONK": PerpVenueSymbol("1000BONK", Decimal(1000)),
 }
 
 # Phase-1 logical assets that adapters advertise when meta is not yet loaded.
+# PEPE/BONK are multiplier infrastructure (P1 catalog); not in assets.ASSETS.
 HL_PHASE1_ASSETS: Final[tuple[str, ...]] = (
     "BTC",
     "ETH",
@@ -67,15 +68,24 @@ HL_PHASE1_ASSETS: Final[tuple[str, ...]] = (
 HL_ALLOWED_DEXES: Final[frozenset[str]] = frozenset({"", "xyz"})
 
 
+class UnsupportedPerpSymbolError(ValueError):
+    """Logical asset / coin form is not allowed on this venue map."""
+
+
 def resolve_hl_coin(asset: str) -> PerpVenueSymbol:
-    """Map logical asset → Hyperliquid coin form + multiplier."""
+    """Map logical asset → Hyperliquid coin form + multiplier.
+
+    Rejects disallowed HIP-3 dex prefixes (only ``xyz`` + main book).
+    """
     key = asset.strip()
     if ":" in key:
-        # Caller already passed a HIP-3 coin; preserve dex, uppercase name.
         dex, name = key.split(":", 1)
         dex_l = dex.lower()
-        if dex_l not in HL_ALLOWED_DEXES or not name:
-            return PerpVenueSymbol(key.upper() if ":" not in key else f"{dex}:{name.upper()}")
+        if not name or dex_l not in HL_ALLOWED_DEXES or dex_l == "":
+            # Bare ``:FOO`` or non-whitelisted dex (e.g. flx:) — refuse.
+            raise UnsupportedPerpSymbolError(
+                f"hyperliquid dex {dex!r} not allowed (whitelist: xyz + main)"
+            )
         return PerpVenueSymbol(f"{dex_l}:{name.upper()}")
     upper = key.upper()
     if upper in _HL_OVERRIDES:
@@ -86,30 +96,38 @@ def resolve_hl_coin(asset: str) -> PerpVenueSymbol:
 def resolve_lighter_symbol(asset: str) -> PerpVenueSymbol:
     """Map logical asset → Lighter ``orderBookDetails.symbol`` + multiplier."""
     upper = asset.upper()
-    if upper in _LIGHTER_OVERRIDES:
-        return _LIGHTER_OVERRIDES[upper]
+    if upper in _SCALED_1000_OVERRIDES:
+        return _SCALED_1000_OVERRIDES[upper]
     return PerpVenueSymbol(upper)
 
 
 def resolve_apex_base(asset: str) -> PerpVenueSymbol:
     """Map logical asset → ApeX ``baseTokenId`` + multiplier."""
     upper = asset.upper()
-    if upper in _APEX_OVERRIDES:
-        return _APEX_OVERRIDES[upper]
+    if upper in _SCALED_1000_OVERRIDES:
+        return _SCALED_1000_OVERRIDES[upper]
     return PerpVenueSymbol(upper)
 
 
 def hl_logical_id(coin: str) -> str:
     """Canonical logical id from an HL coin (``xyz:TSLA`` → ``TSLA``, ``kPEPE`` → ``PEPE``)."""
     coin = coin.strip()
+    if coin in _HL_COIN_TO_LOGICAL:
+        return _HL_COIN_TO_LOGICAL[coin]
+    # Case-insensitive match for override coins (meta may vary casing).
+    for venue_coin, logical in _HL_COIN_TO_LOGICAL.items():
+        if venue_coin.lower() == coin.lower():
+            return logical
     if ":" in coin:
         return coin.split(":", 1)[-1].upper()
-    upper = coin.upper()
-    if upper.startswith("K") and len(upper) > 1:
-        # kPEPE / kBONK → PEPE / BONK (only known k-prefix scaled memes).
-        rest = upper[1:]
-        if rest in ("PEPE", "BONK"):
-            return rest
-    if upper.startswith("1000") and len(upper) > 4:
-        return upper[4:]
-    return upper
+    if coin.upper().startswith("1000") and len(coin) > 4:
+        return coin.upper()[4:]
+    return coin.upper()
+
+
+def scaled_1000_logical_id(venue_symbol: str) -> str:
+    """Map ``1000PEPE`` → ``PEPE``; otherwise return uppercased symbol."""
+    sym = venue_symbol.upper()
+    if sym.startswith("1000") and len(sym) > 4:
+        return sym[4:]
+    return sym

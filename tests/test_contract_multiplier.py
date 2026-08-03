@@ -9,8 +9,6 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from decimal import Decimal
 
-import pytest
-
 from spread_compare.adapters._cex_common import (
     OrderbookLevels,
 )
@@ -20,6 +18,7 @@ from spread_compare.adapters._cex_common import (
 from spread_compare.adapters._perp_common import (
     build_quote_from_book as perp_build,
 )
+from spread_compare.bookwalk import walk_book
 from spread_compare.costs import spread_bps
 from spread_compare.models import ReferenceMid
 
@@ -27,12 +26,10 @@ from spread_compare.models import ReferenceMid
 _MID_1X = Decimal("0.00001")
 # 1000× contract mid/price = 1000 * 1×.
 _MULT = Decimal("1000")
-_MID_CONTRACT = _MID_1X * _MULT  # 0.01
 
 # Contract-unit book: bid/ask around 0.01 with sizes in 1000PEPE units.
-# After scale: prices /1000, sizes *1000 → 1× book around 0.00001.
 _CONTRACT_ASKS: OrderbookLevels = [
-    (Decimal("0.010001"), Decimal("500000")),  # 5e8 PEPE after scale
+    (Decimal("0.010001"), Decimal("500000")),
     (Decimal("0.010005"), Decimal("500000")),
 ]
 _CONTRACT_BIDS: OrderbookLevels = [
@@ -60,20 +57,18 @@ _NOTIONAL = Decimal("10000")
 
 
 def test_hand_computed_1x_spread() -> None:
-    """Independent 1× walk matches formula spread_bps."""
-    from spread_compare.bookwalk import walk_book
-
+    """Independent 1× walk produces the formula spread_bps used as oracle."""
     q_star = _NOTIONAL / _MID_1X
     p_star = walk_book(_CANONICAL_ASKS, q_star)
     assert p_star is not None
     expected = spread_bps("buy", p_star, _MID_1X)
-    # Sanity: effective is slightly above mid.
+    # Sanity: effective is slightly above mid; spread is a known positive.
     assert p_star > _MID_1X
+    assert expected == (p_star - _MID_1X) / _MID_1X * Decimal("10000")
     assert expected > 0
 
 
-@pytest.mark.asyncio
-async def test_1000pepe_and_kpepe_identical_spread_bps() -> None:
+def test_1000pepe_and_kpepe_identical_spread_bps() -> None:
     """CEX 1000PEPE path and HL kPEPE path yield the same spread_bps."""
     cex_quote = cex_build(
         venue="binance",
@@ -105,9 +100,6 @@ async def test_1000pepe_and_kpepe_identical_spread_bps() -> None:
     assert hl_quote.status == "ok"
     assert cex_quote.spread_bps == hl_quote.spread_bps
     assert cex_quote.effective_price == hl_quote.effective_price
-
-    # Match hand-computed 1× value (no multiplier on canonical book).
-    from spread_compare.bookwalk import walk_book
 
     q_star = _NOTIONAL / _MID_1X
     p_star = walk_book(_CANONICAL_ASKS, q_star)

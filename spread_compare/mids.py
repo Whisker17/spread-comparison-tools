@@ -163,10 +163,23 @@ class DefaultMarkProvider:
         return _parse_decimal(raw, field="bybit.mark")
 
     async def _hyperliquid_mark(self, asset: str) -> Decimal | None:
-        resp = await self._client.post(
-            f"{_HYPERLIQUID}/info",
-            json={"type": "metaAndAssetCtxs"},
+        """Resolve mark from main book or HIP-3 ``xyz`` (WHI-826 / WHI-798 §8 Q10)."""
+        from spread_compare.perp_symbols import (
+            UnsupportedPerpSymbolError,
+            resolve_hl_coin,
         )
+
+        try:
+            coin = resolve_hl_coin(asset).venue_symbol
+        except UnsupportedPerpSymbolError:
+            coin = asset.upper()
+        dex = ""
+        if ":" in coin:
+            dex, _name = coin.split(":", 1)
+        body: dict[str, object] = {"type": "metaAndAssetCtxs"}
+        if dex:
+            body["dex"] = dex
+        resp = await self._client.post(f"{_HYPERLIQUID}/info", json=body)
         if resp.status_code >= 400:
             return None
         data = resp.json()
@@ -174,8 +187,16 @@ class DefaultMarkProvider:
             return None
         meta, ctxs = data[0], data[1]
         universe = meta.get("universe") or []
+        # Match full coin (xyz:TSLA) or bare name returned by dex-scoped meta.
+        targets = {coin, coin.split(":", 1)[-1], asset.upper()}
         for i, entry in enumerate(universe):
-            if entry.get("name") == asset and i < len(ctxs):
+            name = str(entry.get("name") or "")
+            candidates = {name, name.upper()}
+            if ":" not in name and dex:
+                candidates.add(f"{dex}:{name.upper()}")
+            if candidates.isdisjoint(targets) and i < len(ctxs):
+                continue
+            if not candidates.isdisjoint(targets) and i < len(ctxs):
                 raw = ctxs[i].get("markPx")
                 if raw is None:
                     return None

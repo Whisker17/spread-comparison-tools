@@ -42,7 +42,7 @@ from spread_compare.models import (
     TopOfBook,
     VenueClass,
 )
-from spread_compare.perp_symbols import resolve_apex_base
+from spread_compare.perp_symbols import resolve_apex_base, scaled_1000_logical_id
 
 logger = logging.getLogger(__name__)
 
@@ -198,12 +198,7 @@ class ApexAdapter(BaseAdapter):
     ) -> list[str]:
         _ = instrument_type
         if self._symbols_by_base:
-            logicals: set[str] = set()
-            for base in self._symbols_by_base:
-                if base.startswith("1000") and len(base) > 4:
-                    logicals.add(base[4:])
-                else:
-                    logicals.add(base)
+            logicals = {scaled_1000_logical_id(base) for base in self._symbols_by_base}
             blue = [c for c in _BLUE_CHIPS if c in logicals]
             rest = sorted(s for s in logicals if s not in _BLUE_CHIPS)
             return blue + rest

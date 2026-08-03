@@ -22,7 +22,7 @@ from spread_compare.adapters.base import (
     AdapterFetchError,
     AdapterTimeoutError,
 )
-from spread_compare.bookwalk import walk_book
+from spread_compare.bookwalk import scale_book_to_canonical, walk_book
 from spread_compare.costs import (
     basis_bps,
     spread_bps,
@@ -140,18 +140,6 @@ def parse_levels(raw: Sequence[Sequence[object]]) -> OrderbookLevels:
             raise AdapterError(f"negative level size: {size}")
         levels.append((price, size))
     return levels
-
-
-def scale_book_to_canonical(
-    levels: OrderbookLevels,
-    multiplier: Decimal,
-) -> OrderbookLevels:
-    """Convert contract-unit levels to 1× canonical (price/mult, size×mult)."""
-    if multiplier == 1:
-        return levels
-    if multiplier <= 0:
-        raise AdapterError(f"contract multiplier must be positive, got {multiplier}")
-    return [(price / multiplier, size * multiplier) for price, size in levels]
 
 
 def require_mid_asset(mid: ReferenceMid, asset: str) -> None:

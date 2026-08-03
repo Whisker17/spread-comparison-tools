@@ -97,6 +97,20 @@ def test_adapters_registered() -> None:
     assert "pancakeswap_bsc" in venues
 
 
+def test_pancakeswap_supports_bstocks() -> None:
+    """WHI-826: P0-A tokenized stocks on PancakeSwap BSC."""
+    adapter = get("pancakeswap_bsc")
+    supported = set(adapter.supported_assets())
+    assert {"BTC", "ETH", "QQQB", "SPCXB", "NVDAB", "NVDAON"} <= supported
+    # Token addresses must stay aligned with Tessera BSC (single SSOT).
+    from spread_compare.adapters._prop_common import BSC_TOKENS
+    from spread_compare.adapters.amm_pancakeswap import PancakeSwapBscAdapter
+
+    pcs = PancakeSwapBscAdapter()
+    for asset in ("QQQB", "SPCXB", "NVDAB", "NVDAON"):
+        assert pcs._base_token(asset).address == BSC_TOKENS[asset].address
+
+
 def test_encode_decode_quoter_roundtrip() -> None:
     data = encode_quote_exact_input_single(
         "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",

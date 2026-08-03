@@ -42,7 +42,7 @@ from spread_compare.models import (
     TopOfBook,
     VenueClass,
 )
-from spread_compare.perp_symbols import resolve_lighter_symbol
+from spread_compare.perp_symbols import resolve_lighter_symbol, scaled_1000_logical_id
 
 logger = logging.getLogger(__name__)
 
@@ -201,13 +201,7 @@ class LighterAdapter(BaseAdapter):
     ) -> list[str]:
         _ = instrument_type
         if self._markets_by_symbol:
-            # Prefer logical ids when a scaled alias exists (1000PEPE → PEPE).
-            logicals: set[str] = set()
-            for sym in self._markets_by_symbol:
-                if sym.startswith("1000") and len(sym) > 4:
-                    logicals.add(sym[4:])
-                else:
-                    logicals.add(sym)
+            logicals = {scaled_1000_logical_id(sym) for sym in self._markets_by_symbol}
             blue = [c for c in _BLUE_CHIPS if c in logicals]
             rest = sorted(s for s in logicals if s not in _BLUE_CHIPS)
             return blue + rest

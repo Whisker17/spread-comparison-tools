@@ -47,6 +47,7 @@ from spread_compare.models import (
 from spread_compare.perp_symbols import (
     HL_ALLOWED_DEXES,
     HL_PHASE1_ASSETS,
+    UnsupportedPerpSymbolError,
     hl_logical_id,
     resolve_hl_coin,
 )
@@ -98,10 +99,23 @@ class HyperliquidAdapter(BaseAdapter):
         fee_tier: str | None = None,
     ) -> Quote:
         itype_default = instrument_type or default_instrument_type(self.venue_class)
-        resolved = resolve_hl_coin(asset)
+        tier = fee_tier or DEFAULT_FEE_TIER
+        try:
+            resolved = resolve_hl_coin(asset)
+        except UnsupportedPerpSymbolError as exc:
+            asset_key = asset.split(":", 1)[-1].upper() if ":" in asset else asset.upper()
+            return build_unsupported_quote(
+                venue=self.venue,
+                asset=asset_key,
+                side=side,
+                notional_usd=notional_usd,
+                mid=mid,
+                instrument_type=itype_default,
+                message=str(exc),
+                fee_tier=tier,
+            )
         coin = resolved.venue_symbol
         asset_key = hl_logical_id(coin)
-        tier = fee_tier or DEFAULT_FEE_TIER
 
         require_mid_asset(mid, asset_key)
 
@@ -158,7 +172,10 @@ class HyperliquidAdapter(BaseAdapter):
         mid: ReferenceMid,
         instrument_type: Literal["spot", "perp"] | None = None,
     ) -> TopOfBook | None:
-        resolved = resolve_hl_coin(asset)
+        try:
+            resolved = resolve_hl_coin(asset)
+        except UnsupportedPerpSymbolError as exc:
+            raise UnsupportedAssetError(str(exc)) from exc
         coin = resolved.venue_symbol
         asset_key = hl_logical_id(coin)
         require_mid_asset(mid, asset_key)
