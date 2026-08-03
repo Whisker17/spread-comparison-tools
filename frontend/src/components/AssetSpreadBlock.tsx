@@ -16,7 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Tooltip } from "@/components/ui/tooltip";
 import type { SectionConfig } from "@/config/sections/types";
 import { useQuotesMatrix } from "@/hooks/useQuotes";
-import type { TopOfBook } from "@/lib/api";
+import type { InstrumentType, TopOfBook } from "@/lib/api";
 import { formatTimestamp } from "@/lib/format";
 import type { SideView } from "@/lib/summary";
 import { cn } from "@/lib/utils";
@@ -43,10 +43,25 @@ export type AssetSpreadBlockProps = {
   /** Subset of `venues` that can produce TopOfBook (orderbook classes). */
   orderbookVenues?: readonly string[];
   /**
-   * Short subtitle under the asset title (e.g. "CEX + perp DEX").
-   * Defaults to a generic multi-venue line.
+   * Optional display title (defaults to `asset`). Sections use this for
+   * annotations like "NVDAON · Ondo" without branching on section id.
+   */
+  assetTitle?: string;
+  /** Optional secondary line under the title (e.g. issuer / board note). */
+  assetSubtitle?: string;
+  /**
+   * Short meta line under the title (e.g. "CEX + perp DEX").
+   * Defaults to a generic multi-venue + notional + side line.
    */
   subtitle?: string;
+  /**
+   * When true, mid-source is rendered as a prominent warning-style badge.
+   * Pair with `midSourceHint` for section-specific tooltip copy — the shared
+   * component must not hardcode product domain text (WHI-810 concurrent-PR rule).
+   */
+  emphasizeMidSource?: boolean;
+  /** Tooltip / title text for the emphasized mid-source badge. */
+  midSourceHint?: string;
   /**
    * When true, after quotes load, surface a venue_symbol contract note
    * (scaled memes). Uses Quote.venue_symbol only — no multiplier parsing.
@@ -59,10 +74,11 @@ export type AssetSpreadBlockProps = {
    */
   venueDisplayNames?: Readonly<Record<string, string>>;
   /**
-   * Optional instrument_type override for `/quotes` (e.g. perp for scaled
-   * memes so CEX hits 1000× books). Default = adapter default.
+   * Optional instrument_type override for `/quotes` (e.g. perp for equity
+   * perps / scaled memes). Falls back to `section.instrumentType`, then
+   * adapter default.
    */
-  instrumentType?: "spot" | "perp" | "amm_pool" | "prop_amm";
+  instrumentType?: InstrumentType;
 };
 
 export function AssetSpreadBlock({
@@ -72,7 +88,11 @@ export function AssetSpreadBlock({
   venueLabels,
   summaryVenueLabels,
   orderbookVenues: orderbookVenuesProp,
+  assetTitle,
+  assetSubtitle,
   subtitle,
+  emphasizeMidSource = false,
+  midSourceHint,
   showVenueSymbolNote = false,
   venueDisplayNames,
   instrumentType,
@@ -84,7 +104,7 @@ export function AssetSpreadBlock({
     notionals: section.notionals,
     // Pin to the section venue set so we don't surface mock/other adapters.
     venues: venues.length > 0 ? venues : undefined,
-    instrument_type: instrumentType,
+    instrument_type: instrumentType ?? section.instrumentType,
     refetchInterval: section.pollIntervalMs,
   });
 
@@ -152,7 +172,9 @@ export function AssetSpreadBlock({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="flex flex-wrap items-center gap-2">
-            <h2 className="text-lg font-semibold tracking-tight">{asset}</h2>
+            <h2 className="text-lg font-semibold tracking-tight">
+              {assetTitle ?? asset}
+            </h2>
             {contractNote ? (
               <Tooltip content={contractNote}>
                 <button
@@ -167,6 +189,11 @@ export function AssetSpreadBlock({
               </Tooltip>
             ) : null}
           </div>
+          {assetSubtitle ? (
+            <p className="mt-0.5 text-xs text-zinc-600 dark:text-zinc-400">
+              {assetSubtitle}
+            </p>
+          ) : null}
           <p className="mt-0.5 text-xs text-zinc-500">{subtitleText}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -227,12 +254,27 @@ export function AssetSpreadBlock({
           </span>
         ) : null}
         {mid?.mid_source ? (
-          <span>
-            Mid source:{" "}
-            <code className="rounded bg-zinc-100 px-1 py-0.5 text-[11px] text-zinc-700 dark:bg-zinc-900 dark:text-zinc-300">
-              {mid.mid_source}
-            </code>
-          </span>
+          emphasizeMidSource ? (
+            <span
+              className="inline-flex items-center gap-1.5 rounded-md border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-900 dark:border-amber-800 dark:bg-amber-950/50 dark:text-amber-100"
+              data-testid={`mid-source-badge-${asset}`}
+              title={midSourceHint}
+            >
+              <span className="uppercase tracking-wide opacity-80">
+                Mid source
+              </span>
+              <code className="rounded bg-amber-100/80 px-1 py-px text-[11px] dark:bg-amber-900/60">
+                {mid.mid_source}
+              </code>
+            </span>
+          ) : (
+            <span>
+              Mid source:{" "}
+              <code className="rounded bg-zinc-100 px-1 py-0.5 text-[11px] text-zinc-700 dark:bg-zinc-900 dark:text-zinc-300">
+                {mid.mid_source}
+              </code>
+            </span>
+          )
         ) : null}
         {mid?.mid !== undefined && mid?.mid !== null ? (
           <span>

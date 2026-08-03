@@ -23,6 +23,13 @@ export type QuotesQuery = NonNullable<
   paths["/quotes"]["get"]["parameters"]["query"]
 >;
 
+/**
+ * Instrument type accepted by `GET /quotes`, derived from the generated
+ * OpenAPI types — never hand-written, so a backend enum change surfaces as a
+ * type error here instead of a silently stale union.
+ */
+export type InstrumentType = NonNullable<QuotesQuery["instrument_type"]>;
+
 export class ApiError extends Error {
   readonly status: number;
   readonly body: unknown;
@@ -113,7 +120,7 @@ export async function fetchQuotes(
     notional: string | number;
     venues?: readonly string[] | string;
     side?: "buy" | "sell";
-    instrument_type?: "spot" | "perp" | "amm_pool" | "prop_amm";
+    instrument_type?: InstrumentType;
   },
   options?: FetchOptions,
 ): Promise<QuotesResponse> {
@@ -145,7 +152,7 @@ export async function fetchQuotesMultiNotional(
     notionals: readonly (string | number)[];
     venues?: readonly string[] | string;
     side?: "buy" | "sell";
-    instrument_type?: "spot" | "perp" | "amm_pool" | "prop_amm";
+    instrument_type?: InstrumentType;
   },
   options?: FetchOptions,
 ): Promise<{
