@@ -35,6 +35,10 @@ select = ["E", "F", "I", "UP", "B"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "strict"
+addopts = "--strict-markers"
+markers = [
+    "live: hits real upstream APIs; requires network and credentials",
+]
 
 [tool.mypy]
 python_version = "3.12"

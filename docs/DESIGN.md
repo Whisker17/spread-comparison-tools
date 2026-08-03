@@ -62,11 +62,12 @@ renaming these responsibilities. `AGENTS.md` §Architecture mirrors this list.
 | `spread_compare/venues.py` | Static venue slug registry (WHI-799 §6.5): display name + `venue_class`. |
 | `spread_compare/bookwalk.py` | **Sole** walk-the-book → VWAP implementation (WHI-799 §4.3). CEX/perp adapters import this; no per-adapter copies. |
 | `spread_compare/costs.py` | **Sole** `spread_bps` / `total_cost_bps` formulas (WHI-799 §4.5 / §5.2). Aggregator never recomputes. |
-| `spread_compare/adapters/base.py` | `VenueAdapter` Protocol + `AdapterError` hierarchy (WHI-799 §7). |
-| `spread_compare/adapters/registry.py` | `@register_adapter` self-registration; `get` / `list_venues`. |
+| `spread_compare/adapters/__init__.py` | Auto-discovers adapter modules via `pkgutil` (no hand-maintained import list). |
+| `spread_compare/adapters/base.py` | `VenueAdapter` Protocol (async I/O + lifecycle), `BaseAdapter` (no-op lifecycle + shared `httpx.AsyncClient`), `AdapterError` hierarchy (WHI-799 §7 / WHI-823). |
+| `spread_compare/adapters/registry.py` | `@register_adapter` self-registration; `get` / `list_venues`; `startup_all` / `aclose_all`. |
 | `spread_compare/adapters/mock.py` | Deterministic `mock` adapter (WHI-799 §4.7 fixture book) for aggregation development. |
-| `spread_compare/adapters/<venue>.py` | One module per real venue adapter (WHI-802…806); each self-registers. |
-| `spread_compare/api/app.py` | FastAPI app factory (`GET /health` now; `/quotes` in WHI-807). |
+| `spread_compare/adapters/<venue>.py` | One module per real venue adapter (WHI-802…806); each self-registers on import — no edit to existing files. |
+| `spread_compare/api/app.py` | FastAPI app factory with lifespan (`startup_all`/`aclose_all`); `GET /health` reports initialized adapter count (`/quotes` in WHI-807). |
 | `main.py` | CLI entry: `--dry-run` validates app (no network); live mode serves uvicorn. |
 
 Out of package (docs/research remains SSOT for formulas until DESIGN.md is fully written):

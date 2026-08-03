@@ -11,6 +11,7 @@ from typing import Literal
 
 from spread_compare.adapters.base import (
     AdapterError,
+    BaseAdapter,
     UnsupportedAssetError,
     default_instrument_type,
 )
@@ -104,13 +105,13 @@ def _quote_shell(
 
 
 @register_adapter
-class MockAdapter:
+class MockAdapter(BaseAdapter):
     """CEX-shaped mock with the §4.7 fixture orderbook."""
 
     venue: str = "mock"
     venue_class: VenueClass = "cex"
 
-    def get_quote(
+    async def get_quote(
         self,
         asset: str,
         side: Side,
@@ -201,7 +202,7 @@ class MockAdapter:
             qty_method="base_from_mid",
         )
 
-    def get_orderbook_spread(
+    async def get_orderbook_spread(
         self,
         asset: str,
         *,
