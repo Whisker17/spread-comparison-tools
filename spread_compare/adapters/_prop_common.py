@@ -239,8 +239,8 @@ async def exact_in_prop_quote(
         gas_unknown = gas_usd is None
     else:
         # Jupiter path: Solana fees fixed at 0 (WHI-799 §8) — never unknown.
+        # gas_usd may stay None → total_cost_bps treats it as 0 gas bps.
         gas_unknown = False
-        gas_usd = gas_usd  # may stay None → total_cost treats as 0 bps
 
     return build_ok_quote(
         venue=venue,

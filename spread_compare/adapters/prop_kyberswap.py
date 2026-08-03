@@ -216,12 +216,25 @@ class KyberSwapPropAdapter(BaseAdapter):
             )
         try:
             await self._fetch_route(token_in, token_out, amount)
+        except AdapterConfigError:
+            # 40011 = source-id drift / venue absent — fail-fast (WHI-797 §7.3).
+            raise
         except PropNoQuoteError as exc:
-            raise AdapterError(
-                f"{self.venue}: KyberSwap startup smoke failed for known-good pair "
-                f"on chain={self.chain_slug!r}: {exc}. Source id may have drifted "
-                f"(expected includedSources={_SOURCE_ID!r})."
-            ) from exc
+            # 4008/4000 on the smoke pair is a temporary empty book, not config drift
+            # (WHI-797 §7.4: no route is a normal business state). Do not brick app boot.
+            logger.warning(
+                "%s KyberSwap startup smoke: no route on known-good pair "
+                "(chain=%s): %s — continuing; quotes may return no_quote",
+                self.venue,
+                self.chain_slug,
+                exc,
+            )
+        except AdapterError as exc:
+            logger.warning(
+                "%s KyberSwap startup smoke transport/upstream failure: %s — continuing",
+                self.venue,
+                exc,
+            )
 
     async def _fetch_route(
         self,

@@ -109,9 +109,9 @@ async def _get_jupiter_limiter(*, has_api_key: bool) -> AsyncRateLimiter:
             interval = _KEYED_MIN_INTERVAL_S if has_api_key else _KEYLESS_MIN_INTERVAL_S
             _jupiter_limiter = AsyncRateLimiter(interval)
             _jupiter_limiter_keyed = has_api_key
-        elif not has_api_key and _jupiter_limiter_keyed:
-            # Upgrade to stricter keyless spacing if a keyless path appears later.
-            _jupiter_limiter = AsyncRateLimiter(_KEYLESS_MIN_INTERVAL_S)
+        elif not has_api_key and _jupiter_limiter_keyed and _jupiter_limiter is not None:
+            # Upgrade to stricter keyless spacing without resetting the clock.
+            _jupiter_limiter._min_interval_s = _KEYLESS_MIN_INTERVAL_S  # noqa: SLF001
             _jupiter_limiter_keyed = False
         return _jupiter_limiter
 
@@ -258,8 +258,22 @@ class JupiterPropAdapter(BaseAdapter):
                 )
 
     async def _validate_label(self) -> None:
-        """Fail fast if Jupiter no longer maps our program_id to jupiter_label."""
-        mapping = await self._load_label_map()
+        """Fail fast if Jupiter no longer maps our program_id to jupiter_label.
+
+        Wrong label after a successful map fetch is fatal (config). Transport
+        failure is logged and non-fatal so a Jupiter blip cannot brick the whole
+        app lifespan (WHI-799 §6.6 per-venue degradation).
+        """
+        try:
+            mapping = await self._load_label_map()
+        except AdapterError as exc:
+            logger.warning(
+                "%s Jupiter label map unavailable at startup: %s — continuing; "
+                "quotes may return NO_ROUTES_FOUND if the label is wrong",
+                self.venue,
+                exc,
+            )
+            return
         actual = mapping.get(self.program_id)
         if actual != self.jupiter_label:
             raise AdapterError(

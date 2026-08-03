@@ -39,6 +39,19 @@ defines none: `docs/GIT_WORKFLOW.md` § High-risk paths), **Medium**
   mid + catalog with WHI-810 (stocks) / a follow-up mid config ticket; adapters keep
   the mint/address map so live smoke can still probe QQQB once mid exists.
 
+- **Jupiter keyless 2s limiter vs aggregator 3s per-venue timeout** (Medium, WHI-806).
+  Shared `_jupiter_limiter` serializes humidifi/tessera_solana/bisonfi (and both
+  legs). A concurrent `/quotes` fan-out can exceed `config/aggregator.yaml`
+  `venue_timeout_sec: 3.0` for later Solana prop venues. Do not weaken the WHI-797
+  §3.3 ≥2s floor; raise prop-class timeout or serialize prop quotes outside the
+  per-venue budget in a follow-up aggregator tweak.
+
+- **AdapterConfigError collapses to generic adapter_error in aggregator** (Low, WHI-806).
+  `AdapterConfigError` subclasses `AdapterError`; the aggregator maps both to
+  `error_code=adapter_error`. Config drift (40011 / dexes+exclude) is therefore
+  hard to alert on separately. Promote a distinct error_code when the aggregator
+  error taxonomy is next touched.
+
 - **Prop pair lists are a static snapshot** (Low, WHI-806).
   `SOL_MINTS` / `BASE_TOKENS` / `BSC_TOKENS` — WHI-797 §7.4 warns pool sets drift;
   "no route is a normal business state". Phase 1 uses a researched initial map;
