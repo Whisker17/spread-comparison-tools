@@ -11,6 +11,7 @@ Early research phase (M1). No application runtime yet.
 | Issue | Doc |
 | --- | --- |
 | WHI-797 — Prop AMM baseline + Jupiter Quote API validation | [docs/research/WHI-797-prop-amm-jupiter-quote-api.md](docs/research/WHI-797-prop-amm-jupiter-quote-api.md) |
+| WHI-798 — Asset category inventory (blue chips / stocks / others) | [docs/research/WHI-798-asset-category-inventory.md](docs/research/WHI-798-asset-category-inventory.md) |
 
 ## Baseline prop AMMs (confirmed)
 
