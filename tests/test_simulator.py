@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import asyncio
 from collections.abc import Iterator
-from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Literal
 
@@ -34,15 +32,9 @@ from spread_compare.simulator import (
     resolve_simulate_pair,
 )
 from spread_compare.simulator import SimulateRow as SimRow
-from tests.test_aggregator import _FixedMid
+from tests.adapter_fakes import DEFAULT_TEST_MID, FixedMid, SlowAdapter
 
-_MID = ReferenceMid(
-    snapshot_id="snap-sim",
-    asset="BTC",
-    mid=Decimal("100000"),
-    mid_source="binance_usdm_index",
-    timestamp=datetime(2026, 8, 3, 12, 0, 0, tzinfo=UTC),
-)
+_MID = DEFAULT_TEST_MID.model_copy(update={"snapshot_id": "snap-sim"})
 
 _TEST_AGG = AggregatorSettings(venue_timeout_sec=3.0, response_cache_ttl_sec=0.0)
 
@@ -189,7 +181,7 @@ def test_rank_gas_unknown_high_output_not_best() -> None:
 
 @pytest.mark.asyncio
 async def test_simulate_both_directions_mock() -> None:
-    sim = TradeSimulator(_FixedMid(_MID), aggregator_settings=_TEST_AGG)
+    sim = TradeSimulator(FixedMid(_MID), aggregator_settings=_TEST_AGG)
     sell_pkg = await sim.simulate(
         "BTC", "USDC", Decimal("0.1"), venues=["mock"], snapshot_id="snap-sell"
     )
@@ -222,7 +214,7 @@ async def test_simulate_both_directions_mock() -> None:
 @pytest.mark.asyncio
 async def test_simulate_free_form_notional_not_snapped() -> None:
     """Off-tier notional must pass through (0.123 BTC → $12_300)."""
-    sim = TradeSimulator(_FixedMid(_MID), aggregator_settings=_TEST_AGG)
+    sim = TradeSimulator(FixedMid(_MID), aggregator_settings=_TEST_AGG)
     pkg = await sim.simulate(
         "BTC", "USDC", Decimal("0.123"), venues=["mock"], snapshot_id="snap-free"
     )
@@ -242,7 +234,7 @@ async def test_simulate_free_form_notional_not_snapped() -> None:
 @pytest.mark.asyncio
 async def test_simulate_not_supported_listed() -> None:
     sim = TradeSimulator(
-        _FixedMid(_MID.model_copy(update={"asset": "SOL", "mid": Decimal("150")})),
+        FixedMid(_MID.model_copy(update={"asset": "SOL", "mid": Decimal("150")})),
         aggregator_settings=_TEST_AGG,
     )
     pkg = await sim.simulate("SOL", "USDC", Decimal("10"), venues=["mock"])
@@ -257,7 +249,7 @@ async def test_simulate_not_supported_listed() -> None:
 async def test_simulate_mid_failure_propagates() -> None:
     from spread_compare.mids import MidResolutionError
 
-    sim = TradeSimulator(_FixedMid(fail=True), aggregator_settings=_TEST_AGG)
+    sim = TradeSimulator(FixedMid(fail=True), aggregator_settings=_TEST_AGG)
     with pytest.raises(MidResolutionError):
         await sim.simulate("BTC", "USDC", Decimal("0.1"), venues=["mock"])
 
@@ -265,48 +257,6 @@ async def test_simulate_mid_failure_propagates() -> None:
 # --- timeout + gas_unknown adapters ---
 
 _EXTRA_SLUG = "binance"
-
-
-class _SlowAdapter(BaseAdapter):
-    venue: str = _EXTRA_SLUG
-    venue_class: VenueClass = "cex"
-
-    async def get_quote(
-        self,
-        asset: str,
-        side: Side,
-        notional_usd: Decimal,
-        *,
-        mid: ReferenceMid,
-        instrument_type: InstrumentType | None = None,
-        fee_tier: str | None = None,
-    ) -> Quote:
-        await asyncio.sleep(5)
-        raise AssertionError("should have been cancelled by timeout")
-
-    async def get_orderbook_spread(
-        self,
-        asset: str,
-        *,
-        mid: ReferenceMid,
-        instrument_type: Literal["spot", "perp"] | None = None,
-    ) -> TopOfBook | None:
-        return None
-
-    def get_fees(
-        self,
-        asset: str | None = None,
-        *,
-        instrument_type: InstrumentType | None = None,
-    ) -> FeeSchedule:
-        raise NotImplementedError
-
-    def supported_assets(
-        self,
-        *,
-        instrument_type: InstrumentType | None = None,
-    ) -> list[str]:
-        return ["BTC"]
 
 
 class _GasUnknownHighOutput(BaseAdapter):
@@ -401,9 +351,9 @@ def park_extra_adapter() -> Iterator[None]:
 async def test_simulate_single_venue_timeout_degrades(
     park_extra_adapter: None,
 ) -> None:
-    _REGISTRY[_EXTRA_SLUG] = _SlowAdapter()
+    _REGISTRY[_EXTRA_SLUG] = SlowAdapter()
     sim = TradeSimulator(
-        _FixedMid(_MID),
+        FixedMid(_MID),
         aggregator_settings=AggregatorSettings(
             venue_timeout_sec=0.05, response_cache_ttl_sec=0.0
         ),
@@ -423,7 +373,7 @@ async def test_simulate_gas_unknown_not_best_end_to_end(
     park_extra_adapter: None,
 ) -> None:
     _REGISTRY[_EXTRA_SLUG] = _GasUnknownHighOutput()
-    sim = TradeSimulator(_FixedMid(_MID), aggregator_settings=_TEST_AGG)
+    sim = TradeSimulator(FixedMid(_MID), aggregator_settings=_TEST_AGG)
     pkg = await sim.simulate(
         "BTC", "USDC", Decimal("0.1"), venues=["mock", _EXTRA_SLUG]
     )

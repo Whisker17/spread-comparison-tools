@@ -6,6 +6,7 @@ import time
 from collections.abc import Callable
 from decimal import Decimal
 from threading import Lock
+from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator
@@ -96,6 +97,15 @@ class SimulateResponse(BaseModel):
     rows: list[SimulateRowResponse]
 
 
+class SimulatePairErrorDetail(BaseModel):
+    """Structured 422 body for pair validation failures (WHI-814 / WHI-815 client)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    message: str
+    reason: Literal["unknown_asset", "cross_pair"]
+
+
 def _row_to_response(row: SimulateRow) -> SimulateRowResponse:
     return SimulateRowResponse(
         venue=row.venue,
@@ -182,7 +192,22 @@ def _get_rate_guard(request: Request) -> ClientRateGuard:
     return guard  # type: ignore[no-any-return]
 
 
-@router.post("/simulate", response_model=SimulateResponse)
+@router.post(
+    "/simulate",
+    response_model=SimulateResponse,
+    responses={
+        422: {
+            "description": (
+                "Pair validation or request body error. Pair failures use "
+                "SimulatePairErrorDetail ({message, reason}); pydantic body "
+                "validation uses the default HTTPValidationError shape."
+            ),
+            "model": SimulatePairErrorDetail,
+        },
+        429: {"description": "Per-client rate limit for on-demand simulation"},
+        503: {"description": "Reference mid unavailable or simulator not initialized"},
+    },
+)
 async def post_simulate(request: Request, body: SimulateRequest) -> SimulateResponse:
     """Fan out a free-form pair trade to adapters; rank by expected output."""
     guard = _get_rate_guard(request)

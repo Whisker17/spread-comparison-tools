@@ -22,6 +22,7 @@ from spread_compare.aggregator import (
     apply_mid_stale,
     effective_instrument_type,
     quote_with_timeout,
+    resolve_mid_with_budget,
 )
 from spread_compare.assets import get_asset, is_usd_stable
 from spread_compare.mids import MidService
@@ -199,6 +200,10 @@ def expected_output_from_quote(quote: Quote, *, side: Side) -> Decimal | None:
     Buy uses notional/price (not mid-sized ``qty_base``) so orderbook venues with
     ``qty_method=base_from_mid`` still differentiate on execution price when ranked.
 
+    Ranking uses this gross output as the headline number (WHI-814); fee embedding
+    differences across venue classes are not adjusted here — never recompute bps.
+    ``best`` still requires §5.2 eligibility (``total_cost_bps is not null``).
+
     Non-ok quotes return None. bps are never recomputed here.
     """
     if quote.status != "ok":
@@ -213,14 +218,7 @@ def expected_output_from_quote(quote: Quote, *, side: Side) -> Decimal | None:
 
 
 def _empty_fee_breakdown() -> FeeBreakdown:
-    return FeeBreakdown(
-        embedded_in_price=False,
-        fee_tier=None,
-        trading_fee_bps=None,
-        platform_fee_bps=Decimal("0"),
-        gas_unknown=False,
-        explicit_fee_bps=None,
-    )
+    return FeeBreakdown(embedded_in_price=False)
 
 
 def _row_from_quote(quote: Quote, *, side: Side, best: bool = False) -> SimulateRow:
@@ -341,19 +339,12 @@ class TradeSimulator:
 
         venue_slugs = self._resolve_venues(venues)
         snap = snapshot_id or str(uuid.uuid4())
-
-        # Same mid-resolution budget as QuoteAggregator.collect (WHI-807).
-        mid_timeout = max(self._agg.venue_timeout_sec * 4, 10.0)
-        try:
-            async with asyncio.timeout(mid_timeout):
-                mid = await self._mids.resolve(pair.asset, snapshot_id=snap)
-        except TimeoutError as exc:
-            from spread_compare.mids import MidResolutionError
-
-            raise MidResolutionError(
-                f"mid resolution timed out after {mid_timeout}s for {pair.asset}"
-            ) from exc
-
+        mid = await resolve_mid_with_budget(
+            self._mids,
+            pair.asset,
+            snapshot_id=snap,
+            venue_timeout_sec=self._agg.venue_timeout_sec,
+        )
         notional = amount_to_notional_usd(amount_d, pair=pair, mid=mid.mid)
 
         raw_rows = await asyncio.gather(

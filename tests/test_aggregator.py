@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-import asyncio
 from collections.abc import Iterator
-from datetime import UTC, datetime, timedelta
+from datetime import timedelta
 from decimal import Decimal
 from typing import Literal
 
@@ -20,7 +19,7 @@ from spread_compare.aggregator import (
     assemble_pair,
     error_quote,
 )
-from spread_compare.mids import MidResolutionError, MidService
+from spread_compare.mids import MidResolutionError
 from spread_compare.models import (
     FeeBreakdown,
     FeeSchedule,
@@ -31,40 +30,10 @@ from spread_compare.models import (
     TopOfBook,
     VenueClass,
 )
-from spread_compare.settings import AggregatorSettings, MidSettings
+from spread_compare.settings import AggregatorSettings
+from tests.adapter_fakes import DEFAULT_TEST_MID, FixedMid, SlowAdapter
 
-_MID = ReferenceMid(
-    snapshot_id="snap-agg",
-    asset="BTC",
-    mid=Decimal("100000"),
-    mid_source="binance_usdm_index",
-    timestamp=datetime(2026, 8, 3, 12, 0, 0, tzinfo=UTC),
-)
-
-
-_TEST_MID_SETTINGS = MidSettings(
-    force_pyth=False,
-    stale_threshold_sec=5,
-    cache_max_age_sec=30,
-    http_timeout_sec=5,
-    pyth_feed_ids={},
-)
-
-
-class _FixedMid(MidService):
-    """MidService stub that returns a fixed mid without HTTP."""
-
-    def __init__(self, mid: ReferenceMid | None = None, *, fail: bool = False) -> None:
-        super().__init__(_TEST_MID_SETTINGS, client=None)
-        self._fixed = mid or _MID
-        self._fail = fail
-
-    async def resolve(self, asset: str, *, snapshot_id: str) -> ReferenceMid:
-        if self._fail:
-            raise MidResolutionError("injected mid failure")
-        return self._fixed.model_copy(
-            update={"snapshot_id": snapshot_id, "asset": asset.upper()}
-        )
+_MID = DEFAULT_TEST_MID.model_copy(update={"snapshot_id": "snap-agg"})
 
 
 def test_apply_mid_stale() -> None:
@@ -138,7 +107,7 @@ def test_assemble_pair_round_trip_from_ok_legs() -> None:
 @pytest.mark.asyncio
 async def test_collect_happy_path_mock() -> None:
     agg = QuoteAggregator(
-        _FixedMid(),
+        FixedMid(),
         aggregator_settings=AggregatorSettings(
             venue_timeout_sec=3.0, response_cache_ttl_sec=0
         ),
@@ -167,7 +136,7 @@ async def test_collect_happy_path_mock() -> None:
 @pytest.mark.asyncio
 async def test_collect_invalid_notional() -> None:
     agg = QuoteAggregator(
-        _FixedMid(),
+        FixedMid(),
         aggregator_settings=AggregatorSettings(
             venue_timeout_sec=3.0, response_cache_ttl_sec=0
         ),
@@ -179,7 +148,7 @@ async def test_collect_invalid_notional() -> None:
 @pytest.mark.asyncio
 async def test_collect_mid_failure_propagates() -> None:
     agg = QuoteAggregator(
-        _FixedMid(fail=True),
+        FixedMid(fail=True),
         aggregator_settings=AggregatorSettings(
             venue_timeout_sec=3.0, response_cache_ttl_sec=0
         ),
@@ -193,55 +162,11 @@ async def test_collect_mid_failure_propagates() -> None:
 _TIMEOUT_SLUG = "binance"  # WHI-799 slug; not normally registered until real adapter lands
 
 
-class _SlowBinanceAdapter(BaseAdapter):
-    """Sleeps past venue_timeout_sec so the aggregator records status=error."""
-
-    venue: str = _TIMEOUT_SLUG
-    venue_class: VenueClass = "cex"
-
-    async def get_quote(
-        self,
-        asset: str,
-        side: Side,
-        notional_usd: Decimal,
-        *,
-        mid: ReferenceMid,
-        instrument_type: InstrumentType | None = None,
-        fee_tier: str | None = None,
-    ) -> Quote:
-        await asyncio.sleep(5)
-        raise AssertionError("should have been cancelled by timeout")
-
-    async def get_orderbook_spread(
-        self,
-        asset: str,
-        *,
-        mid: ReferenceMid,
-        instrument_type: Literal["spot", "perp"] | None = None,
-    ) -> TopOfBook | None:
-        return None
-
-    def get_fees(
-        self,
-        asset: str | None = None,
-        *,
-        instrument_type: InstrumentType | None = None,
-    ) -> FeeSchedule:
-        raise NotImplementedError
-
-    def supported_assets(
-        self,
-        *,
-        instrument_type: InstrumentType | None = None,
-    ) -> list[str]:
-        return ["BTC"]
-
-
 @pytest.fixture
 def slow_binance_adapter() -> Iterator[None]:
     """Temporarily park a slow adapter under the binance slug, then restore."""
     previous = _REGISTRY.get(_TIMEOUT_SLUG)
-    _REGISTRY[_TIMEOUT_SLUG] = _SlowBinanceAdapter()
+    _REGISTRY[_TIMEOUT_SLUG] = SlowAdapter()
     try:
         yield
     finally:
@@ -256,7 +181,7 @@ async def test_single_venue_timeout_degrades_to_error(
     slow_binance_adapter: None,
 ) -> None:
     agg = QuoteAggregator(
-        _FixedMid(),
+        FixedMid(),
         aggregator_settings=AggregatorSettings(
             venue_timeout_sec=0.05, response_cache_ttl_sec=0.0
         ),
@@ -354,7 +279,7 @@ async def test_orderbook_tob_failure_stamps_raw_ref(
 
     _REGISTRY[_TIMEOUT_SLUG] = _QuoteOkTobBoom()
     agg = QuoteAggregator(
-        _FixedMid(),
+        FixedMid(),
         aggregator_settings=AggregatorSettings(
             venue_timeout_sec=3.0, response_cache_ttl_sec=0.0
         ),
@@ -373,7 +298,7 @@ async def test_orderbook_tob_failure_stamps_raw_ref(
 async def test_response_cache_hits() -> None:
     calls = {"n": 0}
 
-    class CountingMid(_FixedMid):
+    class CountingMid(FixedMid):
         async def resolve(self, asset: str, *, snapshot_id: str) -> ReferenceMid:
             calls["n"] += 1
             return await super().resolve(asset, snapshot_id=snapshot_id)

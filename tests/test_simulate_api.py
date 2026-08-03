@@ -196,10 +196,14 @@ def test_simulate_openapi_documents_schema(client: TestClient) -> None:
     assert "post" in paths["/simulate"]
     post = paths["/simulate"]["post"]
     assert "requestBody" in post
+    assert "422" in post["responses"]
     components = schema["components"]["schemas"]
     assert "SimulateRequest" in components
     assert "SimulateResponse" in components
     assert "SimulateRowResponse" in components
+    assert "SimulatePairErrorDetail" in components
+    pair_err = components["SimulatePairErrorDetail"]["properties"]
+    assert "message" in pair_err and "reason" in pair_err
     req_props = components["SimulateRequest"]["properties"]
     assert set(req_props) >= {"sell_asset", "buy_asset", "amount"}
     row_props = components["SimulateRowResponse"]["properties"]
