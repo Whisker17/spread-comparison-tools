@@ -22,6 +22,7 @@ from spread_compare.adapters._perp_common import (
     parse_levels,
     placeholder_fee_schedule,
     request_json,
+    require_mid_asset,
     resolve_perp_instrument,
 )
 from spread_compare.adapters.base import (
@@ -52,9 +53,6 @@ _TICKER_PATH = "/v3/ticker"
 _MIN_INTERVAL_S = 0.15
 _DEPTH_LIMIT = 100
 _BLUE_CHIPS: tuple[str, ...] = ("BTC", "ETH", "SOL")
-# ApeX ticker ``fundingRate`` is hourly-scale (same magnitude as HL hourly);
-# convert to 8h for FeeBreakdown.funding_rate_8h (WHI-799 §5.3).
-_HOURS_PER_FUNDING_PERIOD = Decimal("8")
 
 
 @dataclass(frozen=True, slots=True)
@@ -77,7 +75,6 @@ class ApexAdapter(BaseAdapter):
         super().__init__(timeout=timeout)
         self._limiter = AsyncRateLimiter(_MIN_INTERVAL_S)
         self._symbols_by_base: dict[str, _ApexSymbol] = {}
-        self._funding_by_cross: dict[str, Decimal] = {}
         self._mark_by_cross: dict[str, Decimal] = {}
 
     async def startup(self) -> None:
@@ -101,10 +98,7 @@ class ApexAdapter(BaseAdapter):
         asset_key = asset.upper()
         tier = fee_tier or DEFAULT_FEE_TIER
 
-        if mid.asset.upper() != asset_key:
-            raise AdapterError(
-                f"mid.asset={mid.asset!r} does not match asset={asset!r}"
-            )
+        require_mid_asset(mid, asset_key)
 
         try:
             itype = resolve_perp_instrument(itype_default)
@@ -134,7 +128,6 @@ class ApexAdapter(BaseAdapter):
             )
 
         bids, asks = await self._fetch_depth(sym.cross_symbol_name)
-        funding = self._funding_by_cross.get(sym.cross_symbol_name)
         mark = self._mark_by_cross.get(sym.cross_symbol_name)
         return build_quote_from_book(
             venue=self.venue,
@@ -148,7 +141,9 @@ class ApexAdapter(BaseAdapter):
             asks=asks,
             fee_tier=tier,
             trading_fee_bps=PLACEHOLDER_TAKER_BPS,
-            funding_rate_8h=funding,
+            # funding_rate_8h left None until WHI-812 documents ApeX funding period
+            # (WHI-800 §4.3 does not state hourly vs 8h).
+            funding_rate_8h=None,
             venue_mark=mark,
         )
 
@@ -160,6 +155,7 @@ class ApexAdapter(BaseAdapter):
         instrument_type: Literal["spot", "perp"] | None = None,
     ) -> TopOfBook | None:
         asset_key = asset.upper()
+        require_mid_asset(mid, asset_key)
         if instrument_type not in (None, "perp"):
             raise UnsupportedAssetError(
                 f"apex adapter only supports perp, got {instrument_type!r}"
@@ -265,9 +261,6 @@ class ApexAdapter(BaseAdapter):
         row = rows[0]
         if not isinstance(row, dict):
             return
-        if row.get("fundingRate") is not None:
-            hourly = Decimal(str(row["fundingRate"]))
-            self._funding_by_cross[cross_symbol] = hourly * _HOURS_PER_FUNDING_PERIOD
         if row.get("markPrice") is not None:
             self._mark_by_cross[cross_symbol] = Decimal(str(row["markPrice"]))
 

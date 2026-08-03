@@ -45,10 +45,20 @@ defines none: `docs/GIT_WORKFLOW.md` § High-risk paths), **Medium**
   until `docs/DESIGN.md` §2 exists. Move into typed `config/` once that section is
   written (same blocking gap called out in AGENTS.md Status).
 
-- **Perp `venue_mark` / funding cached at startup, not per-quote** (Low, WHI-803).
-  HL/Lighter marks and ApeX funding are warmed in `startup()` only. Fine for short-lived
-  smoke processes; a long-running collector (WHI-816) should refresh mark/funding on a
-  timer or alongside each book fetch so `basis_bps` stays same-snapshot (WHI-799 §3.4).
+- **Perp `venue_mark` / funding cached at startup, not per-quote** (Medium, WHI-803).
+  HL/Lighter marks (and ApeX mark via blue-chip ticker warm-up) are populated in
+  `startup()` only. Fine for short-lived smoke processes; a long-running collector
+  (WHI-816) should refresh mark/funding on a timer or alongside each book fetch so
+  `basis_bps` stays same-snapshot (WHI-799 §3.4).
+
+- **Perp adapters do not apply lot/tick rounding** (Low, WHI-803).
+  WHI-799 §8 mentions lot/tick for perp DEX; Phase 1 walks `q_star = N/mid` raw.
+  Fix when fee/size config lands (WHI-812) or when a size-precision matrix is added.
+
+- **ApeX `funding_rate_8h` left null** (Low, WHI-803).
+  WHI-800 §4.3 documents the ticker field but not the funding period (hourly vs 8h).
+  Adapter omits the field rather than invent a conversion; WHI-812 should fill it
+  with a cited period.
 
 - **Shared Quote assembly helper not extracted** (Low, WHI-801).
   `spread_compare/adapters/mock.py::_quote_shell` — mapping `ReferenceMid` + status

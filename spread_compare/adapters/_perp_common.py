@@ -111,12 +111,21 @@ def parse_levels(raw: Sequence[Sequence[object]]) -> OrderbookLevels:
     for row in raw:
         if len(row) < 2:
             raise AdapterError(f"orderbook level has <2 fields: {row!r}")
-        price = Decimal(str(row[0]))
-        size = Decimal(str(row[1]))
+        try:
+            price = Decimal(str(row[0]))
+            size = Decimal(str(row[1]))
+        except (ArithmeticError, ValueError) as exc:
+            raise AdapterError(f"orderbook level not numeric: {row!r}") from exc
         if size < 0:
             raise AdapterError(f"negative level size: {size}")
         levels.append((price, size))
     return levels
+
+
+def require_mid_asset(mid: ReferenceMid, asset: str) -> None:
+    """Raise AdapterError when ``mid.asset`` does not match the requested asset."""
+    if mid.asset.upper() != asset.upper():
+        raise AdapterError(f"mid.asset={mid.asset!r} does not match asset={asset!r}")
 
 
 def aggregate_orders_by_price(

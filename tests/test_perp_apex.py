@@ -194,8 +194,8 @@ async def test_apex_section_4_7_vectors() -> None:
         assert buy.effective_price == Decimal("100044")
         assert buy.spread_bps == Decimal("4.4")
         assert buy.total_cost_bps == Decimal("14.4")
-        # fundingRate hourly 0.0000125 → funding_rate_8h = 0.0001 (WHI-799 §5.3)
-        assert buy.fee_breakdown.funding_rate_8h == Decimal("0.0001")
+        # ApeX funding period not documented in WHI-800 — leave null (WHI-812).
+        assert buy.fee_breakdown.funding_rate_8h is None
         assert buy.venue_mark == Decimal("100050")
         assert sell.status == "ok"
         assert sell.effective_price == Decimal("99956")

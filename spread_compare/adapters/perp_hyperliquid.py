@@ -20,6 +20,7 @@ from spread_compare.adapters._perp_common import (
     build_unsupported_quote,
     placeholder_fee_schedule,
     request_json,
+    require_mid_asset,
     resolve_perp_instrument,
 )
 from spread_compare.adapters.base import (
@@ -92,10 +93,7 @@ class HyperliquidAdapter(BaseAdapter):
         asset_key = coin.split(":", 1)[-1] if ":" in coin else coin
         tier = fee_tier or DEFAULT_FEE_TIER
 
-        if mid.asset.upper() != asset_key.upper():
-            raise AdapterError(
-                f"mid.asset={mid.asset!r} does not match asset={asset!r}"
-            )
+        require_mid_asset(mid, asset_key)
 
         try:
             itype = resolve_perp_instrument(itype_default)
@@ -139,6 +137,7 @@ class HyperliquidAdapter(BaseAdapter):
     ) -> TopOfBook | None:
         coin = _normalize_hl_coin(asset)
         asset_key = coin.split(":", 1)[-1] if ":" in coin else coin
+        require_mid_asset(mid, asset_key)
         if instrument_type not in (None, "perp"):
             raise UnsupportedAssetError(
                 f"hyperliquid adapter only supports perp, got {instrument_type!r}"
@@ -242,8 +241,11 @@ class HyperliquidAdapter(BaseAdapter):
         for row in raw[:_MAX_LEVELS]:
             if not isinstance(row, dict):
                 raise AdapterError(f"level row is not an object: {row!r}")
-            price = Decimal(str(row["px"]))
-            size = Decimal(str(row["sz"]))
+            try:
+                price = Decimal(str(row["px"]))
+                size = Decimal(str(row["sz"]))
+            except (ArithmeticError, ValueError) as exc:
+                raise AdapterError(f"level not numeric: {row!r}") from exc
             if size < 0:
                 raise AdapterError(f"negative level size: {size}")
             levels.append((price, size))
@@ -257,7 +259,7 @@ class HyperliquidAdapter(BaseAdapter):
             venue=self.venue,
             limiter=self._limiter,
             json_body=body,
-            max_retries=1,
+            max_retries=4,
         )
 
 

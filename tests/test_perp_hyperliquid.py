@@ -155,6 +155,20 @@ async def test_hl_one_million_walk_insufficient_on_20_level_thin_book() -> None:
 
 
 @pytest.mark.asyncio
+async def test_hl_hard_caps_levels_at_20_per_side() -> None:
+    """WHI-800 §4.1: at most 20 levels/side even if the payload is longer."""
+    fat_bids = [{**_THIN_LEVEL, "px": str(99990 - i)} for i in range(25)]
+    fat_asks = [{**_THIN_LEVEL, "px": str(100010 + i)} for i in range(25)]
+    adapter = await _ready_adapter(book_levels=[fat_bids, fat_asks])
+    try:
+        bids, asks = await adapter._fetch_l2_book("BTC")
+        assert len(bids) == 20
+        assert len(asks) == 20
+    finally:
+        await adapter.aclose()
+
+
+@pytest.mark.asyncio
 async def test_hl_top_of_book() -> None:
     adapter = await _ready_adapter()
     try:

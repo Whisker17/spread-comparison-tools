@@ -22,6 +22,7 @@ from spread_compare.adapters._perp_common import (
     build_unsupported_quote,
     placeholder_fee_schedule,
     request_json,
+    require_mid_asset,
     resolve_perp_instrument,
 )
 from spread_compare.adapters.base import (
@@ -103,10 +104,7 @@ class LighterAdapter(BaseAdapter):
         asset_key = asset.upper()
         tier = fee_tier or DEFAULT_FEE_TIER
 
-        if mid.asset.upper() != asset_key:
-            raise AdapterError(
-                f"mid.asset={mid.asset!r} does not match asset={asset!r}"
-            )
+        require_mid_asset(mid, asset_key)
 
         try:
             itype = resolve_perp_instrument(itype_default)
@@ -160,6 +158,7 @@ class LighterAdapter(BaseAdapter):
         instrument_type: Literal["spot", "perp"] | None = None,
     ) -> TopOfBook | None:
         asset_key = asset.upper()
+        require_mid_asset(mid, asset_key)
         if instrument_type not in (None, "perp"):
             raise UnsupportedAssetError(
                 f"lighter adapter only supports perp, got {instrument_type!r}"

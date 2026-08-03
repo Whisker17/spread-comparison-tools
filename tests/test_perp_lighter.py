@@ -138,6 +138,13 @@ def test_lighter_registered() -> None:
     assert get("lighter").venue == "lighter"
 
 
+def test_lighter_default_rate_budget_is_60_per_minute() -> None:
+    """AC: Standard tier 60 req/min is the adapter default (not only test knobs)."""
+    adapter = LighterAdapter()
+    assert adapter._limiter.max_requests == 60
+    assert adapter._limiter.window_s == 60.0
+
+
 @pytest.mark.asyncio
 async def test_lighter_market_id_resolved_from_details_not_hardcoded() -> None:
     adapter, _ = await _ready_adapter()
