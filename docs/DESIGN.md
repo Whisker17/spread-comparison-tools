@@ -53,8 +53,24 @@ reason for each non-obvious choice.)_
 
 ### 4.2 Module layout
 
-_(fill in: the package/directory structure and each module's single responsibility.
-`AGENTS.md` §Architecture mirrors this section — keep them in sync.)_
+Pinned by WHI-801 (backend scaffold). Later issues add modules under this tree without
+renaming these responsibilities. `AGENTS.md` §Architecture mirrors this list.
+
+| Path | Responsibility |
+| --- | --- |
+| `spread_compare/models.py` | Pydantic models from WHI-799 §6 (`Quote`, `TopOfBook`, `FeeBreakdown`, `FeeSchedule`, `ReferenceMid`, `SizeQuotePair`) + status/instrument/side literals. Enforces §6.2 invariants. |
+| `spread_compare/venues.py` | Static venue slug registry (WHI-799 §6.5): display name + `venue_class`. |
+| `spread_compare/bookwalk.py` | **Sole** walk-the-book → VWAP implementation (WHI-799 §4.3). CEX/perp adapters import this; no per-adapter copies. |
+| `spread_compare/costs.py` | **Sole** `spread_bps` / `total_cost_bps` formulas (WHI-799 §4.5 / §5.2). Aggregator never recomputes. |
+| `spread_compare/adapters/base.py` | `VenueAdapter` Protocol + `AdapterError` hierarchy (WHI-799 §7). |
+| `spread_compare/adapters/registry.py` | `@register_adapter` self-registration; `get` / `list_venues`. |
+| `spread_compare/adapters/mock.py` | Deterministic `mock` adapter (WHI-799 §4.7 fixture book) for aggregation development. |
+| `spread_compare/adapters/<venue>.py` | One module per real venue adapter (WHI-802…806); each self-registers. |
+| `spread_compare/api/app.py` | FastAPI app factory (`GET /health` now; `/quotes` in WHI-807). |
+| `main.py` | CLI entry: `--dry-run` validates app (no network); live mode serves uvicorn. |
+
+Out of package (docs/research remains SSOT for formulas until DESIGN.md is fully written):
+`docs/research/WHI-799-spread-fee-data-model.md`.
 
 ### 4.3 Key interfaces
 

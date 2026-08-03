@@ -32,7 +32,18 @@ defines none: `docs/GIT_WORKFLOW.md` § High-risk paths), **Medium**
 
 ## Open
 
-_(none yet)_
+- **`mid_stale` is never computed by adapters** (Low, WHI-801).
+  `spread_compare/models.py::Quote.mid_stale` — WHI-799 §3.2 defines
+  `mid_stale = abs(quote.timestamp - mid_timestamp) > mid.stale_threshold_sec`, but
+  computing it needs `config/mid.yaml` (still unvalidated / WHI-807). Mock leaves the
+  default `False`. Fix in WHI-807 (or a shared helper once the threshold lives in
+  typed config).
+
+- **Shared Quote assembly helper not extracted** (Low, WHI-801).
+  `spread_compare/adapters/mock.py::_quote_shell` — mapping `ReferenceMid` + status
+  into a §6.2-valid `Quote` is private to the mock. Real adapters (WHI-802…806) risk
+  copy-paste drift. Promote a `build_quote(...)` (and optional mid/asset guard) into
+  `adapters/base.py` with the first real adapter PR if duplication appears.
 
 ---
 

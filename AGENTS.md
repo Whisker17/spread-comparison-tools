@@ -23,16 +23,18 @@ placeholders. Agents must not assume a module exists until its issue lands. -->
 **Landed:** template bootstrap is complete (WHI-820 — placeholders filled, test/lint gate
 green, GitHub merge policy aligned). M1 research is done and merged: prop AMM quote paths
 across Solana/Base/BSC (WHI-797), asset inventory (WHI-798), spread & fee data model
-(WHI-799), venue API survey (WHI-800) — all under `docs/research/`.
+(WHI-799), venue API survey (WHI-800) — all under `docs/research/`. M2 backend scaffold
+(WHI-801): `spread_compare` package with models, bookwalk, costs, adapter protocol +
+registry, mock adapter, and FastAPI `GET /health`.
 
-**Not implemented:** everything else. There is no application runtime yet — `main.py` is a
-skeleton entrypoint and no adapter, API, collector, or frontend module exists. Do not
-assume a module exists until its issue lands.
+**Not implemented:** real venue adapters (WHI-802…806), `/quotes` + reference-mid
+(WHI-807), fee config numbers (WHI-812), collector, frontend. Do not assume a module
+exists until its issue lands.
 
-**Blocking gap:** `docs/DESIGN.md` is still the empty template stub. Produce it via
-`/grill-me` + `/to-spec` before implementing anything — several sections of this file
-(§Architecture, and the PR checklist's "no new tunables outside DESIGN.md §2") point at
-sections that do not exist yet.
+**Blocking gap:** `docs/DESIGN.md` is still mostly the empty template stub (§4.2 module
+layout is filled by WHI-801). Produce the rest via `/grill-me` + `/to-spec` — the PR
+checklist's "no new tunables outside DESIGN.md §2" still points at a section that does
+not exist yet. Formula SSOT remains `docs/research/WHI-799-spread-fee-data-model.md`.
 
 ## Build, test, run
 
@@ -62,9 +64,13 @@ Module layout is fixed by `docs/DESIGN.md` §4.2. Keep this section a short mirr
 that section — one bullet per top-level module, its single responsibility, and the
 load-bearing interfaces other modules may depend on.
 
-<!-- Fill in as DESIGN.md §4.2 lands, e.g.:
-- **`<module>/`** — responsibility; depends only on <interface>.
--->
+- **`spread_compare/models.py`** — WHI-799 pydantic models + Quote §6.2 invariants.
+- **`spread_compare/venues.py`** — static venue slug registry (WHI-799 §6.5).
+- **`spread_compare/bookwalk.py`** — sole walk-the-book VWAP; CEX/perp adapters import only this.
+- **`spread_compare/costs.py`** — sole `spread_bps` / `total_cost_bps`; aggregator never recomputes.
+- **`spread_compare/adapters/`** — `VenueAdapter` Protocol, `@register_adapter` registry, `mock` adapter; one module per real venue.
+- **`spread_compare/api/`** — FastAPI app factory (`/health`; `/quotes` later).
+- **`main.py`** — CLI: `--dry-run` validates; live serves uvicorn.
 
 ## Git workflow (mandatory)
 
