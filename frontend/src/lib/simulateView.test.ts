@@ -1,8 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { ApiError, type SimulateRowResponse } from "@/lib/api";
+import {
+  ApiError,
+  type SimulateRowResponse,
+  type VenueResponse,
+} from "@/lib/api";
 import {
   bestSimulateRow,
+  buildVenueMetaMap,
   deltaVsBest,
   feeBreakdownLines,
   parseSimulateError,
@@ -185,5 +190,40 @@ describe("feeBreakdownLines", () => {
     expect(err.kind).toBe("validation");
     expect(err.message.toLowerCase()).toContain("decimal");
     expect(err.message).not.toMatch(/\[object Object\]/i);
+  });
+
+  it("maps non-mid 503s to generic instead of always mid_unavailable", () => {
+    const err = parseSimulateError(
+      new ApiError("fail", 503, { detail: "simulator not initialized" }),
+    );
+    expect(err.kind).toBe("generic");
+    expect(err.message).toMatch(/simulator/i);
+  });
+});
+
+describe("buildVenueMetaMap", () => {
+  it("prefers VENUE_META display names and flags on-chain representation", () => {
+    const venues: VenueResponse[] = [
+      {
+        slug: "humidifi",
+        display_name: "API HumidiFi",
+        venue_class: "prop_amm",
+        chain: "solana",
+        adapter_registered: true,
+      },
+      {
+        slug: "binance",
+        display_name: "API Binance",
+        venue_class: "cex",
+        chain: null,
+        adapter_registered: true,
+      },
+    ];
+    const map = buildVenueMetaMap(venues);
+    expect(map.humidifi?.displayName).toBe("HumidiFi"); // static SSOT
+    expect(map.humidifi?.chain).toBe("solana");
+    expect(map.humidifi?.showRepresentation).toBe(true);
+    expect(map.binance?.showRepresentation).toBe(false);
+    expect(map.binance?.classLabel).toBe("CEX");
   });
 });

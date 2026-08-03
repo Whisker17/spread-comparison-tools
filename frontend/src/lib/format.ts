@@ -96,21 +96,8 @@ export function formatPrice(value: string | number | null | undefined): string {
 }
 
 /**
- * Compact USD amount without the `$` prefix (caller adds currency chrome).
- * Uses full locale precision for small notionals; whole dollars at ≥$100.
- */
-export function formatUsdAmount(value: string | number | null | undefined): string {
-  const n = parseDecimal(value);
-  if (n === null) {
-    return value == null ? "—" : String(value);
-  }
-  return n.toLocaleString(undefined, {
-    maximumFractionDigits: n >= 100 ? 0 : 2,
-  });
-}
-
-/**
- * Delta vs best output for the simulate list: absolute units + optional bps.
+ * Delta vs best output for the simulate list: signed absolute units + optional bps.
+ * Positive absolute means this row trails best (best − row > 0).
  * Null absolute → "Δ —"; zero → "Δ 0".
  */
 export function formatDeltaVsBest(
@@ -120,10 +107,12 @@ export function formatDeltaVsBest(
 ): string {
   if (absolute === null) return "Δ —";
   if (absolute === 0) return "Δ 0";
-  const absStr =
-    Math.abs(absolute) >= 1
-      ? absolute.toLocaleString(undefined, { maximumFractionDigits: 4 })
-      : absolute.toPrecision(4);
-  const bpsStr = bps === null ? "" : ` · ${formatBps(bps)} bps`;
-  return `Δ ${absStr} ${unit}${bpsStr}`;
+  const sign = absolute > 0 ? "−" : "+";
+  const mag = Math.abs(absolute);
+  const magStr =
+    mag >= 1
+      ? mag.toLocaleString(undefined, { maximumFractionDigits: 4 })
+      : mag.toPrecision(4);
+  const bpsStr = bps === null ? "" : ` · ${formatBps(Math.abs(bps))} bps`;
+  return `Δ ${sign}${magStr} ${unit}${bpsStr}`;
 }

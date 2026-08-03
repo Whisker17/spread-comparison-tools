@@ -25,6 +25,20 @@ export const ON_CHAIN_VENUE_CLASSES: ReadonlySet<VenueClass> = new Set([
 ]);
 
 /**
+ * Human labels for venue classes — single map for fees table, simulate rows,
+ * and any other chrome that shows a class badge.
+ */
+export const VENUE_CLASS_LABELS: Readonly<Record<VenueClass | "unknown", string>> =
+  {
+    cex: "CEX",
+    perp_dex: "Perp DEX",
+    amm_dex: "Public AMM",
+    prop_amm: "Prop AMM",
+    mock: "Mock",
+    unknown: "Other",
+  };
+
+/**
  * Single venue metadata registry for every section (WHI-809/810/811).
  *
  * Display names mirror `spread_compare/venues.py` (GET /venues); quote

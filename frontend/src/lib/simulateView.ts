@@ -5,7 +5,12 @@
  * formats only — never re-derives a winner from expected_output or costs.
  */
 
-import { VENUE_META } from "@/config/sections/helpers";
+import {
+  ON_CHAIN_VENUE_CLASSES,
+  VENUE_CLASS_LABELS,
+  VENUE_META,
+} from "@/config/sections/helpers";
+import type { VenueClass } from "@/config/sections/types";
 import type {
   SimulatePairErrorDetail,
   SimulateRowResponse,
@@ -90,14 +95,8 @@ export type VenueDisplayMeta = {
   venueClass: string;
   chain: string | null;
   classLabel: string;
-};
-
-/** Class badge labels — shared wording with fee table / section boards. */
-const CLASS_LABELS: Record<string, string> = {
-  cex: "CEX",
-  perp_dex: "Perp DEX",
-  amm_dex: "Public AMM",
-  prop_amm: "Prop AMM",
+  /** True for AMM/prop classes that show representation badges. */
+  showRepresentation: boolean;
 };
 
 /**
@@ -112,12 +111,16 @@ export function buildVenueMetaMap(
   const out: Record<string, VenueDisplayMeta> = {};
   for (const v of venues) {
     const staticMeta = VENUE_META[v.slug];
-    const venueClass = staticMeta?.venueClass ?? v.venue_class;
+    const venueClass = (staticMeta?.venueClass ?? v.venue_class) as VenueClass;
     out[v.slug] = {
       displayName: staticMeta?.displayName ?? v.display_name,
       venueClass,
       chain: v.chain ?? null,
-      classLabel: CLASS_LABELS[venueClass] ?? venueClass,
+      classLabel:
+        VENUE_CLASS_LABELS[venueClass] ??
+        VENUE_CLASS_LABELS.unknown ??
+        venueClass,
+      showRepresentation: ON_CHAIN_VENUE_CLASSES.has(venueClass),
     };
   }
   return out;
@@ -157,10 +160,19 @@ export function parseSimulateError(error: unknown): SimulateUserError {
     };
   }
   if (error.status === 503) {
+    const { message } = unwrapApiDetail(error.body);
+    const lower = (message ?? "").toLowerCase();
+    if (!message || lower.includes("mid")) {
+      return {
+        kind: "mid_unavailable",
+        message:
+          message ||
+          "Reference mid is unavailable right now. Retry in a few seconds.",
+      };
+    }
     return {
-      kind: "mid_unavailable",
-      message:
-        "Reference mid is unavailable right now. Retry in a few seconds.",
+      kind: "generic",
+      message,
     };
   }
 

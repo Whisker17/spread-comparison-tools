@@ -8,9 +8,9 @@ import type { SimulateResponse, SimulateRowResponse } from "@/lib/api";
 import {
   formatBps,
   formatDeltaVsBest,
+  formatNotional,
   formatPrice,
   formatTimestamp,
-  formatUsdAmount,
 } from "@/lib/format";
 import {
   bestSimulateRow,
@@ -60,9 +60,8 @@ export function SimulateResultList({
     <div className="space-y-3" data-testid="simulate-results">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-zinc-500">
         <span>
-          {data.side} {data.asset} · notional ≈ $
-          {formatUsdAmount(data.notional_usd)} · mid {formatPrice(data.mid.mid)}{" "}
-          ({data.mid.mid_source})
+          {data.side} {data.asset} · notional ≈ {formatNotional(data.notional_usd)}{" "}
+          · mid {formatPrice(data.mid.mid)} ({data.mid.mid_source})
         </span>
         {isRefreshing && (
           <span className="text-amber-600 dark:text-amber-400">Refreshing…</span>
@@ -151,7 +150,7 @@ function SimulateResultRow({
             <Badge variant="secondary">{meta.classLabel}</Badge>
           )}
           {meta?.chain && <Badge variant="outline">{meta.chain}</Badge>}
-          {representation && (
+          {meta?.showRepresentation && representation && (
             <Badge variant="muted" title="Representation label">
               {representation}
             </Badge>
