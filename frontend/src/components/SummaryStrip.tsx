@@ -5,6 +5,7 @@ import { formatBps, formatNotional } from "@/lib/format";
 import {
   bestVenuePerTier,
   type BestVenueOptions,
+  type RankMetric,
   type SideView,
 } from "@/lib/summary";
 import { cn } from "@/lib/utils";
@@ -12,6 +13,7 @@ import { cn } from "@/lib/utils";
 export type SummaryStripProps = {
   pairs: readonly SizeQuotePair[];
   side?: SideView;
+  metric?: RankMetric;
   venues?: readonly string[];
   hiddenVenues?: readonly string[];
   venueLabels?: Readonly<Record<string, string>>;
@@ -25,12 +27,13 @@ export type SummaryStripProps = {
 export function SummaryStrip({
   pairs,
   side = "buy",
+  metric = "total_cost_bps",
   venues,
   hiddenVenues,
   venueLabels,
   className,
 }: SummaryStripProps) {
-  const options: BestVenueOptions = { side, venues, hiddenVenues };
+  const options: BestVenueOptions = { side, metric, venues, hiddenVenues };
   const picks = bestVenuePerTier(pairs, options);
 
   if (picks.length === 0) {
@@ -46,7 +49,8 @@ export function SummaryStrip({
       data-testid="summary-strip"
     >
       <span className="w-full text-xs font-medium uppercase tracking-wide text-zinc-500">
-        Best venue per tier ({side.replace("_", " ")})
+        Best venue per tier ({side.replace("_", " ")} ·{" "}
+        {metric.replace(/_/g, " ")})
       </span>
       {picks.map((pick) => (
         <div
@@ -65,7 +69,7 @@ export function SummaryStrip({
                 {venueLabels?.[pick.venue] ?? pick.venue}
               </div>
               <div className="text-xs tabular-nums text-zinc-500">
-                {formatBps(pick.totalCostBps)} bps
+                {formatBps(pick.valueBps)} bps
               </div>
             </>
           )}

@@ -81,7 +81,7 @@ describe("bestVenuePerTier", () => {
     expect(picks).toHaveLength(1);
     expect(picks[0]).toMatchObject({
       venue: "bybit",
-      totalCostBps: 12,
+      valueBps: 12,
       empty: false,
     });
   });

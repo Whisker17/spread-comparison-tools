@@ -126,6 +126,7 @@ export function LiveSpreadDemo({
           <SummaryStrip
             pairs={pairs}
             side={sideView}
+            metric={section.cellMetric}
             venues={section.venues.length > 0 ? section.venues : undefined}
             hiddenVenues={section.hiddenVenues}
           />

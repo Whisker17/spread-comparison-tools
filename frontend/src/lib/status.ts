@@ -10,9 +10,12 @@
  */
 
 import type { components } from "@/lib/api-types";
+import type { RankMetric } from "@/lib/summary";
 
 export type Quote = components["schemas"]["Quote"];
 export type QuoteStatus = Quote["status"];
+/** Alias kept for StatusCell props; same as RankMetric. */
+export type MetricKey = RankMetric;
 
 /** How a cell should render given status + orthogonal flags. */
 export type CellRenderKind =
@@ -36,8 +39,6 @@ export type CellRenderDecision = {
   /** Eligible for best-venue highlighting (WHI-799 §5.2). */
   eligibleForBest: boolean;
 };
-
-export type MetricKey = "total_cost_bps" | "spread_bps";
 
 /**
  * Decide how to render one quote cell.

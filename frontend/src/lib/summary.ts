@@ -15,19 +15,20 @@ export type SizeQuotePair = components["schemas"]["SizeQuotePair"];
 
 export type SideView = "buy" | "sell" | "round_trip";
 
+/** Ranking / cell metric — single union shared with status + section config. */
+export type RankMetric = "total_cost_bps" | "spread_bps";
+
 export type BestVenuePick = {
   notionalUsd: string;
   venue: string;
-  /** Metric value used for ranking (bps). */
-  totalCostBps: number;
+  /** Metric value used for ranking (bps). Name is historical; holds whichever metric. */
+  valueBps: number;
   /** Which metric was ranked. */
   metric: RankMetric;
   side: SideView;
   /** True when no eligible quote existed for this tier. */
   empty: boolean;
 };
-
-export type RankMetric = "total_cost_bps" | "spread_bps";
 
 export type BestVenueOptions = {
   /** Which leg / aggregate to rank on. Default: buy. */
@@ -87,13 +88,13 @@ export function bestVenuePerTier(
       // Strictly lower cost wins; equal cost → stable venue slug tiebreak.
       if (
         best === null ||
-        cost < best.totalCostBps ||
-        (cost === best.totalCostBps && pair.venue < best.venue)
+        cost < best.valueBps ||
+        (cost === best.valueBps && pair.venue < best.venue)
       ) {
         best = {
           notionalUsd,
           venue: pair.venue,
-          totalCostBps: cost,
+          valueBps: cost,
           metric,
           side,
           empty: false,
@@ -105,7 +106,7 @@ export function bestVenuePerTier(
       best ?? {
         notionalUsd,
         venue: "",
-        totalCostBps: Number.POSITIVE_INFINITY,
+        valueBps: Number.POSITIVE_INFINITY,
         metric,
         side,
         empty: true,
@@ -114,7 +115,11 @@ export function bestVenuePerTier(
   });
 }
 
-/** Extract ranking metric for a pair under the chosen side view. */
+/**
+ * Read ranking metric from a pair. Round-trip values come **only** from the
+ * aggregator pair fields (backend `costs.py` is the sole formula owner) —
+ * never re-sum legs client-side.
+ */
 export function metricForPair(
   pair: SizeQuotePair,
   side: SideView,
@@ -122,22 +127,11 @@ export function metricForPair(
 ): number | null {
   if (side === "round_trip") {
     if (metric === "total_cost_bps") {
-      const rt = parseDecimal(pair.round_trip_total_cost_bps);
-      if (rt !== null && bothLegsEligible(pair)) return rt;
       if (!bothLegsEligible(pair)) return null;
-      const buy = parseDecimal(pair.buy?.total_cost_bps);
-      const sell = parseDecimal(pair.sell?.total_cost_bps);
-      if (buy === null || sell === null) return null;
-      return buy + sell;
+      return parseDecimal(pair.round_trip_total_cost_bps);
     }
-    // spread_bps RT: require both legs status=ok (not full cost eligibility).
     if (pair.buy?.status !== "ok" || pair.sell?.status !== "ok") return null;
-    const rt = parseDecimal(pair.round_trip_spread_bps);
-    if (rt !== null) return rt;
-    const buy = parseDecimal(pair.buy.spread_bps);
-    const sell = parseDecimal(pair.sell.spread_bps);
-    if (buy === null || sell === null) return null;
-    return buy + sell;
+    return parseDecimal(pair.round_trip_spread_bps);
   }
 
   const quote = side === "buy" ? pair.buy : pair.sell;

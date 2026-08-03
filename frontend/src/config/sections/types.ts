@@ -1,4 +1,4 @@
-import type { SideView } from "@/lib/summary";
+import type { RankMetric, SideView } from "@/lib/summary";
 
 /**
  * Per-section configuration. Each section agent owns its own module under
@@ -24,10 +24,10 @@ export type SectionConfig = {
   /** Default side / round-trip view. */
   defaultSideView: SideView;
   /**
-   * Which metric fills matrix cells. Section agents configure via props —
-   * SpreadMatrix does not hardcode a product default beyond this config.
+   * Which metric fills matrix cells + summary ranking. Section agents configure
+   * via props — SpreadMatrix / SummaryStrip do not hardcode a product default.
    */
-  cellMetric: "total_cost_bps" | "spread_bps";
+  cellMetric: RankMetric;
   /** Show TopOfBookRow under the matrix when TOB data exists. */
   showTopOfBook: boolean;
 };
