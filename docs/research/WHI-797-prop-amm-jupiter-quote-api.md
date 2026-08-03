@@ -28,8 +28,9 @@
 5. **费用**：`outAmount` 为扣除 AMM fee（及可选 platform fee）后的净输出；prop AMM 响应中 **`feeAmount`/`feeMint` 字段缺失**（OpenAPI 标 deprecated；实测不返回），`platformFee` 默认为 `null`。
 6. **`excludeDexes` 同样可用**（与 `dexes` **不可同时设置**，同时传返回 400）；见 §3.5。
 7. **资产范围（live 探测，Solana）**：三家核心都在 **SOL/稳定币 + 主流大币（cbBTC、WETH）**；memecoin / LST / 多数中盘币 **无直连报价**。详见 §6。
-8. **Tessera 是多链 venue（v2 新增）**：DefiLlama 收录链为 **Solana + Base + BSC**，近 7 日（2026-07-27 ~ 08-02）BSC 日均 **$136M** > Solana 日均 **$34M** > Base 日均 **$9.5M**——**BSC 才是 Tessera 交易量最大的链**，只看 Solana 会漏掉大头。HumidiFi / BisonFi 未发现非 Solana 部署。详见 §7。
-9. **EVM 报价路径（v2 新增）**：KyberSwap Aggregator API（keyless 可用）`includedSources=tessera` / `excludedSources=tessera` 可在 Base、BSC 单独隔离 Tessera 报价；source id 全小写 **`tessera`**。Base 直连池：WETH/USDC、cbBTC/USDC、AERO/USDC；BSC 直连池：**仅 BTCB/USDT**。ParaSwap 无 Tessera；0x / 1inch / OKX 需 API key 未验证。详见 §7。
+8. **Tessera 是多链 venue（v2 新增）**：DefiLlama 收录链为 **Solana + Base + BSC**；24h（2026-08-03）**BSC $195M > Solana $34M > Base $2.6M**（7d：BSC $952M / Solana $241M / Base $67M）——**BSC 是 Tessera 交易量最大的链**（BSC 全链 DEX 排名 #3），只看 Solana 会漏掉大头。EVM 两链共用同一合约 **`TesseraSwap` `0x55555522005BcAE1c2424D474BfD5ed477749E3e`**（Base 部署于 2025-10-30，BSC 自 2025-11-13 活跃）。HumidiFi / BisonFi 确认无非 Solana 部署。详见 §7。
+9. **EVM 报价路径（v2 新增）**：KyberSwap Aggregator API（keyless 可用）`includedSources=tessera` / `excludedSources=tessera` 可在 Base、BSC 单独隔离 Tessera 报价；source id 全小写 **`tessera`**。Base 直连：WETH、cbBTC、AERO、VIRTUAL、EURC（全部 vs USDC）；BSC 直连：BTCB/USDT + **tokenized stocks（QQQB、SPCXB、NVDAB、NVDAon，全部 vs USDT）**。ParaSwap 无 Tessera；0x / 1inch / OKX 需 API key 未验证。详见 §7。
+10. **Tessera BSC 的成交主力是 tokenized equities（v2 新增，与 WHI-798 直接相关）**：链上采样约 **94% 的 swap 是 QQQB/USDT 等股票代币对**，且 ~95% 流量来自 Binance Wallet DEX Router（非公开聚合器）。**prop AMM × tokenized stocks 在 BSC 上是真实存在的可报价交叉**。详见 §7.4。
 
 > WHI-806 实现时：**不要**写 `Tessera` / `Tessera V` / `Humidifi` 等近似字符串——Jupiter 会直接 `No routes found`；KyberSwap 传错 source id 返回 `40011 filtered liquidity sources`。
 
@@ -526,23 +527,29 @@ BisonFi / TesseraV 同样可在无直连时走同 venue 多跳（经 USDC），�
 
 ## 7. Tessera 多链接入：Base / BSC（v2 新增）
 
-### 7.1 量级：为什么不能只看 Solana
+### 7.1 量级与部署：为什么不能只看 Solana
 
-DefiLlama（protocol `tessera-v`，id 6557）收录 Tessera 的链为 **Solana、Base、BSC**。近 7 日分链日交易量（USD，live 拉取 2026-08-03）：
+DefiLlama（protocol `tessera-v`，id 6557）收录 Tessera 的链为 **Solana、Base、BSC**。分链交易量（live 拉取 2026-08-03）：
 
-| 日期 | Solana | Base | BSC |
-| --- | --- | --- | --- |
-| 2026-07-27 | 33.4M | 16.1M | **184.1M** |
-| 2026-07-28 | 46.3M | 11.6M | **124.9M** |
-| 2026-07-29 | 43.0M | 13.8M | **89.9M** |
-| 2026-07-30 | 33.1M | 10.1M | **110.3M** |
-| 2026-07-31 | 30.7M | 10.9M | **169.7M** |
-| 2026-08-01 | 20.9M | 1.8M | **77.7M** |
-| 2026-08-02 | 33.8M | 2.6M | **195.1M** |
+| Chain | 24h | 7d | 30d | 累计 |
+| --- | --- | --- | --- | --- |
+| **BSC** | **$195.1M** | **$951.7M** | **$1.46B** | $3.28B |
+| Solana | $33.8M | $241M | $1.45B | $62.7B |
+| Base | $2.6M（7d 均值 ≈ $9.6M/d，日间波动大） | $66.9M | $197.9M | $6.18B |
 
-汇总（DefiLlama，2026-08-03）：`total24h ≈ $231M`、`total7d ≈ $1.26B`、`total30d ≈ $3.11B`。**BSC 占比约 70%+，是 Tessera 最大的链**；只覆盖 Solana 会漏掉绝大部分 Tessera 流量。对照：HumidiFi（24h $45.6M）与 BisonFi（24h $89.3M）在 DefiLlama 均为 **Solana 单链**，无非 Solana 部署。
+**BSC 已超过 Solana，是 Tessera 当前交易量最大的链**（BSC 全链 DEX 24h 排名 **#3**，仅次于 Native Swap 与 PancakeSwap V3）；30d 口径 BSC ≈ Solana。只覆盖 Solana 会漏掉大部分 Tessera 流量。对照：HumidiFi（24h $45.6M）与 BisonFi（24h $89.3M）在 DefiLlama 均为 **Solana 单链**，确认无非 Solana 部署；EVM 上另一家 prop AMM 是 **ElfomoFi**（Base+BSC，KyberSwap id `elfomofi`，24h ≈ $4.6M，暂不入基准名单）。
 
-链上佐证：Base WETH/USDC 池 `0xf524…5a7c` 首笔交易 **2025-10-30**（Blockscout），即 Tessera Base 部署自 2025-10 起活跃。
+**部署事实（链上验证）**：
+
+| 项 | 值 |
+| --- | --- |
+| EVM swap 合约（Base 与 BSC **同一 vanity 地址**） | `0x55555522005BcAE1c2424D474BfD5ed477749E3e`，验证源码名 **`TesseraSwap`**（Solidity 0.8.30） |
+| Base 部署 | 2025-10-30 12:17 UTC，block 37518648，creation tx `0xf1b7…00c0`（Blockworks 报道 Tessera「2025-11 初」登陆 Base，吻合） |
+| BSC 活跃起点 | 2025-11-13（DefiLlama adapter 起算日；同地址 live 发出 swap 事件） |
+| Swap 事件 | `TesseraTrade(address tokenIn, address tokenOut, uint256 amountIn, uint256 amountOut, address recipient)`——可作为链上成交监控/对账的直接数据源（DefiLlama volume 即按此事件统计） |
+| 运营方 | Wintermute（对 DL News 确认运营 Tessera V；无官网、无前端、无公开文档，"dark AMM"） |
+
+**流量归属（链上 caller 采样，2026-08-03）**：BSC 侧 **~95% 来自 Binance Wallet「Binance: DEX Router」`0xb300…028d`**（Binance Wallet / Alpha 订单流，闭环、无公开报价 API）；Base 侧以 **OKX DEX Router、KyberSwap MetaAggregationRouterV2** 为主，另有 0x AllowanceHolder、Relay、LI.FI 等。含义：**KyberSwap 报价 ≈ Tessera 对公开聚合器的报价面**，但 BSC 上最大的那部分（Binance Wallet 专属流）我们只能间接经同一池子的公开报价近似。
 
 ### 7.2 报价路径：KyberSwap Aggregator API
 
@@ -566,37 +573,51 @@ EVM 链上与「Jupiter + `dexes`」等价的现实路径是 **KyberSwap Aggrega
 | --- | --- | --- |
 | venue 对该 pair 无报价 | HTTP 400 `NO_ROUTES_FOUND` | HTTP 200，body `code: 4008, message: "route not found"` |
 | venue 标识符拼错 / 该链不存在 | HTTP 400 `NO_ROUTES_FOUND`（与无路由**同形**，不可区分） | body `code: 40011, message: "filtered liquidity sources"`（与无路由**可区分**） |
-| 参数非法 | HTTP 400 其他 error | `code: 4000, message: "bad request"`——注意：**混合大小写地址必须是合法 EIP-55 checksum**，错一个字母就 4000；全小写地址可接受 |
+| 参数非法 | HTTP 400 其他 error | `code: 4000, message: "bad request"`——注意：**混合大小写地址必须是合法 EIP-55 checksum**，错一个字母就 4000；全小写地址可接受。另外经验现象（语义未官宣）：`includedSources=tessera` + **token 完全不在该 source 已注册 token 集内**时也返回 4000 而非 4008（例：TSLAB） |
 | include 与 exclude 冲突 | 400 `Cannot set dexes and exclude dexes at the same time` | 未验证（避免同传） |
 
 判别要点：KyberSwap 的 `40011` 能把「source id 写错」从「无路由」里区分出来，比 Jupiter 更友好；但 `tessera` id 在**不存在该 venue 的链**（如 Ethereum）同样返回 40011，所以 40011 = 「过滤后无可用 source」，启动时仍建议对每条链做一次已知 pair 的冒烟验证。
 
 ### 7.4 直连池与资产范围（live 探测 2026-08-03）
 
-**Base（3 个直连池）**：
+> 下表 `pool` 为 KyberSwap 响应中的 per-pair 标识（是否为独立合约未确认；实际成交合约统一是 `TesseraSwap 0x5555…9E3e`）。所有报价均单 hop 直连、双向验证或至少单向验证。
 
-| Pair | Tessera pool | 直连 | 多跳 |
-| --- | --- | --- | --- |
-| WETH/USDC | `0xf524c1bc1c64a2c99bc7eccf19ede9a1d89d5a7c` | ✅ 双向 | — |
-| cbBTC/USDC | `0xed57bacdc2a990b631f8817853935791c122c356` | ✅ 双向 | — |
-| AERO/USDC | `0x3b84be4d48888a6bc385eea93e522246b214069e` | ✅ 双向 | — |
-| WETH↔cbBTC / WETH↔AERO / cbBTC↔AERO | — | ❌ | ✅ 全 tessera 2-hop 经 USDC |
-| 任何 USDT / wstETH 腿 | — | ❌ | ❌（Base 无 tessera USDT/wstETH 池） |
+**Base（quote 腿全部是 USDC）**：
 
-原生 ETH 伪地址（`0xeeee…eeee`）可直接当 tokenIn，路由等同 WETH。
-
-**BSC（仅 1 个直连池）**：
-
-| Pair | Tessera pool | 直连 |
+| Pair | Kyber pool id | 结果 |
 | --- | --- | --- |
-| BTCB/USDT | `0xe1191102bdcea1928a93b4d6ea7bf5c4e9207210` | ✅ 双向 |
-| WBNB、ETH、USDC、CAKE、USD1、DOGE、XRP、SOL、WBETH 的任意组合 | — | ❌ 全部 4008 |
+| WETH/USDC | `0xf524c1bc1c64a2c99bc7eccf19ede9a1d89d5a7c` | ✅ 直连双向（原生 ETH 伪地址 `0xeeee…` 等同 WETH） |
+| cbBTC/USDC | `0xed57bacdc2a990b631f8817853935791c122c356` | ✅ 直连双向 |
+| AERO/USDC | `0x3b84be4d48888a6bc385eea93e522246b214069e` | ✅ 直连双向 |
+| VIRTUAL/USDC | `0xe1191102bdcea1928a93b4d6ea7bf5c4e9207210` | ✅ 直连（链上采样中 VIRTUAL 是 Base 第一大成交对，~32%） |
+| EURC/USDC | `0x4b963fb4a26f082d94f964fa3c2764821cc06bd4` | ✅ 直连 |
+| WETH↔cbBTC / WETH↔AERO / cbBTC↔AERO | — | ✅ 全 tessera 2-hop 经 USDC |
+| 任何 USDT / wstETH 腿 | — | ❌（无池） |
+| VVV/USDC、deSPXA/USDC | — | 链上 `TesseraTrade` 采样中出现过，KyberSwap 侧未逐一验证 |
 
-⚠️ BSC 日均 $100M+ 的交易量当前**几乎全部来自这一个 BTCB/USDT 池**——单池快照，Wintermute 随时可能增/撤池子；WHI-806 的资产发现不要硬编码 pair 列表（同 Solana 侧「无路由是业务态」原则）。
+**BSC（quote 腿全部是 USDT）——成交主力是 tokenized equities**：
+
+| Pair | Kyber pool id | 结果 |
+| --- | --- | --- |
+| BTCB/USDT | `0xe1191102bdcea1928a93b4d6ea7bf5c4e9207210` | ✅ 直连双向 |
+| **QQQB/USDT**（bStocks，Invesco QQQ） | `0xc2bdd7d2dbf7e5ffbd9371804755dda85ce7e7b8` | ✅ 直连双向——链上采样中占 Tessera BSC 成交 **~94%** |
+| **SPCXB/USDT**（bStocks，SpaceX） | `0x016e4491ce6203a61b9cc22c349cbfa8fe545594` | ✅ 直连 |
+| **NVDAB/USDT**（bStocks，NVIDIA） | —（id 未记录） | ✅ 直连（且无过滤时最优路由本身 100% 走 tessera） |
+| **NVDAon/USDT**（Ondo，NVIDIA） | `0x4055346e1886ec083786dcf026cdd21f6b300ddf` | ✅ 直连 |
+| TSLAB / SKHYB / SNDKB / MUB（bStocks 其他） | — | ❌（`4000 bad request`，稳定复现——经验上 = token 不在 tessera 已注册 token 集内；与 `4008`「token 已知但无路由」不同） |
+| WBNB、ETH、USDC、CAKE、USD1、DOGE、XRP、SOL、WBETH 任意组合 | — | ❌ 4008 |
+| ASTER/USDT | — | 链上采样出现过，未验证 |
+
+⚠️ 两点提醒：
+1. **BSC 侧 Tessera ≈「bStocks/Ondo 股票代币 + BTCB 的 USDT 做市商」**——这与 WHI-798 的 Stocks 重点直接交叉：prop AMM × tokenized stocks 在 BSC 是真实可报价的组合。
+2. 池集是**单日快照**，Wintermute 随时增/撤池（如 stocks 池 2026-06 后才出现）；WHI-806 不要硬编码 pair 列表（「无路由是业务态」原则），资产发现建议周期性重扫。
 
 完整矩阵（含全部 token 地址与 amount）：[`samples/WHI-797-tessera-evm-matrix.tsv`](./samples/WHI-797-tessera-evm-matrix.tsv)。
 
-**对 M1 资产池的含义**：跨链交集里 Tessera 三链都能报的 logical 资产 = **BTC**（Solana cbBTC / Base cbBTC / BSC BTCB）与 **ETH**（Solana WETH / Base WETH；BSC ❌）；**SOL 仅 Solana**。Base 特有增量：**AERO**。
+**对 M1 资产池的含义**：
+- 跨链交集里 Tessera 三链都能报的 logical 资产 = **BTC**（Solana cbBTC / Base cbBTC / BSC BTCB）与 **ETH**（Solana WETH / Base WETH；BSC ❌）；**SOL 仅 Solana**。
+- Base 特有增量：**AERO、VIRTUAL、EURC**。
+- **BSC 特有增量：QQQB、SPCXB、NVDAB、NVDAon（tokenized stocks）**——直接进入 WHI-798 Stocks section 的 venue 矩阵。
 
 ### 7.5 示例请求 / 响应
 
@@ -640,14 +661,15 @@ curl -sS "https://aggregator-api.kyberswap.com/bsc/api/v1/routes?tokenIn=0x7130d
 
 | 聚合器 | Tessera 收录 | source 过滤 | 结论 |
 | --- | --- | --- | --- |
-| KyberSwap | ✅ `tessera`（Base+BSC） | `includedSources`/`excludedSources`，免 key | **主路径** |
-| ParaSwap | ❌ Base source 列表无 Tessera（live 2026-08-03） | `includeDEXS` | 不可用 |
-| Odos | 未知（`/info/liquidity-sources` 被 Cloudflare 1033 拦） | `sourceWhitelist` | 未验证 |
-| 0x | 未知 | `includedSources` | 需 API key，未验证 |
-| 1inch | 未知 | `protocols` | 需 API key，未验证 |
-| OKX DEX | 未知 | `dexIds` | 需 API key，未验证 |
+| KyberSwap | ✅ `tessera`（Base+BSC，本文 live 全链路验证；官方 dex-ids 文档页尚未收录该 id——文档滞后于现实） | `includedSources`/`excludedSources`，免 key | **主路径（唯一端到端确认）** |
+| OKX DEX | ✅ 链上确认（OKX Router 是 Base 上 TesseraSwap 的第一大 caller） | `dexIds`（quote 侧 include-only）/`excludeDexIds` | 需 API key；label 字符串需 authed `get-liquidity` 查询，**候选冗余路径** |
+| 0x Swap API | ✅ 链上确认（0x 官方博客：Base 已集成 5 家 prop AMM，占其 Base 量 40–50%） | 公开仅 `excludedSources`（v2） | 需 API key，未验证 |
+| Binance Wallet router | ✅（**BSC ~95% 流量来源**） | 无公开 API，闭环 | 不可作报价源；其成交只能经同池公开报价近似 |
+| ParaSwap | ❌ Base/BSC source 列表均无（live 2026-08-03） | `includeDEXS` | 不可用 |
+| 1inch | 链上 caller 采样未观测到 v6 router → 大概率未集成 | `protocols` | 需 API key，未验证 |
+| Odos | 未知（`/info/liquidity-sources` 被 Cloudflare 1033 拦；链上也未见其 router） | `sourceWhitelist` | 未验证 |
 
-**建议**：主依赖 KyberSwap；若后续拿到 0x/1inch key，可再验证一条冗余路径（记录到 ADR）。
+**建议**：主依赖 KyberSwap；若后续拿到 OKX / 0x key，各验证一条冗余路径（记录到 ADR）。另一兜底是直接订阅 `TesseraTrade` 事件做成交价（非报价）监控。
 
 ---
 
@@ -732,8 +754,11 @@ let url = format!(
 - Helius：Solana’s Proprietary AMM Revolution  
 - KyberSwap Aggregator API（EVM Swaps 规格）：https://docs.kyberswap.com/developer-guide/aggregator-api/aggregator-api-specification/evm-swaps  
 - DefiLlama Tessera V（多链交易量）：https://defillama.com/protocol/tessera-v ；API：https://api.llama.fi/summary/dexs/tessera-v  
-- Base WETH/USDC Tessera 池：https://basescan.org/address/0xf524c1bc1c64a2c99bc7eccf19ede9a1d89d5a7c  
-- BSC BTCB/USDT Tessera 池：https://bscscan.com/address/0xe1191102bdcea1928a93b4d6ea7bf5c4e9207210  
+- TesseraSwap 合约（Base，已验证源码）：https://base.blockscout.com/address/0x55555522005BcAE1c2424D474BfD5ed477749E3e （BSC 同地址）  
+- DefiLlama volume adapter（`TesseraTrade` 事件定义）：https://github.com/DefiLlama/dimension-adapters/blob/master/dexs/tessera/index.ts  
+- Blockworks 0xResearch「Prop AMMs expand to Base」：https://blockworks.com/newsletter/0xresearch/issue/post_27a40a19-c423-4427-9dfe-28002a03ca74  
+- 0x「PropAMM Shenanigans」（Base prop AMM 集成与报价行为观察）：https://0x.org/post/propamm-shenanigans  
+- DL News：Wintermute 确认运营 Tessera V：https://www.dlnews.com/articles/defi/solana-dark-amms-make-trading-more-efficient-but-at-a-cost/  
 
 ---
 
