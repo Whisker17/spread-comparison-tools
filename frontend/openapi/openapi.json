@@ -196,6 +196,32 @@
           }
         }
       }
+    },
+    "/fees": {
+      "get": {
+        "tags": [
+          "quotes"
+        ],
+        "summary": "Get Fees",
+        "description": "All validated venue fee schedules (WHI-812; frontend contract for WHI-813).",
+        "operationId": "get_fees_fees_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/FeeSchedule"
+                  },
+                  "type": "array",
+                  "title": "Response Get Fees Fees Get"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -360,6 +386,179 @@
         ],
         "title": "FeeBreakdown",
         "description": "Per-quote fee components (WHI-799 \u00a75.4). bps fields are authoritative."
+      },
+      "FeeSchedule": {
+        "properties": {
+          "venue": {
+            "type": "string",
+            "title": "Venue"
+          },
+          "asset": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Asset"
+          },
+          "instrument_type": {
+            "type": "string",
+            "enum": [
+              "spot",
+              "perp",
+              "amm_pool",
+              "prop_amm"
+            ],
+            "title": "Instrument Type"
+          },
+          "maker_bps": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Maker Bps"
+          },
+          "taker_bps": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Taker Bps"
+          },
+          "tiers": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/FeeTier"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tiers"
+          },
+          "default_tier": {
+            "type": "string",
+            "title": "Default Tier",
+            "default": "default_taker"
+          },
+          "lp_fee_tiers_bps": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string",
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lp Fee Tiers Bps"
+          },
+          "gas_estimate_usd": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gas Estimate Usd"
+          },
+          "funding_model": {
+            "type": "string",
+            "enum": [
+              "none",
+              "perp_8h",
+              "perp_continuous"
+            ],
+            "title": "Funding Model",
+            "default": "none"
+          },
+          "fee_embedded_in_quote": {
+            "type": "boolean",
+            "title": "Fee Embedded In Quote",
+            "default": false
+          },
+          "source_urls": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Source Urls"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "venue",
+          "instrument_type",
+          "updated_at"
+        ],
+        "title": "FeeSchedule",
+        "description": "Venue-level fee table shape (WHI-799 \u00a75.5). Numbers filled by WHI-812."
+      },
+      "FeeTier": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "maker_bps": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Maker Bps"
+          },
+          "taker_bps": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Taker Bps"
+          },
+          "volume_requirement": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Volume Requirement"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "maker_bps",
+          "taker_bps"
+        ],
+        "title": "FeeTier",
+        "description": "One fee tier inside a FeeSchedule (WHI-799 \u00a75.5)."
       },
       "HTTPValidationError": {
         "properties": {
