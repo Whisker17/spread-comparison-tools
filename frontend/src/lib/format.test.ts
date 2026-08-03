@@ -20,6 +20,19 @@ describe("formatNotional", () => {
     expect(formatNotional("10000")).toBe("$10k");
     expect(formatNotional(1_000_000)).toBe("$1M");
   });
+
+  it("rounds free-form sub-$1k notionals (simulate amount × mid)", () => {
+    expect(formatNotional(183.42123456789)).toBe("$183.42");
+  });
+});
+
+describe("formatDeltaVsBest", () => {
+  it("signs trailing (positive absolute) as minus", async () => {
+    const { formatDeltaVsBest } = await import("@/lib/format");
+    expect(formatDeltaVsBest(0.35, 23.4, "USDC")).toMatch(/Δ −0\.35/);
+    expect(formatDeltaVsBest(0.35, 23.4, "USDC")).toMatch(/vs ref/);
+    expect(formatDeltaVsBest(-0.35, -23.4, "USDC")).toMatch(/Δ \+0\.35/);
+  });
 });
 
 describe("parseDecimal", () => {

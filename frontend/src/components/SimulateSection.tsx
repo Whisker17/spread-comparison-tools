@@ -20,7 +20,6 @@ import {
   fetchSimulatePairs,
   fetchVenues,
 } from "@/lib/api";
-import { formatNotional, formatPrice, parseDecimal } from "@/lib/format";
 import {
   constrainSimulateSelection,
   defaultSimulatePair,
@@ -120,8 +119,6 @@ export function SimulateSection() {
     simulate.isError && simulate.error
       ? parseSimulateError(simulate.error)
       : null;
-
-  const approxUsd = approxUsdSubtitle(amount, sell, simulate.data);
 
   function onSellChange(value: string) {
     if (!pairMeta) return;
@@ -253,7 +250,6 @@ export function SimulateSection() {
         </div>
 
         <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-zinc-500">
-          {approxUsd && <span data-testid="approx-usd">{approxUsd}</span>}
           {!pairValid && pairMeta && sell && buy && (
             <span className="text-amber-700 dark:text-amber-300" role="status">
               Pair must be exactly one tradeable stable + one catalog asset.
@@ -265,7 +261,7 @@ export function SimulateSection() {
             </span>
           )}
           <span className="text-zinc-400">
-            Auto-runs after {SIMULATE_DEBOUNCE_MS}ms idle (debounced).
+            Auto-runs after {SIMULATE_DEBOUNCE_MS}ms idle (amount debounced).
           </span>
         </div>
       </section>
@@ -338,26 +334,3 @@ function Field({
 
 const selectClass =
   "h-9 w-full rounded-md border border-zinc-300 bg-white px-2 text-sm text-zinc-900 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-50";
-
-/**
- * ≈USD line from the last successful response when amount/pair still match;
- * omit before first simulation (no mid yet).
- */
-function approxUsdSubtitle(
-  amount: string,
-  sell: string,
-  data: ReturnType<typeof useSimulate>["data"],
-): string | null {
-  if (!data) return null;
-  if (data.sell_asset.toUpperCase() !== sell.toUpperCase()) return null;
-  const amt = parseDecimal(amount);
-  const dataAmt = parseDecimal(data.amount);
-  if (amt === null || dataAmt === null) return null;
-  // Allow tiny float noise.
-  if (Math.abs(amt - dataAmt) > 1e-9 * Math.max(1, Math.abs(dataAmt))) {
-    return null;
-  }
-  const notional = parseDecimal(data.notional_usd);
-  if (notional === null) return null;
-  return `≈ ${formatNotional(notional)} · mid ${formatPrice(data.mid.mid)}`;
-}

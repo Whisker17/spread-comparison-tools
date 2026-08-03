@@ -68,20 +68,48 @@ export type DeltaVsBest = {
 };
 
 /**
- * How far this row's expected output trails the backend-flagged best.
- * Best row itself returns {0, 0}. Missing outputs return nulls.
+ * How far this row's expected output trails the reference row.
+ *
+ * Prefer the backend-flagged `best` row. When none is flagged (e.g. every ok
+ * row is gas_unknown / §5.2-ineligible), fall back to the first ranked row
+ * with an expected_output — that is still backend order, not a client re-rank.
+ * The `best` highlight is never re-derived; only the delta baseline is.
+ */
+export function referenceOutputRow(
+  ranked: readonly SimulateRowResponse[],
+  best: SimulateRowResponse | null,
+): SimulateRowResponse | null {
+  if (best && parseDecimal(best.expected_output) !== null) return best;
+  return (
+    ranked.find((r) => parseDecimal(r.expected_output) !== null) ?? null
+  );
+}
+
+/**
+ * How far this row's expected output trails the reference row.
+ * Reference row itself returns {0, 0}. Missing outputs return nulls.
  */
 export function deltaVsBest(
   row: SimulateRowResponse,
   best: SimulateRowResponse | null,
 ): DeltaVsBest {
-  if (row.best) {
+  // Same row identity as the reference (by best flag or object equality).
+  if (best && (row.best || row === best)) {
     return { absolute: 0, bps: 0 };
   }
   const bestOut = parseDecimal(best?.expected_output);
   const rowOut = parseDecimal(row.expected_output);
   if (bestOut === null || rowOut === null) {
     return { absolute: null, bps: null };
+  }
+  // Same venue+output as reference when no best flag (fallback baseline).
+  if (
+    best &&
+    !best.best &&
+    row.venue === best.venue &&
+    row.instrument_type === best.instrument_type
+  ) {
+    return { absolute: 0, bps: 0 };
   }
   const absolute = bestOut - rowOut;
   if (bestOut === 0) {
@@ -191,7 +219,7 @@ export function parseSimulateError(error: unknown): SimulateUserError {
         kind: "cross_pair",
         message:
           pair.message ||
-          "Invalid pair — exactly one leg must be a USD stablecoin (USDC/USDT).",
+          "Invalid pair — exactly one leg must be a tradeable USD stablecoin.",
       };
     }
     const { message } = unwrapApiDetail(error.body);

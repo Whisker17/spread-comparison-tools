@@ -17,6 +17,7 @@ import {
   deltaVsBest,
   feeBreakdownLines,
   partitionSimulateRows,
+  referenceOutputRow,
   type VenueDisplayMeta,
 } from "@/lib/simulateView";
 import { cn } from "@/lib/utils";
@@ -46,15 +47,14 @@ export function SimulateResultList({
   }
 
   if (!data) {
-    return (
-      <p className="text-sm text-zinc-500" data-testid="simulate-empty">
-        Enter a valid pair and amount to simulate.
-      </p>
-    );
+    // Error banner (if any) is rendered by the parent; avoid implying the form
+    // is incomplete when the last request simply failed.
+    return null;
   }
 
   const { ranked, notSupported } = partitionSimulateRows(data.rows);
   const best = bestSimulateRow(data.rows);
+  const reference = referenceOutputRow(ranked, best);
 
   return (
     <div className="space-y-3" data-testid="simulate-results">
@@ -76,7 +76,7 @@ export function SimulateResultList({
             <SimulateResultRow
               key={`${row.venue}-${row.instrument_type}`}
               row={row}
-              best={best}
+              reference={reference}
               buyAsset={data.buy_asset}
               meta={venueMeta[row.venue]}
               representation={representations[row.venue]}
@@ -94,19 +94,19 @@ export function SimulateResultList({
 
 function SimulateResultRow({
   row,
-  best,
+  reference,
   buyAsset,
   meta,
   representation,
 }: {
   row: SimulateRowResponse;
-  best: SimulateRowResponse | null;
+  reference: SimulateRowResponse | null;
   buyAsset: string;
   meta?: VenueDisplayMeta;
   representation?: string;
 }) {
   const [open, setOpen] = useState(false);
-  const delta = deltaVsBest(row, best);
+  const delta = deltaVsBest(row, reference);
   const isBest = row.best === true;
   const isOk = row.status === "ok";
   const lines = feeBreakdownLines(row);
