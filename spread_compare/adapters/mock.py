@@ -15,12 +15,19 @@ from spread_compare.adapters.base import (
 )
 from spread_compare.adapters.registry import register_adapter
 from spread_compare.bookwalk import walk_book
-from spread_compare.costs import spread_bps, total_cost_bps
+from spread_compare.costs import (
+    spread_bps,
+    top_of_book_spread_bps,
+    top_of_book_spread_bps_local,
+    total_cost_bps,
+)
 from spread_compare.models import (
     FeeBreakdown,
     FeeSchedule,
     InstrumentType,
+    QtyMethod,
     Quote,
+    QuoteStatus,
     ReferenceMid,
     Side,
     TopOfBook,
@@ -43,6 +50,60 @@ _TAKER_BPS = Decimal("10")
 _SUPPORTED = ("BTC",)
 
 
+def _empty_fees(*, fee_tier: str | None = None) -> FeeBreakdown:
+    return FeeBreakdown(
+        embedded_in_price=False,
+        fee_tier=fee_tier or "default_taker",
+        trading_fee_bps=None,
+        platform_fee_bps=Decimal("0"),
+        gas_unknown=False,
+        explicit_fee_bps=None,
+    )
+
+
+def _quote_shell(
+    *,
+    mid: ReferenceMid,
+    asset: str,
+    side: Side,
+    notional_usd: Decimal,
+    instrument_type: InstrumentType,
+    status: QuoteStatus,
+    fee_breakdown: FeeBreakdown,
+    timestamp: datetime,
+    venue_symbol: str | None = None,
+    effective_price: Decimal | None = None,
+    spread: Decimal | None = None,
+    total_cost: Decimal | None = None,
+    qty_base: Decimal | None = None,
+    qty_method: QtyMethod | None = None,
+    error_code: str | None = None,
+    error_message: str | None = None,
+) -> Quote:
+    return Quote(
+        snapshot_id=mid.snapshot_id,
+        venue="mock",
+        asset=asset,
+        venue_symbol=venue_symbol,
+        instrument_type=instrument_type,
+        side=side,
+        notional_usd=notional_usd,
+        mid=mid.mid,
+        mid_source=mid.mid_source,
+        mid_timestamp=mid.timestamp,
+        effective_price=effective_price,
+        spread_bps=spread,
+        fee_breakdown=fee_breakdown,
+        total_cost_bps=total_cost,
+        timestamp=timestamp,
+        status=status,
+        qty_base=qty_base,
+        qty_method=qty_method,
+        error_code=error_code,
+        error_message=error_message,
+    )
+
+
 @register_adapter
 class MockAdapter:
     """CEX-shaped mock with the §4.7 fixture orderbook."""
@@ -62,47 +123,33 @@ class MockAdapter:
     ) -> Quote:
         itype = instrument_type or default_instrument_type(self.venue_class)
         now = datetime.now(tz=UTC)
-        empty_fees = FeeBreakdown(
-            embedded_in_price=False,
-            fee_tier=fee_tier or "default_taker",
-            trading_fee_bps=None,
-            platform_fee_bps=Decimal("0"),
-            gas_unknown=False,
-            explicit_fee_bps=None,
-        )
+        asset_key = asset.upper()
+        fees = _empty_fees(fee_tier=fee_tier)
 
-        if asset.upper() not in _SUPPORTED:
-            return Quote(
-                snapshot_id=mid.snapshot_id,
-                venue=self.venue,
-                asset=asset,
-                instrument_type=itype,
+        if asset_key not in _SUPPORTED:
+            return _quote_shell(
+                mid=mid,
+                asset=asset_key,
                 side=side,
                 notional_usd=notional_usd,
-                mid=mid.mid,
-                mid_source=mid.mid_source,
-                mid_timestamp=mid.timestamp,
-                fee_breakdown=empty_fees,
-                timestamp=now,
+                instrument_type=itype,
                 status="unsupported_asset",
+                fee_breakdown=fees,
+                timestamp=now,
                 error_code="unsupported_asset",
                 error_message=f"{asset} not supported by mock",
             )
 
-        if mid.asset.upper() != asset.upper():
-            return Quote(
-                snapshot_id=mid.snapshot_id,
-                venue=self.venue,
-                asset=asset,
-                instrument_type=itype,
+        if mid.asset.upper() != asset_key:
+            return _quote_shell(
+                mid=mid,
+                asset=asset_key,
                 side=side,
                 notional_usd=notional_usd,
-                mid=mid.mid,
-                mid_source=mid.mid_source,
-                mid_timestamp=mid.timestamp,
-                fee_breakdown=empty_fees,
-                timestamp=now,
+                instrument_type=itype,
                 status="error",
+                fee_breakdown=fees,
+                timestamp=now,
                 error_code="mid_asset_mismatch",
                 error_message=f"mid.asset={mid.asset!r} does not match asset={asset!r}",
             )
@@ -111,20 +158,16 @@ class MockAdapter:
         levels = _ASKS if side == "buy" else _BIDS
         p_star = walk_book(levels, q_star)
         if p_star is None:
-            return Quote(
-                snapshot_id=mid.snapshot_id,
-                venue=self.venue,
-                asset=asset,
-                venue_symbol=f"{asset.upper()}USDT",
-                instrument_type=itype,
+            return _quote_shell(
+                mid=mid,
+                asset=asset_key,
                 side=side,
                 notional_usd=notional_usd,
-                mid=mid.mid,
-                mid_source=mid.mid_source,
-                mid_timestamp=mid.timestamp,
-                fee_breakdown=empty_fees,
-                timestamp=now,
+                instrument_type=itype,
                 status="insufficient_liquidity",
+                fee_breakdown=fees,
+                timestamp=now,
+                venue_symbol=f"{asset_key}USDT",
                 qty_method="base_from_mid",
                 error_code="insufficient_liquidity",
                 error_message=f"depth < q_star={q_star}",
@@ -140,7 +183,7 @@ class MockAdapter:
             gas_usd=None,
             notional_usd=notional_usd,
         )
-        fees = FeeBreakdown(
+        ok_fees = FeeBreakdown(
             embedded_in_price=False,
             fee_tier=fee_tier or "default_taker",
             trading_fee_bps=_TAKER_BPS,
@@ -150,24 +193,19 @@ class MockAdapter:
             gas_unknown=False,
             explicit_fee_bps=cost.explicit_fee_bps,
         )
-        return Quote(
-            snapshot_id=mid.snapshot_id,
-            venue=self.venue,
-            asset=asset.upper(),
-            venue_symbol=f"{asset.upper()}USDT",
-            instrument_type=itype,
+        return _quote_shell(
+            mid=mid,
+            asset=asset_key,
             side=side,
             notional_usd=notional_usd,
-            mid=mid.mid,
-            mid_source=mid.mid_source,
-            mid_timestamp=mid.timestamp,
-            mid_stale=False,
-            effective_price=p_star,
-            spread_bps=sp,
-            fee_breakdown=fees,
-            total_cost_bps=cost.total_cost_bps,
-            timestamp=now,
+            instrument_type=itype,
             status="ok",
+            fee_breakdown=ok_fees,
+            timestamp=now,
+            venue_symbol=f"{asset_key}USDT",
+            effective_price=p_star,
+            spread=sp,
+            total_cost=cost.total_cost_bps,
             qty_base=q_star,
             qty_method="base_from_mid",
         )
@@ -185,7 +223,6 @@ class MockAdapter:
         best_ask, ask_size = _ASKS[0]
         best_bid, bid_size = _BIDS[0]
         mid_local = (best_bid + best_ask) / Decimal("2")
-        width = best_ask - best_bid
         now = datetime.now(tz=UTC)
         return TopOfBook(
             snapshot_id=mid.snapshot_id,
@@ -199,8 +236,8 @@ class MockAdapter:
             mid_local=mid_local,
             mid_ref=mid.mid,
             mid_timestamp=mid.timestamp,
-            spread_bps=width / mid.mid * Decimal("10000"),
-            spread_bps_local=width / mid_local * Decimal("10000"),
+            spread_bps=top_of_book_spread_bps(best_bid, best_ask, mid.mid),
+            spread_bps_local=top_of_book_spread_bps_local(best_bid, best_ask, mid_local),
             timestamp=now,
         )
 

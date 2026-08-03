@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from decimal import Decimal
-from typing import Literal, Protocol, runtime_checkable
+from typing import Literal, Protocol
 
 from spread_compare.models import (
     FeeSchedule,
@@ -36,7 +36,6 @@ class UnsupportedAssetError(AdapterError):
     """Asset is not supported by this venue for the requested instrument type."""
 
 
-@runtime_checkable
 class VenueAdapter(Protocol):
     """Cross-venue adapter surface (WHI-799 §7)."""
 

@@ -149,3 +149,33 @@ def test_non_ok_null_fields_valid() -> None:
     )
     assert q.effective_price is None
     assert q.spread_bps is None
+
+
+def test_fee_breakdown_gas_unknown_rejects_gas_bps() -> None:
+    with pytest.raises(ValidationError):
+        FeeBreakdown(
+            embedded_in_price=True,
+            gas_unknown=True,
+            gas_bps=Decimal("5"),
+            explicit_fee_bps=None,
+        )
+
+
+def test_naive_timestamp_rejected() -> None:
+    from datetime import datetime
+
+    with pytest.raises(ValidationError):
+        Quote(
+            snapshot_id="snap-1",
+            venue="mock",
+            asset="BTC",
+            instrument_type="spot",
+            side="buy",
+            notional_usd=Decimal("10000"),
+            mid=Decimal("100000"),
+            mid_source="binance_usdm_index",
+            mid_timestamp=datetime(2026, 8, 3),  # naive
+            timestamp=_TS,
+            fee_breakdown=FeeBreakdown(embedded_in_price=True, gas_unknown=False),
+            status="no_quote",
+        )

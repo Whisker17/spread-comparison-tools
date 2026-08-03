@@ -5,11 +5,16 @@ Field names, types, and Quote invariants (§6.2) are the SSOT — do not re-deri
 
 from __future__ import annotations
 
-from datetime import datetime
 from decimal import Decimal
-from typing import Literal
+from typing import Final, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    model_validator,
+)
 
 QuoteStatus = Literal[
     "ok",
@@ -23,6 +28,14 @@ Side = Literal["buy", "sell"]
 VenueClass = Literal["cex", "perp_dex", "amm_dex", "prop_amm"]
 QtyMethod = Literal["base_from_mid", "quote_exact_in_approx"]
 FundingModel = Literal["none", "perp_8h", "perp_continuous"]
+
+# WHI-799 §4.1 — fixed notional tiers (USD). Compare with Decimal equality.
+NOTIONAL_TIERS_USD: Final[tuple[Decimal, ...]] = (
+    Decimal("1000"),
+    Decimal("10000"),
+    Decimal("100000"),
+    Decimal("1000000"),
+)
 
 
 class FeeTier(BaseModel):
@@ -53,7 +66,7 @@ class FeeSchedule(BaseModel):
     funding_model: FundingModel = "none"
     fee_embedded_in_quote: bool = False
     source_urls: list[str] = Field(default_factory=list)
-    updated_at: datetime
+    updated_at: AwareDatetime
 
 
 class FeeBreakdown(BaseModel):
@@ -74,6 +87,20 @@ class FeeBreakdown(BaseModel):
     explicit_fee_bps: Decimal | None = None
     notes: str | None = None
 
+    @model_validator(mode="after")
+    def _gas_unknown_nulls(self) -> FeeBreakdown:
+        """WHI-799 §5.2: gas_unknown ⇒ gas_bps and explicit_fee_bps are null."""
+        if self.gas_unknown:
+            if self.gas_bps is not None:
+                raise ValueError(
+                    "gas_unknown=true requires gas_bps is null (WHI-799 §5.2)"
+                )
+            if self.explicit_fee_bps is not None:
+                raise ValueError(
+                    "gas_unknown=true requires explicit_fee_bps is null (WHI-799 §5.2)"
+                )
+        return self
+
 
 class ReferenceMid(BaseModel):
     """Snapshot-scoped reference mid shared by all venues (WHI-799 §3.5)."""
@@ -84,7 +111,7 @@ class ReferenceMid(BaseModel):
     asset: str
     mid: Decimal
     mid_source: str
-    timestamp: datetime
+    timestamp: AwareDatetime
     sources_detail: list[str] | None = None
 
 
@@ -103,7 +130,7 @@ class Quote(BaseModel):
 
     mid: Decimal
     mid_source: str
-    mid_timestamp: datetime
+    mid_timestamp: AwareDatetime
     mid_stale: bool = False
     effective_price: Decimal | None = None
     spread_bps: Decimal | None = None
@@ -111,7 +138,7 @@ class Quote(BaseModel):
     fee_breakdown: FeeBreakdown
     total_cost_bps: Decimal | None = None
 
-    timestamp: datetime
+    timestamp: AwareDatetime
     status: QuoteStatus
     qty_base: Decimal | None = None
     qty_method: QtyMethod | None = None
@@ -186,10 +213,10 @@ class TopOfBook(BaseModel):
     ask_size: Decimal | None = None
     mid_local: Decimal
     mid_ref: Decimal
-    mid_timestamp: datetime
+    mid_timestamp: AwareDatetime
     spread_bps: Decimal
     spread_bps_local: Decimal
-    timestamp: datetime
+    timestamp: AwareDatetime
 
 
 class SizeQuotePair(BaseModel):

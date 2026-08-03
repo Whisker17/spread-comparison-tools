@@ -37,8 +37,3 @@ def get(slug: str) -> VenueAdapter:
 def list_venues() -> list[str]:
     """Sorted list of registered adapter slugs."""
     return sorted(_REGISTRY)
-
-
-def clear_for_tests() -> None:
-    """Empty the registry (test helper only)."""
-    _REGISTRY.clear()

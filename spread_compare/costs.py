@@ -1,4 +1,4 @@
-"""Authoritative bps formulas (WHI-799 §4.5 / §5.2).
+"""Authoritative bps formulas (WHI-799 §4.5 / §5.2 / §6.3).
 
 Adapters call these; the aggregator must never recompute spread or total cost.
 """
@@ -6,11 +6,16 @@ Adapters call these; the aggregator must never recompute spread or total cost.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 
 from spread_compare.models import Side
 
 _BPS = Decimal("10000")
+_BPS_QUANT = Decimal("0.0001")  # WHI-799 §4.3 / §9: bps keep 4 decimal places
+
+
+def _quantize_bps(value: Decimal) -> Decimal:
+    return value.quantize(_BPS_QUANT, rounding=ROUND_HALF_UP)
 
 
 def spread_bps(side: Side, effective_price: Decimal, mid: Decimal) -> Decimal:
@@ -21,8 +26,32 @@ def spread_bps(side: Side, effective_price: Decimal, mid: Decimal) -> Decimal:
     if mid == 0:
         raise ValueError("mid must be non-zero")
     if side == "buy":
-        return (effective_price - mid) / mid * _BPS
-    return (mid - effective_price) / mid * _BPS
+        raw = (effective_price - mid) / mid * _BPS
+    else:
+        raw = (mid - effective_price) / mid * _BPS
+    return _quantize_bps(raw)
+
+
+def top_of_book_spread_bps(
+    best_bid: Decimal,
+    best_ask: Decimal,
+    mid_ref: Decimal,
+) -> Decimal:
+    """TOB width vs reference mid (WHI-799 §6.3): ``(ask - bid) / mid_ref * 10_000``."""
+    if mid_ref == 0:
+        raise ValueError("mid_ref must be non-zero")
+    return _quantize_bps((best_ask - best_bid) / mid_ref * _BPS)
+
+
+def top_of_book_spread_bps_local(
+    best_bid: Decimal,
+    best_ask: Decimal,
+    mid_local: Decimal,
+) -> Decimal:
+    """TOB width vs local mid (WHI-799 §6.3): ``(ask - bid) / mid_local * 10_000``."""
+    if mid_local == 0:
+        raise ValueError("mid_local must be non-zero")
+    return _quantize_bps((best_ask - best_bid) / mid_local * _BPS)
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,6 +79,9 @@ def total_cost_bps(
     When ``gas_unknown`` is true, both total and explicit fee are ``None``
     (unknown gas must not sort as zero).
     """
+    if notional_usd <= 0:
+        raise ValueError(f"notional_usd must be positive, got {notional_usd}")
+
     if embedded_in_price:
         trading_component = Decimal("0")
     else:
@@ -70,12 +102,10 @@ def total_cost_bps(
     if gas_usd is None:
         gas = Decimal("0")
     else:
-        if notional_usd <= 0:
-            raise ValueError(f"notional_usd must be positive, got {notional_usd}")
-        gas = gas_usd / notional_usd * _BPS
+        gas = _quantize_bps(gas_usd / notional_usd * _BPS)
 
-    explicit = trading_component + platform_fee_bps + gas
-    total = spread + trading_component + platform_fee_bps + gas
+    explicit = _quantize_bps(trading_component + platform_fee_bps + gas)
+    total = _quantize_bps(spread + trading_component + platform_fee_bps + gas)
     return TotalCostResult(
         total_cost_bps=total,
         explicit_fee_bps=explicit,

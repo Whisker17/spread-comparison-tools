@@ -32,3 +32,10 @@ def test_walk_book_sell_fixture_p_star() -> None:
 def test_walk_book_insufficient_depth_returns_none() -> None:
     shallow = [(Decimal("100010"), Decimal("0.01"))]
     assert walk_book(shallow, Q_STAR) is None
+
+
+def test_walk_book_negative_size_raises() -> None:
+    import pytest
+
+    with pytest.raises(ValueError, match="non-negative"):
+        walk_book([(Decimal("100010"), Decimal("-0.01"))], Q_STAR)

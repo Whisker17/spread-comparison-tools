@@ -22,47 +22,43 @@ class VenueInfo:
     notes: str = ""
 
 
+def _v(slug: str, display_name: str, venue_class: VenueClass, notes: str = "") -> VenueInfo:
+    return VenueInfo(slug=slug, display_name=display_name, venue_class=venue_class, notes=notes)
+
+
 # Exact table from docs/research/WHI-799-spread-fee-data-model.md §6.5.
-VENUES: Final[dict[str, VenueInfo]] = {
-    "binance": VenueInfo("binance", "Binance", "cex"),
-    "bybit": VenueInfo("bybit", "Bybit", "cex"),
-    "hyperliquid": VenueInfo("hyperliquid", "Hyperliquid", "perp_dex"),
-    "lighter": VenueInfo("lighter", "Lighter", "perp_dex"),
-    "apex": VenueInfo("apex", "ApeX", "perp_dex"),
-    "uniswap_eth": VenueInfo("uniswap_eth", "Uniswap (Ethereum)", "amm_dex"),
-    "aerodrome_base": VenueInfo("aerodrome_base", "Aerodrome (Base)", "amm_dex"),
-    "pancakeswap_bsc": VenueInfo("pancakeswap_bsc", "PancakeSwap (BSC)", "amm_dex"),
-    "humidifi": VenueInfo(
-        "humidifi",
-        "HumidiFi",
-        "prop_amm",
-        notes="Solana-only; Jupiter dexes=HumidiFi",
-    ),
-    "tessera_solana": VenueInfo(
+_VENUE_ROWS: Final[tuple[VenueInfo, ...]] = (
+    _v("binance", "Binance", "cex"),
+    _v("bybit", "Bybit", "cex"),
+    _v("hyperliquid", "Hyperliquid", "perp_dex"),
+    _v("lighter", "Lighter", "perp_dex"),
+    _v("apex", "ApeX", "perp_dex"),
+    _v("uniswap_eth", "Uniswap (Ethereum)", "amm_dex"),
+    _v("aerodrome_base", "Aerodrome (Base)", "amm_dex"),
+    _v("pancakeswap_bsc", "PancakeSwap (BSC)", "amm_dex"),
+    _v("humidifi", "HumidiFi", "prop_amm", "Solana-only; Jupiter dexes=HumidiFi"),
+    _v(
         "tessera_solana",
         "Tessera (Solana)",
         "prop_amm",
-        notes="Jupiter dexes=TesseraV (label ≠ slug)",
+        "Jupiter dexes=TesseraV (label ≠ slug)",
     ),
-    "tessera_base": VenueInfo(
+    _v(
         "tessera_base",
         "Tessera (Base)",
         "prop_amm",
-        notes="KyberSwap includedSources=tessera, chain base",
+        "KyberSwap includedSources=tessera, chain base",
     ),
-    "tessera_bsc": VenueInfo(
+    _v(
         "tessera_bsc",
         "Tessera (BSC)",
         "prop_amm",
-        notes="KyberSwap includedSources=tessera, chain bsc",
+        "KyberSwap includedSources=tessera, chain bsc",
     ),
-    "bisonfi": VenueInfo(
-        "bisonfi",
-        "BisonFi",
-        "prop_amm",
-        notes="Solana-only; Jupiter dexes=BisonFi",
-    ),
-}
+    _v("bisonfi", "BisonFi", "prop_amm", "Solana-only; Jupiter dexes=BisonFi"),
+)
+
+VENUES: Final[dict[str, VenueInfo]] = {v.slug: v for v in _VENUE_ROWS}
 
 
 def get_venue(slug: str) -> VenueInfo:

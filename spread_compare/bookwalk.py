@@ -27,18 +27,18 @@ def walk_book(
 
     remaining = q_star
     quote_notional = Decimal("0")
-    filled = Decimal("0")
 
     for price, size in levels:
-        if size <= 0:
+        if size < 0:
+            raise ValueError(f"level size must be non-negative, got {size}")
+        if size == 0:
             continue
         take = size if size <= remaining else remaining
         quote_notional += price * take
-        filled += take
         remaining -= take
         if remaining == 0:
             break
 
-    if remaining > 0 or filled == 0:
+    if remaining > 0:
         return None
-    return quote_notional / filled
+    return quote_notional / q_star

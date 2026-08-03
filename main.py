@@ -39,10 +39,8 @@ def main(argv: list[str] | None = None) -> int:
     app = create_app()
 
     if args.dry_run:
-        print(
-            "spread-comparison-tools dry-run ok "
-            f"(routes={[r.path for r in app.routes if hasattr(r, 'path')]})"
-        )
+        route_paths = sorted({getattr(r, "path", "") for r in app.routes} - {""})
+        print(f"spread-comparison-tools dry-run ok (routes={route_paths})")
         return 0
 
     import uvicorn
