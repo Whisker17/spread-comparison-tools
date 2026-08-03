@@ -1,15 +1,4 @@
-import type { AssetResponse } from "@/lib/api";
 import type { RankMetric, SideView } from "@/lib/summary";
-
-/**
- * Asset category string from `GET /assets` (WHI-826 catalog:
- * crypto_blue_chip | tokenized_stock | equity_perp | other).
- *
- * OpenAPI still models `AssetResponse.category` as plain `string` (no enum),
- * so this is the same type as the generated field — re-exported here so section
- * configs never import `api-types` directly.
- */
-export type AssetCategory = AssetResponse["category"];
 
 /**
  * Per-section configuration. Each section agent owns its own module under

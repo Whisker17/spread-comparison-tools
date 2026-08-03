@@ -32,6 +32,15 @@ defines none: `docs/GIT_WORKFLOW.md` § High-risk paths), **Medium**
 
 ## Open
 
+- **`AssetResponse.category` is plain `str` in OpenAPI — no category enum for FE** (Low, WHI-827).
+  `spread_compare/api/quotes.py::AssetResponse.category` is `str`, so
+  `pnpm gen:openapi` / `gen:api` cannot emit `tokenized_stock` /
+  `equity_perp` / `other` as a typed union (WHI-827 AC partial). Domain
+  values live in `assets.py::AssetCategory`. Fix: type the API field as
+  `AssetCategory` (or a `Literal` re-export) in a small backend follow-up,
+  then re-run WHI-827-style regenerate; section configs can then re-export
+  the union from `frontend/src/config/sections/types.ts`.
+
 - **Prop AMM asset surface beyond BTC/ETH/SOL has no mid path** (Medium, WHI-806).
   `spread_compare/adapters/prop_kyberswap.py` advertises Base AERO/VIRTUAL/EURC and
   BSC QQQB/SPCXB/NVDAB/NVDAON, but `assets.py` / `config/mid.yaml` only seed blue
