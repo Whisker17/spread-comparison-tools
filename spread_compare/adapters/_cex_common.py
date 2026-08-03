@@ -8,15 +8,20 @@ own URL/parse/rate-limit details. Walk/bps math stays in ``bookwalk`` / ``costs`
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from decimal import Decimal
-from typing import Literal
+from typing import Any, Literal
+
+import httpx
 
 from spread_compare.adapters.base import (
     AdapterError,
+    AdapterFetchError,
+    AdapterTimeoutError,
     BaseAdapter,
     UnsupportedAssetError,
     default_instrument_type,
@@ -35,6 +40,8 @@ from spread_compare.models import (
     TopOfBook,
     VenueClass,
 )
+
+logger = logging.getLogger(__name__)
 
 # TODO(WHI-812): replace placeholder taker with real default_taker schedule.
 PLACEHOLDER_TAKER_BPS: Decimal = Decimal("10")
@@ -88,15 +95,8 @@ def non_ok_fees(*, fee_tier: str) -> FeeBreakdown:
     )
 
 
-def resolve_cex_instrument(
-    instrument_type: InstrumentType | None,
-) -> CexBookSide | None:
-    """Map optional instrument_type to spot|perp; default spot (WHI-799 §7).
-
-    Returns ``None`` when the type is not a CEX book instrument.
-    """
-    if instrument_type is None:
-        return "spot"
+def resolve_cex_instrument(instrument_type: InstrumentType) -> CexBookSide | None:
+    """Map a resolved instrument_type to spot|perp; ``None`` if not a CEX book."""
     if instrument_type in ("spot", "perp"):
         return instrument_type
     return None
@@ -115,12 +115,10 @@ def build_quote_from_book(
     asks: OrderbookLevels,
     trading_fee_bps: Decimal,
     fee_tier: str = DEFAULT_FEE_TIER,
-    funding_rate_8h: Decimal | None = None,
     timestamp: datetime | None = None,
 ) -> Quote:
     """Walk the book and assemble a ``Quote`` (shared CEX path)."""
     now = timestamp or datetime.now(tz=UTC)
-    fees = non_ok_fees(fee_tier=fee_tier)
     q_star = notional_usd / mid.mid
     levels = asks if side == "buy" else bids
     p_star = walk_book(levels, q_star)
@@ -136,7 +134,7 @@ def build_quote_from_book(
             mid=mid.mid,
             mid_source=mid.mid_source,
             mid_timestamp=mid.timestamp,
-            fee_breakdown=fees,
+            fee_breakdown=non_ok_fees(fee_tier=fee_tier),
             timestamp=now,
             status="insufficient_liquidity",
             qty_method="base_from_mid",
@@ -162,9 +160,8 @@ def build_quote_from_book(
         gas_usd=None,
         gas_bps=cost.gas_bps,  # explicit 0 when gas_usd is None
         gas_unknown=False,
-        # funding_rate_8h: null unless a cheap secondary fetch populates it
-        # (WHI-802: "when cheaply available, else null" — not free on depth path).
-        funding_rate_8h=funding_rate_8h if instrument_type == "perp" else None,
+        # funding_rate_8h left null (WHI-802: cheap path only; see DEFERRED_ISSUES).
+        funding_rate_8h=None,
         explicit_fee_bps=cost.explicit_fee_bps,
     )
     return Quote(
@@ -280,9 +277,10 @@ def placeholder_fee_schedule(
 
 
 class CexBaseAdapter(BaseAdapter, ABC):
-    """Shared get_quote / TOB / fees for orderbook CEX venues.
+    """Shared get_quote / TOB / fees / HTTP retry for orderbook CEX venues.
 
-    Subclasses implement :meth:`_fetch_book` (and optionally escalate depth).
+    Subclasses implement :meth:`_fetch_book` and tune rate-limit headers /
+    retryable statuses / payload checks.
     """
 
     venue: str
@@ -290,6 +288,11 @@ class CexBaseAdapter(BaseAdapter, ABC):
     # Tunables stay module-level until DESIGN.md §2 + config YAML land
     # (see docs/DEFERRED_ISSUES.md — CEX rate-limit / HTTP config).
     _min_interval_s: float = 0.2
+    _max_retries: int = 4
+    _backoff_start_s: float = 0.5
+    _retry_http_statuses: frozenset[int] = frozenset({429})
+    # Primary + optional alternate response headers to log for rate-limit hygiene.
+    _rate_limit_log_headers: tuple[str, ...] = ()
 
     def __init__(self, *, timeout: float = 10.0) -> None:
         super().__init__(timeout=timeout)
@@ -307,6 +310,75 @@ class CexBaseAdapter(BaseAdapter, ABC):
         """Return ``(bids, asks)`` best-first. May use ``side``/``q_star`` to escalate depth."""
         ...
 
+    def _log_rate_limit_headers(self, resp: httpx.Response, url: str) -> None:
+        for name in self._rate_limit_log_headers:
+            value = resp.headers.get(name)
+            if value is not None:
+                logger.info("%s %s=%s url=%s", self.venue, name, value, url)
+                return
+
+    def _payload_is_rate_limited(self, payload: dict[str, Any]) -> bool:
+        """Return True when the body indicates a retryable rate limit."""
+        return False
+
+    def _validate_success_payload(self, payload: dict[str, Any]) -> None:
+        """Raise AdapterFetchError for non-retryable business errors in ``payload``."""
+        return None
+
+    async def _request_json(self, url: str, params: dict[str, str]) -> dict[str, Any]:
+        """GET JSON with throttle, header logging, and exponential backoff."""
+        delay = self._backoff_start_s
+        last_error: Exception | None = None
+        for attempt in range(self._max_retries):
+            await self._limiter.acquire()
+            try:
+                resp = await self.http.get(url, params=params)
+            except httpx.TimeoutException as exc:
+                raise AdapterTimeoutError(f"{self.venue} timeout: {url}") from exc
+            except httpx.HTTPError as exc:
+                raise AdapterFetchError(f"{self.venue} HTTP error: {exc}") from exc
+
+            self._log_rate_limit_headers(resp, url)
+
+            if resp.status_code in self._retry_http_statuses:
+                last_error = AdapterFetchError(
+                    f"{self.venue} rate limited (HTTP {resp.status_code}) "
+                    f"attempt={attempt + 1}"
+                )
+                logger.warning("%s; sleeping %.2fs", last_error, delay)
+                await asyncio.sleep(delay)
+                delay *= 2
+                continue
+
+            if resp.status_code >= 400:
+                raise AdapterFetchError(
+                    f"{self.venue} HTTP {resp.status_code}: {resp.text[:200]}"
+                )
+
+            try:
+                payload = resp.json()
+            except ValueError as exc:
+                raise AdapterFetchError(f"{self.venue} response is not JSON") from exc
+            if not isinstance(payload, dict):
+                raise AdapterFetchError(
+                    f"{self.venue} unexpected JSON type: {type(payload)}"
+                )
+
+            if self._payload_is_rate_limited(payload):
+                last_error = AdapterFetchError(
+                    f"{self.venue} body rate-limit attempt={attempt + 1}"
+                )
+                logger.warning("%s; sleeping %.2fs", last_error, delay)
+                await asyncio.sleep(delay)
+                delay *= 2
+                continue
+
+            self._validate_success_payload(payload)
+            return payload
+
+        assert last_error is not None
+        raise last_error
+
     async def get_quote(
         self,
         asset: str,
@@ -319,9 +391,8 @@ class CexBaseAdapter(BaseAdapter, ABC):
     ) -> Quote:
         requested = instrument_type or default_instrument_type(self.venue_class)
         asset_key = asset.upper()
-        # Phase 1: only default_taker bps (WHI-799 §11 Q3 / WHI-802 out of scope for VIP).
-        tier = DEFAULT_FEE_TIER
-        _ = fee_tier  # accepted for API parity; ignored until WHI-812 tiers land
+        # Echo requested tier name (mock parity); bps always default_taker until WHI-812.
+        tier = fee_tier or DEFAULT_FEE_TIER
 
         if mid.asset.upper() != asset_key:
             raise AdapterError(
@@ -362,6 +433,7 @@ class CexBaseAdapter(BaseAdapter, ABC):
             )
 
         schedule = self.get_fees(asset_key, instrument_type=book_side)
+        # Phase 1: only default_taker bps (WHI-799 §11 Q3); VIP rates out of scope.
         trading_fee = (
             schedule.taker_bps
             if schedule.taker_bps is not None

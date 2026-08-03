@@ -73,12 +73,17 @@ async def test_live_quotes_all_tiers_sides_instruments(slug: str) -> None:
                     assert quote.side == side
                     assert quote.notional_usd == notional
                     assert quote.instrument_type == instrument
-                    # Live AC: invariant-passing quotes only — not generic "error".
-                    # Large notionals may legitimately thin out.
-                    assert quote.status in ("ok", "insufficient_liquidity"), (
-                        f"{slug} {instrument} {side} N={notional}: "
-                        f"status={quote.status!r} msg={quote.error_message!r}"
-                    )
+                    # Small tiers must clear on BTC depth; large may thin out.
+                    if notional <= Decimal("10000"):
+                        assert quote.status == "ok", (
+                            f"{slug} {instrument} {side} N={notional}: "
+                            f"status={quote.status!r} msg={quote.error_message!r}"
+                        )
+                    else:
+                        assert quote.status in ("ok", "insufficient_liquidity"), (
+                            f"{slug} {instrument} {side} N={notional}: "
+                            f"status={quote.status!r} msg={quote.error_message!r}"
+                        )
                     if quote.status == "ok":
                         assert quote.effective_price is not None
                         assert quote.spread_bps is not None

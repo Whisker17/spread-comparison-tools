@@ -141,6 +141,21 @@ async def test_perp_instrument_type(monkeypatch: pytest.MonkeyPatch, slug: str) 
 
 @pytest.mark.parametrize("slug", _VENUES)
 @pytest.mark.asyncio
+async def test_fee_tier_label_echoed(monkeypatch: pytest.MonkeyPatch, slug: str) -> None:
+    """fee_tier is labelled on the quote; bps stay default_taker until WHI-812."""
+    adapter = get(slug)
+    assert isinstance(adapter, CexBaseAdapter)
+    _patch_book(monkeypatch, adapter, _BIDS, _ASKS)
+    quote = await adapter.get_quote(
+        "BTC", "buy", Decimal("10000"), mid=_MID, fee_tier="vip1"
+    )
+    assert quote.status == "ok"
+    assert quote.fee_breakdown.fee_tier == "vip1"
+    assert quote.fee_breakdown.trading_fee_bps == Decimal("10")
+
+
+@pytest.mark.parametrize("slug", _VENUES)
+@pytest.mark.asyncio
 async def test_unsupported_asset(monkeypatch: pytest.MonkeyPatch, slug: str) -> None:
     adapter = get(slug)
     assert isinstance(adapter, CexBaseAdapter)

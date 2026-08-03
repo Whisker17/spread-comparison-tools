@@ -5,12 +5,7 @@ Endpoints: WHI-800 §3.1. Symbol map: WHI-798 §3.3 via ``cex_symbols``.
 
 from __future__ import annotations
 
-import asyncio
-import logging
 from decimal import Decimal
-from typing import Any
-
-import httpx
 
 from spread_compare.adapters._cex_common import (
     CexBaseAdapter,
@@ -18,24 +13,16 @@ from spread_compare.adapters._cex_common import (
     OrderbookLevels,
     parse_levels,
 )
-from spread_compare.adapters.base import (
-    AdapterError,
-    AdapterFetchError,
-    AdapterTimeoutError,
-)
+from spread_compare.adapters.base import AdapterError, AdapterFetchError
 from spread_compare.adapters.registry import register_adapter
 from spread_compare.bookwalk import walk_book
 from spread_compare.models import Side
-
-logger = logging.getLogger(__name__)
 
 _SPOT_BASE = "https://api.binance.com"
 _FAPI_BASE = "https://fapi.binance.com"
 # WHI-800: start limit=100 (weight 5); escalate only when walk exhausts depth.
 # Tunables deferred to config YAML — see docs/DEFERRED_ISSUES.md (WHI-802).
 _DEPTH_LIMITS: tuple[int, ...] = (100, 500, 1000)
-_MAX_RETRIES = 4
-_BACKOFF_START_S = 0.5
 
 
 @register_adapter
@@ -45,6 +32,11 @@ class BinanceAdapter(CexBaseAdapter):
     venue: str = "binance"
     # Well under 6000 weight/min spot / 2400 fapi: ~5 rps with limit=100 (weight 5).
     _min_interval_s: float = 0.2
+    _retry_http_statuses: frozenset[int] = frozenset({429})
+    _rate_limit_log_headers: tuple[str, ...] = (
+        "x-mbx-used-weight-1m",
+        "x-mbx-used-weight",
+    )
 
     async def _fetch_book(
         self,
@@ -94,46 +86,3 @@ class BinanceAdapter(CexBaseAdapter):
         except (KeyError, TypeError, AdapterError) as exc:
             raise AdapterFetchError(f"binance depth parse failed: {exc}") from exc
         return bids, asks
-
-    async def _request_json(self, url: str, params: dict[str, str]) -> dict[str, Any]:
-        delay = _BACKOFF_START_S
-        last_error: Exception | None = None
-        for attempt in range(_MAX_RETRIES):
-            await self._limiter.acquire()
-            try:
-                resp = await self.http.get(url, params=params)
-            except httpx.TimeoutException as exc:
-                raise AdapterTimeoutError(f"binance timeout: {url}") from exc
-            except httpx.HTTPError as exc:
-                raise AdapterFetchError(f"binance HTTP error: {exc}") from exc
-
-            weight = resp.headers.get("x-mbx-used-weight-1m") or resp.headers.get(
-                "x-mbx-used-weight"
-            )
-            if weight is not None:
-                logger.info("binance x-mbx-used-weight-1m=%s url=%s", weight, url)
-
-            if resp.status_code == 429:
-                last_error = AdapterFetchError(
-                    f"binance rate limited (429) attempt={attempt + 1}"
-                )
-                logger.warning("%s; sleeping %.2fs", last_error, delay)
-                await asyncio.sleep(delay)
-                delay *= 2
-                continue
-
-            if resp.status_code >= 400:
-                raise AdapterFetchError(
-                    f"binance HTTP {resp.status_code}: {resp.text[:200]}"
-                )
-
-            try:
-                payload = resp.json()
-            except ValueError as exc:
-                raise AdapterFetchError("binance response is not JSON") from exc
-            if not isinstance(payload, dict):
-                raise AdapterFetchError(f"binance unexpected JSON type: {type(payload)}")
-            return payload
-
-        assert last_error is not None
-        raise last_error
