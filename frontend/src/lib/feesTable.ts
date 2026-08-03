@@ -6,13 +6,14 @@
  */
 
 import type { FeeSchedule, VenueResponse } from "@/lib/api";
+import type { VenueClass } from "@/config/sections/types";
 
-export type VenueClass = VenueResponse["venue_class"] | "unknown";
+export type FeeTableVenueClass = VenueClass | "unknown";
 
 export type FeeTableRow = {
   venue: string;
   displayName: string;
-  venueClass: VenueClass;
+  venueClass: FeeTableVenueClass;
   instrumentType: FeeSchedule["instrument_type"];
   makerBps: string | null;
   takerBps: string | null;
@@ -22,17 +23,15 @@ export type FeeTableRow = {
   feeEmbeddedInQuote: boolean;
   sourceUrls: string[];
   updatedAt: string;
-  defaultTier: string;
-  tiers: FeeSchedule["tiers"];
 };
 
 export type FeeTableGroup = {
-  venueClass: VenueClass;
+  venueClass: FeeTableVenueClass;
   label: string;
   rows: FeeTableRow[];
 };
 
-const CLASS_ORDER: VenueClass[] = [
+const CLASS_ORDER: FeeTableVenueClass[] = [
   "cex",
   "perp_dex",
   "amm_dex",
@@ -40,12 +39,33 @@ const CLASS_ORDER: VenueClass[] = [
   "unknown",
 ];
 
-const CLASS_LABELS: Record<VenueClass, string> = {
+const CLASS_LABELS: Record<FeeTableVenueClass, string> = {
   cex: "CEX",
   perp_dex: "Perp DEX",
   amm_dex: "Public AMM",
   prop_amm: "Prop AMM",
+  mock: "Mock",
   unknown: "Other",
+};
+
+const INSTRUMENT_RANK: Record<FeeSchedule["instrument_type"], number> = {
+  spot: 0,
+  perp: 1,
+  amm_pool: 2,
+  prop_amm: 3,
+};
+
+const INSTRUMENT_LABEL: Record<FeeSchedule["instrument_type"], string> = {
+  spot: "spot",
+  perp: "perp",
+  amm_pool: "AMM pool",
+  prop_amm: "prop AMM",
+};
+
+const FUNDING_LABEL: Record<FeeSchedule["funding_model"], string> = {
+  none: "—",
+  perp_8h: "8h funding",
+  perp_continuous: "continuous funding",
 };
 
 /**
@@ -64,7 +84,7 @@ export function buildFeeTableGroups(
     return {
       venue: s.venue,
       displayName: meta?.display_name ?? s.venue,
-      venueClass: meta?.venue_class ?? "unknown",
+      venueClass: (meta?.venue_class as FeeTableVenueClass | undefined) ?? "unknown",
       instrumentType: s.instrument_type,
       makerBps: s.maker_bps ?? null,
       takerBps: s.taker_bps ?? null,
@@ -74,8 +94,6 @@ export function buildFeeTableGroups(
       feeEmbeddedInQuote: Boolean(s.fee_embedded_in_quote),
       sourceUrls: s.source_urls ?? [],
       updatedAt: s.updated_at,
-      defaultTier: s.default_tier,
-      tiers: s.tiers ?? null,
     };
   });
 
@@ -83,11 +101,14 @@ export function buildFeeTableGroups(
     const ca = CLASS_ORDER.indexOf(a.venueClass);
     const cb = CLASS_ORDER.indexOf(b.venueClass);
     if (ca !== cb) return ca - cb;
-    if (a.venue !== b.venue) return a.venue.localeCompare(b.venue);
-    return instrumentRank(a.instrumentType) - instrumentRank(b.instrumentType);
+    if (a.venue !== b.venue) return a.venue < b.venue ? -1 : 1;
+    return (
+      (INSTRUMENT_RANK[a.instrumentType] ?? 9) -
+      (INSTRUMENT_RANK[b.instrumentType] ?? 9)
+    );
   });
 
-  const byClass = new Map<VenueClass, FeeTableRow[]>();
+  const byClass = new Map<FeeTableVenueClass, FeeTableRow[]>();
   for (const row of rows) {
     const bucket = byClass.get(row.venueClass);
     if (bucket) {
@@ -104,49 +125,14 @@ export function buildFeeTableGroups(
   }));
 }
 
-function instrumentRank(t: FeeSchedule["instrument_type"]): number {
-  switch (t) {
-    case "spot":
-      return 0;
-    case "perp":
-      return 1;
-    case "amm_pool":
-      return 2;
-    case "prop_amm":
-      return 3;
-    default:
-      return 9;
-  }
-}
-
 export function fundingModelLabel(
   model: FeeSchedule["funding_model"],
 ): string {
-  switch (model) {
-    case "none":
-      return "—";
-    case "perp_8h":
-      return "8h funding";
-    case "perp_continuous":
-      return "continuous funding";
-    default:
-      return String(model);
-  }
+  return FUNDING_LABEL[model] ?? String(model);
 }
 
 export function instrumentTypeLabel(
   t: FeeSchedule["instrument_type"],
 ): string {
-  switch (t) {
-    case "spot":
-      return "spot";
-    case "perp":
-      return "perp";
-    case "amm_pool":
-      return "AMM pool";
-    case "prop_amm":
-      return "prop AMM";
-    default:
-      return String(t);
-  }
+  return INSTRUMENT_LABEL[t] ?? String(t);
 }

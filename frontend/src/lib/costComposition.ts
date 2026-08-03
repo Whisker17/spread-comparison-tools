@@ -1,12 +1,13 @@
 /**
  * Cost-composition view for /fees (WHI-813).
  *
- * Segments follow WHI-799 §5.2:
- *   total_cost_bps = spread_bps + trading_component + platform_fee_bps + gas_bps
- * where trading_component is 0 when fee is embedded in price.
+ * Bar segments are *display decompositions* of backend fields (spread_bps +
+ * fee_breakdown.*). Ranking never recomputes total_cost_bps — it uses the
+ * quote's value and the shared isEligibleForBest gate (WHI-799 §5.2 /
+ * costs.py remains the sole formula owner).
  *
- * Ranking uses the same eligibility as summary.ts / status.ts:
- *   status=ok AND total_cost_bps != null (gas_unknown never ranks best).
+ * trading_component is 0 when fee_breakdown.embedded_in_price (same rule as
+ * §5.2); gas_unknown leaves gas as null so UI never treats unknown gas as 0.
  */
 
 import type { Quote, SizeQuotePair } from "@/lib/api";
@@ -21,19 +22,27 @@ export type CostSegmentId =
 
 export type CostSegment = {
   id: CostSegmentId;
-  /** Segment contribution in bps (may be 0). */
-  bps: number;
+  /**
+   * Segment contribution in bps.
+   * - number: known (may be negative — better than mid; do not clamp)
+   * - null: unknown (gas_unknown); never treat as 0 for ranking or scale
+   */
+  bps: number | null;
 };
 
 export type CostComposition = {
   venue: string;
   /** True when trading fee is inside the quoted price (prop/AMM). */
   feeEmbeddedInPrice: boolean;
-  /** Segments that sum to total when total is complete. */
+  /** Segments that sum to total when every segment is known. */
   segments: CostSegment[];
-  /** Sum of segment bps; null when total_cost is incomplete. */
+  /**
+   * Sum of known segment bps when cost is complete; null when any segment is
+   * unknown or status is not ok. Used only to assert the §5.2 identity in
+   * tests — ranking always reads totalCostBps from the quote.
+   */
   segmentsSumBps: number | null;
-  /** Quote total_cost_bps when present. */
+  /** Quote total_cost_bps (backend SSOT). */
   totalCostBps: number | null;
   /** gas_unknown on the quote fee breakdown. */
   gasUnknown: boolean;
@@ -56,18 +65,18 @@ export type RankedCostBars = {
   other: CostBarRow[];
 };
 
-const SEGMENT_ORDER: CostSegmentId[] = [
+/** Stable segment order for stacked bars / legend. */
+export const COST_SEGMENT_ORDER: readonly CostSegmentId[] = [
   "spread_bps",
   "trading_component_bps",
   "platform_fee_bps",
   "gas_bps",
-];
+] as const;
 
 /**
- * Derive stacked-bar segments from one quote (WHI-799 §5.2).
+ * Derive stacked-bar segments from one quote.
  *
- * Does not recompute total from segments for ranking — uses quote.total_cost_bps
- * as SSOT. segmentsSumBps is exposed so tests can assert the §5.2 identity.
+ * Reads API fields only. Does not recompute total_cost_bps for ranking.
  */
 export function costCompositionFromQuote(
   quote: Quote | null | undefined,
@@ -90,27 +99,35 @@ export function costCompositionFromQuote(
   const embedded = Boolean(fb?.embedded_in_price);
   const gasUnknown = Boolean(fb?.gas_unknown);
 
-  const spread = parseDecimal(quote.spread_bps) ?? 0;
+  // Preserve nulls: missing spread is not "0 bps cheaper than mid".
+  const spread = parseDecimal(quote.spread_bps);
+  // §5.2 display rule: embedded ⇒ trading component is 0 (fee lives in spread).
   const tradingFee = parseDecimal(fb?.trading_fee_bps);
-  const tradingComponent = embedded ? 0 : (tradingFee ?? 0);
+  const tradingComponent = embedded ? 0 : tradingFee;
   const platform = parseDecimal(fb?.platform_fee_bps) ?? 0;
-  const gas = gasUnknown ? 0 : (parseDecimal(fb?.gas_bps) ?? 0);
+  // gas_unknown ⇒ null (never 0). costs.py leaves gas_bps null in that case.
+  const gas = gasUnknown ? null : parseDecimal(fb?.gas_bps);
 
   const segments: CostSegment[] = [
     { id: "spread_bps", bps: spread },
-    { id: "trading_component_bps", bps: tradingComponent },
+    {
+      id: "trading_component_bps",
+      bps: tradingComponent,
+    },
     { id: "platform_fee_bps", bps: platform },
     { id: "gas_bps", bps: gas },
   ];
 
   const totalCostBps = parseDecimal(quote.total_cost_bps);
-  // When cost is complete, segments must sum to total (identity for the bar).
-  // When gas_unknown, gas is omitted from the total — sum is still useful for
-  // display of known pieces but segmentsSumBps stays null so we never pretend
-  // the bar equals total_cost.
+  const allKnown = segments.every((s) => s.bps !== null);
   const segmentsSumBps =
-    quote.status === "ok" && !gasUnknown && totalCostBps !== null
-      ? round4(spread + tradingComponent + platform + gas)
+    quote.status === "ok" && !gasUnknown && totalCostBps !== null && allKnown
+      ? round4(
+          (spread as number) +
+            (tradingComponent as number) +
+            platform +
+            (gas as number),
+        )
       : null;
 
   return {
@@ -128,8 +145,7 @@ export function costCompositionFromQuote(
 /**
  * Build ranked / incomplete / other groups for the cost-composition view.
  *
- * Only buy (default) or sell legs are used — round-trip is out of scope for
- * the fees page stacked bars (issue: single-side trade cost).
+ * Tie-break matches summary.ts: ascending total, then venue slug (`<`).
  */
 export function rankCostComposition(
   pairs: readonly SizeQuotePair[],
@@ -174,12 +190,12 @@ export function rankCostComposition(
     const ta = a.totalCostBps ?? Number.POSITIVE_INFINITY;
     const tb = b.totalCostBps ?? Number.POSITIVE_INFINITY;
     if (ta !== tb) return ta - tb;
-    return a.venue.localeCompare(b.venue);
+    // Match summary.ts stable slug tiebreak (lexicographic `<`).
+    return a.venue < b.venue ? -1 : a.venue > b.venue ? 1 : 0;
   });
 
-  // Stable incomplete / other by venue slug for deterministic UI.
-  incomplete.sort((a, b) => a.venue.localeCompare(b.venue));
-  other.sort((a, b) => a.venue.localeCompare(b.venue));
+  incomplete.sort((a, b) => (a.venue < b.venue ? -1 : a.venue > b.venue ? 1 : 0));
+  other.sort((a, b) => (a.venue < b.venue ? -1 : a.venue > b.venue ? 1 : 0));
 
   return { ranked, incomplete, other };
 }
@@ -189,6 +205,8 @@ export type FeesConclusionOptions = {
   notionalUsd: string | number;
   side?: "buy" | "sell";
   venueLabels?: Readonly<Record<string, string>>;
+  /** Forwarded to rankCostComposition so conclusion matches filtered bars. */
+  venues?: readonly string[];
 };
 
 /**
@@ -208,6 +226,7 @@ export function formatFeesConclusion(
   const { ranked } = rankCostComposition(pairs, {
     side,
     venueLabels: options.venueLabels,
+    venues: options.venues,
   });
   if (ranked.length === 0) {
     return "";
@@ -238,13 +257,8 @@ export function formatFeesConclusion(
   return `${sentence}.`;
 }
 
-/** Segment display order for stacked bars (stable legend). */
-export function costSegmentOrder(): readonly CostSegmentId[] {
-  return SEGMENT_ORDER;
-}
-
 function emptySegments(): CostSegment[] {
-  return SEGMENT_ORDER.map((id) => ({ id, bps: 0 }));
+  return COST_SEGMENT_ORDER.map((id) => ({ id, bps: null }));
 }
 
 function round4(n: number): number {

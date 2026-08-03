@@ -116,7 +116,7 @@ describe("costCompositionFromQuote", () => {
     expect(c.segmentsSumBps).toBe(c.totalCostBps);
   });
 
-  it("gas_unknown leaves total null and is not rankable", () => {
+  it("gas_unknown leaves total null, gas segment null (not 0), not rankable", () => {
     const q = quote({
       venue: "uniswap_eth",
       status: "ok",
@@ -137,6 +137,29 @@ describe("costCompositionFromQuote", () => {
     expect(c.totalCostBps).toBeNull();
     expect(c.segmentsSumBps).toBeNull();
     expect(c.rankable).toBe(false);
+    expect(c.segments.find((s) => s.id === "gas_bps")?.bps).toBeNull();
+  });
+
+  it("preserves negative spread (better than mid) in segment identity", () => {
+    const q = quote({
+      venue: "humidifi",
+      status: "ok",
+      instrument_type: "prop_amm",
+      spread_bps: "-1.5",
+      total_cost_bps: "-1.5",
+      fee_breakdown: {
+        embedded_in_price: true,
+        trading_fee_bps: null,
+        platform_fee_bps: "0",
+        gas_bps: "0",
+        gas_unknown: false,
+        explicit_fee_bps: "0",
+      },
+    });
+    const c = costCompositionFromQuote(q);
+    expect(c.segments.find((s) => s.id === "spread_bps")?.bps).toBe(-1.5);
+    expect(c.segmentsSumBps).toBe(-1.5);
+    expect(c.segmentsSumBps).toBe(c.totalCostBps);
   });
 });
 
@@ -261,6 +284,52 @@ describe("rankCostComposition", () => {
     expect(ranked.map((r) => r.venue)).toEqual(["binance"]);
     expect(incomplete).toHaveLength(0);
     expect(other.map((r) => r.venue)).toEqual(["humidifi"]);
+  });
+
+  it("forwards venue filter to conclusion ranking", () => {
+    const pairs = [
+      pair(
+        "humidifi",
+        quote({
+          venue: "humidifi",
+          status: "ok",
+          instrument_type: "prop_amm",
+          total_cost_bps: "2.1",
+          fee_breakdown: {
+            embedded_in_price: true,
+            trading_fee_bps: null,
+            platform_fee_bps: "0",
+            gas_bps: "0",
+            gas_unknown: false,
+            explicit_fee_bps: "0",
+          },
+        }),
+      ),
+      pair(
+        "binance",
+        quote({
+          venue: "binance",
+          status: "ok",
+          total_cost_bps: "14.4",
+          fee_breakdown: {
+            embedded_in_price: false,
+            trading_fee_bps: "10",
+            platform_fee_bps: "0",
+            gas_bps: "0",
+            gas_unknown: false,
+            explicit_fee_bps: "10",
+          },
+        }),
+      ),
+    ];
+    const prose = formatFeesConclusion(pairs, {
+      asset: "BTC",
+      notionalUsd: "10000",
+      venues: ["binance"],
+      venueLabels: { binance: "Binance", humidifi: "HumidiFi" },
+    });
+    expect(prose).toContain("Binance");
+    expect(prose).not.toContain("HumidiFi");
   });
 });
 

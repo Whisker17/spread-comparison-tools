@@ -5,11 +5,19 @@ import { useMemo, useState } from "react";
 
 import { CostCompositionBars } from "@/components/CostCompositionBars";
 import { FeeStructureTable } from "@/components/FeeStructureTable";
-import { NOTIONAL_TIERS_USD } from "@/config/notionals";
+import {
+  FEES_DEFAULT_ASSET,
+  FEES_DEFAULT_NOTIONAL,
+  FEES_FALLBACK_ASSETS,
+  FEES_NOTIONALS,
+  FEES_POLL_MS,
+} from "@/config/sections/fees";
 import { useQuotes } from "@/hooks/useQuotes";
 import {
+  fetchAssets,
   fetchFees,
   fetchVenues,
+  type AssetResponse,
   type VenueResponse,
 } from "@/lib/api";
 import {
@@ -20,18 +28,12 @@ import { buildFeeTableGroups } from "@/lib/feesTable";
 import { formatNotional } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
-/** Assets offered on the cost-composition switcher (blue-chip defaults). */
-const FEE_ASSETS = ["BTC", "ETH", "SOL"] as const;
-const DEFAULT_ASSET = "BTC";
-const DEFAULT_NOTIONAL = "10000";
-const FEES_POLL_MS = 30_000;
-
 /**
  * Full `/fees` page: static schedule table + live cost composition (WHI-813).
  */
 export function FeesSection() {
-  const [asset, setAsset] = useState<string>(DEFAULT_ASSET);
-  const [notional, setNotional] = useState<string>(DEFAULT_NOTIONAL);
+  const [asset, setAsset] = useState<string>(FEES_DEFAULT_ASSET);
+  const [notional, setNotional] = useState<string>(FEES_DEFAULT_NOTIONAL);
   const [side, setSide] = useState<"buy" | "sell">("buy");
 
   const feesQuery = useQuery({
@@ -46,12 +48,28 @@ export function FeesSection() {
     staleTime: 60_000,
   });
 
+  const assetsQuery = useQuery({
+    queryKey: ["assets"],
+    queryFn: ({ signal }) => fetchAssets({ signal }),
+    staleTime: 60_000,
+  });
+
   const quotesQuery = useQuotes({
     asset,
     notional,
     side,
     refetchInterval: FEES_POLL_MS,
   });
+
+  const assetOptions = useMemo(
+    () => assetSwitcherOptions(assetsQuery.data),
+    [assetsQuery.data],
+  );
+
+  // Keep selected asset valid if catalog loads after first paint.
+  const activeAsset = assetOptions.includes(asset)
+    ? asset
+    : (assetOptions[0] ?? FEES_DEFAULT_ASSET);
 
   const venueLabels = useMemo(
     () => buildVenueLabelMap(venuesQuery.data ?? []),
@@ -68,7 +86,7 @@ export function FeesSection() {
     () => quotesQuery.data?.pairs ?? [],
     [quotesQuery.data?.pairs],
   );
-  const { ranked, incomplete } = useMemo(
+  const { ranked, incomplete, other } = useMemo(
     () =>
       rankCostComposition(pairs, {
         side,
@@ -80,12 +98,12 @@ export function FeesSection() {
   const conclusion = useMemo(
     () =>
       formatFeesConclusion(pairs, {
-        asset,
+        asset: activeAsset,
         notionalUsd: notional,
         side,
         venueLabels,
       }),
-    [pairs, asset, notional, side, venueLabels],
+    [pairs, activeAsset, notional, side, venueLabels],
   );
 
   const feesLoading = feesQuery.isLoading || venuesQuery.isLoading;
@@ -151,14 +169,14 @@ export function FeesSection() {
         <div className="flex flex-wrap items-center gap-4">
           <Switcher
             label="Asset"
-            value={asset}
-            options={FEE_ASSETS.map((a) => ({ value: a, label: a }))}
+            value={activeAsset}
+            options={assetOptions.map((a) => ({ value: a, label: a }))}
             onChange={setAsset}
           />
           <Switcher
             label="Size"
             value={notional}
-            options={NOTIONAL_TIERS_USD.map((n) => ({
+            options={FEES_NOTIONALS.map((n) => ({
               value: n,
               label: formatNotional(n),
             }))}
@@ -189,7 +207,11 @@ export function FeesSection() {
           </p>
         ) : (
           <>
-            <CostCompositionBars ranked={ranked} incomplete={incomplete} />
+            <CostCompositionBars
+              ranked={ranked}
+              incomplete={incomplete}
+              other={other}
+            />
             {conclusion ? (
               <p
                 className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-800 dark:border-zinc-800 dark:bg-zinc-900/50 dark:text-zinc-200"
@@ -199,7 +221,7 @@ export function FeesSection() {
               </p>
             ) : (
               <p className="text-sm text-zinc-500">
-                No complete total-cost quotes yet for {asset} at{" "}
+                No complete total-cost quotes yet for {activeAsset} at{" "}
                 {formatNotional(notional)} — incomplete (gas_unknown) venues
                 never win ranking.
               </p>
@@ -285,4 +307,34 @@ function buildVenueLabelMap(
     out[v.slug] = v.display_name;
   }
   return out;
+}
+
+/**
+ * Asset switcher options from GET /assets (category is a plain string — read
+ * at runtime, no exhaustive switch). Fall back to blue-chip defaults offline.
+ */
+function assetSwitcherOptions(
+  assets: readonly AssetResponse[] | undefined,
+): string[] {
+  if (!assets || assets.length === 0) {
+    return [...FEES_FALLBACK_ASSETS];
+  }
+  // Prefer liquid majors first for the cost panel, then the rest of the catalog.
+  const preferred = new Set<string>(FEES_FALLBACK_ASSETS);
+  const majors = assets
+    .map((a) => a.id.toUpperCase())
+    .filter((id) => preferred.has(id));
+  const rest = assets
+    .map((a) => a.id.toUpperCase())
+    .filter((id) => !preferred.has(id))
+    .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+  // Dedupe while preserving majors-first order.
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const id of [...majors, ...rest]) {
+    if (seen.has(id)) continue;
+    seen.add(id);
+    out.push(id);
+  }
+  return out.length > 0 ? out : [...FEES_FALLBACK_ASSETS];
 }
