@@ -13,12 +13,10 @@ from spread_compare.adapters import aclose_all, initialized_count, startup_all
 from spread_compare.aggregator import QuoteAggregator
 from spread_compare.api.quotes import router as quotes_router
 from spread_compare.mids import MidService
-from spread_compare.settings import load_aggregator_settings, load_mid_settings
-
-# Local Next.js dashboard (WHI-808). Production FE origin can be added via env later.
-_CORS_ORIGINS = (
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
+from spread_compare.settings import (
+    load_aggregator_settings,
+    load_api_settings,
+    load_mid_settings,
 )
 
 
@@ -60,9 +58,10 @@ def create_app() -> FastAPI:
         description="Cross-venue execution quality / spread comparison API",
         lifespan=lifespan,
     )
+    api_settings = load_api_settings()
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=list(_CORS_ORIGINS),
+        allow_origins=list(api_settings.cors_origins),
         allow_credentials=False,
         allow_methods=["GET", "OPTIONS"],
         allow_headers=["*"],

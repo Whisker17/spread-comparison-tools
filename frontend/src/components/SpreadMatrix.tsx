@@ -11,14 +11,15 @@ import { useMemo } from "react";
 
 import { StatusCell } from "@/components/StatusCell";
 import type { Quote, SizeQuotePair } from "@/lib/api";
-import { formatBps, formatNotional } from "@/lib/format";
-import { heatClass, heatRange } from "@/lib/heat";
 import {
-  bestVenueMap,
-  type SideView,
-} from "@/lib/summary";
-import type { MetricKey } from "@/lib/status";
-import { parseDecimal } from "@/lib/format";
+  formatBps,
+  formatNotional,
+  parseDecimal,
+  sortNotionals,
+} from "@/lib/format";
+import { heatClass, heatRange } from "@/lib/heat";
+import { isEligibleForBest, type MetricKey } from "@/lib/status";
+import { bestVenueMap, type SideView } from "@/lib/summary";
 import { cn } from "@/lib/utils";
 
 export type SpreadMatrixProps = {
@@ -44,6 +45,8 @@ export type SpreadMatrixProps = {
   heat?: boolean;
   className?: string;
   emptyMessage?: string;
+  /** Retry handler for error-status cells. */
+  onRetry?: () => void;
 };
 
 export function SpreadMatrix({
@@ -59,6 +62,7 @@ export function SpreadMatrix({
   heat = true,
   className,
   emptyMessage = "No quote data",
+  onRetry,
 }: SpreadMatrixProps) {
   const hidden = useMemo(() => new Set(hiddenVenues), [hiddenVenues]);
   const disabled = useMemo(() => new Set(disabledVenues), [disabledVenues]);
@@ -67,10 +71,9 @@ export function SpreadMatrix({
     if (notionalsProp && notionalsProp.length > 0) {
       return [...notionalsProp];
     }
-    const set = new Set(pairs.map((p) => String(p.notional_usd)));
-    return [...set].sort(
-      (a, b) => (parseDecimal(a) ?? 0) - (parseDecimal(b) ?? 0),
-    );
+    return sortNotionals([
+      ...new Set(pairs.map((p) => String(p.notional_usd))),
+    ]);
   }, [notionalsProp, pairs]);
 
   const venues = useMemo(() => {
@@ -114,10 +117,10 @@ export function SpreadMatrix({
       if (disabled.has(v)) continue;
       for (const n of notionals) {
         const pair = index.get(`${v}::${n}`);
-        const q = quoteFromPair(pair, sideView);
-        if (!q || q.status !== "ok") continue;
-        if (metric === "total_cost_bps" && q.fee_breakdown.gas_unknown) continue;
-        values.push(metricValue(q, pair, sideView, metric));
+        const value = metricValue(pair, sideView, metric);
+        if (value === null) continue;
+        if (!includeInHeat(pair, sideView, metric)) continue;
+        values.push(value);
       }
     }
     return heatRange(values);
@@ -172,30 +175,26 @@ export function SpreadMatrix({
                 </td>
                 {notionals.map((n) => {
                   const pair = index.get(`${venue}::${n}`);
-                  const quote = quoteFromPair(pair, sideView);
-                  const value = metricValue(quote, pair, sideView, metric);
-                  const formatted =
-                    value === null ? null : formatBps(value);
+                  const cell = cellFromPair(pair, sideView, metric);
                   const isBest =
                     !isDisabled &&
                     highlightBest &&
                     best[n] === venue &&
-                    quote?.status === "ok";
+                    cell.eligibleBest;
 
                   return (
                     <td key={n} className="px-0.5 py-0.5">
                       <StatusCell
-                        quote={quote}
-                        formattedMetric={
-                          formatted === null ? null : `${formatted}`
-                        }
+                        quote={cell.displayQuote}
+                        formattedMetric={cell.formatted}
                         metricKey={metric}
                         isBest={isBest}
                         heatClassName={
-                          heat && !isDisabled && value !== null
-                            ? heatClass(value, range)
+                          heat && !isDisabled && cell.value !== null
+                            ? heatClass(cell.value, range)
                             : undefined
                         }
+                        onRetry={onRetry}
                       />
                     </td>
                   );
@@ -213,37 +212,103 @@ export function SpreadMatrix({
   );
 }
 
-function quoteFromPair(
+type CellModel = {
+  displayQuote: Quote | null;
+  value: number | null;
+  formatted: string | null;
+  eligibleBest: boolean;
+};
+
+function cellFromPair(
   pair: SizeQuotePair | undefined,
   sideView: SideView,
-): Quote | null {
-  if (!pair) return null;
-  if (sideView === "buy") return pair.buy ?? null;
-  if (sideView === "sell") return pair.sell ?? null;
-  // round_trip: synthesize a pseudo-quote for status rendering from buy leg
-  // status; metric comes from pair-level fields.
-  const buy = pair.buy;
-  const sell = pair.sell;
-  if (!buy && !sell) return null;
-  // Prefer buy for status chrome; metricValue handles RT numbers.
-  return buy ?? sell ?? null;
+  metric: MetricKey,
+): CellModel {
+  if (!pair) {
+    return {
+      displayQuote: null,
+      value: null,
+      formatted: null,
+      eligibleBest: false,
+    };
+  }
+
+  if (sideView === "round_trip") {
+    const value = metricValue(pair, sideView, metric);
+    const buy = pair.buy ?? null;
+    const sell = pair.sell ?? null;
+    // RT metric only defined when both legs ok (WHI-799 §4.6). If partial,
+    // surface the non-ok leg for status chrome instead of buy-ok + "—".
+    if (value === null) {
+      const bad =
+        buy && buy.status !== "ok"
+          ? buy
+          : sell && sell.status !== "ok"
+            ? sell
+            : (buy ?? sell);
+      return {
+        displayQuote: bad,
+        value: null,
+        formatted: null,
+        eligibleBest: false,
+      };
+    }
+    return {
+      displayQuote: buy,
+      value,
+      formatted: formatBps(value),
+      eligibleBest: bothLegsEligible(pair),
+    };
+  }
+
+  const quote = sideView === "buy" ? (pair.buy ?? null) : (pair.sell ?? null);
+  const value = metricValue(pair, sideView, metric);
+  return {
+    displayQuote: quote,
+    value,
+    formatted: value === null ? null : formatBps(value),
+    eligibleBest: isEligibleForBest(quote),
+  };
 }
 
 function metricValue(
-  quote: Quote | null,
   pair: SizeQuotePair | undefined,
   sideView: SideView,
   metric: MetricKey,
 ): number | null {
-  if (sideView === "round_trip" && pair) {
+  if (!pair) return null;
+  if (sideView === "round_trip") {
     if (metric === "total_cost_bps") {
       return parseDecimal(pair.round_trip_total_cost_bps);
     }
     return parseDecimal(pair.round_trip_spread_bps);
   }
+  const quote = sideView === "buy" ? pair.buy : pair.sell;
   if (!quote) return null;
   if (metric === "total_cost_bps") {
     return parseDecimal(quote.total_cost_bps);
   }
   return parseDecimal(quote.spread_bps);
+}
+
+function bothLegsEligible(pair: SizeQuotePair): boolean {
+  return (
+    isEligibleForBest(pair.buy ?? null) && isEligibleForBest(pair.sell ?? null)
+  );
+}
+
+function includeInHeat(
+  pair: SizeQuotePair | undefined,
+  sideView: SideView,
+  metric: MetricKey,
+): boolean {
+  if (!pair) return false;
+  if (sideView === "round_trip") {
+    if (metric === "total_cost_bps") return bothLegsEligible(pair);
+    return pair.buy?.status === "ok" && pair.sell?.status === "ok";
+  }
+  const quote = sideView === "buy" ? pair.buy : pair.sell;
+  if (!quote || quote.status !== "ok") return false;
+  if (metric === "total_cost_bps") return isEligibleForBest(quote);
+  return true;
 }

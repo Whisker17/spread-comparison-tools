@@ -7,7 +7,7 @@
  */
 
 import type { components } from "@/lib/api-types";
-import { parseDecimal } from "@/lib/format";
+import { parseDecimal, sortNotionals } from "@/lib/format";
 import { isEligibleForBest } from "@/lib/status";
 
 export type Quote = components["schemas"]["Quote"];
@@ -68,9 +68,7 @@ export function bestVenuePerTier(
   }
 
   // Stable notional order: numeric ascending when parseable.
-  const notionals = [...byNotional.keys()].sort(
-    (a, b) => (parseDecimal(a) ?? 0) - (parseDecimal(b) ?? 0),
-  );
+  const notionals = sortNotionals([...byNotional.keys()]);
 
   return notionals.map((notionalUsd) => {
     const bucket = byNotional.get(notionalUsd) ?? [];
@@ -79,7 +77,12 @@ export function bestVenuePerTier(
     for (const pair of bucket) {
       const cost = metricForPair(pair, side);
       if (cost === null) continue;
-      if (best === null || cost < best.totalCostBps) {
+      // Strictly lower cost wins; equal cost → stable venue slug tiebreak.
+      if (
+        best === null ||
+        cost < best.totalCostBps ||
+        (cost === best.totalCostBps && pair.venue < best.venue)
+      ) {
         best = {
           notionalUsd,
           venue: pair.venue,

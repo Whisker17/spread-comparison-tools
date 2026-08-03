@@ -25,6 +25,13 @@ export function parseDecimal(
   return Number.isFinite(n) ? n : null;
 }
 
+/** Sort notional tier strings ascending by numeric value. */
+export function sortNotionals(notionals: readonly string[]): string[] {
+  return [...notionals].sort(
+    (a, b) => (parseDecimal(a) ?? 0) - (parseDecimal(b) ?? 0),
+  );
+}
+
 /** Compact USD notional labels ($1k / $10k / $100k / $1M). */
 export function formatNotional(usd: string | number): string {
   const n = typeof usd === "number" ? usd : Number(usd);

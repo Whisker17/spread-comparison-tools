@@ -178,12 +178,40 @@ export async function fetchAssets(
   return apiGet<AssetResponse[]>("/assets", undefined, options);
 }
 
-/** M4 stub — WHI-813. */
-export async function fetchFees(): Promise<never> {
-  throw new ApiError("GET /fees not implemented (WHI-813)", 501, null);
+/** M4 stub shape — WHI-813 will fill the real `/fees` contract. */
+export type FeesQuery = {
+  asset?: string;
+  venues?: readonly string[];
+};
+
+/** Placeholder until WHI-813 ships `GET /fees`. */
+export async function fetchFees(
+  ..._args: [FeesQuery?, FetchOptions?]
+): Promise<never> {
+  void _args;
+  throw new ApiError(
+    "GET /fees not implemented yet (WHI-813). Stub keeps the client seam ready.",
+    501,
+    null,
+  );
 }
 
-/** M5 stub — WHI-815. */
-export async function postSimulate(): Promise<never> {
-  throw new ApiError("POST /simulate not implemented (WHI-815)", 501, null);
+/** M5 stub shape — WHI-815 will fill the real `/simulate` contract. */
+export type SimulateRequest = {
+  asset: string;
+  notional_usd: string | number;
+  side: "buy" | "sell";
+  venues?: readonly string[];
+};
+
+/** Placeholder until WHI-815 ships `POST /simulate`. */
+export async function postSimulate(
+  ..._args: [SimulateRequest, FetchOptions?]
+): Promise<never> {
+  void _args;
+  throw new ApiError(
+    "POST /simulate not implemented yet (WHI-815). Stub keeps the client seam ready.",
+    501,
+    null,
+  );
 }

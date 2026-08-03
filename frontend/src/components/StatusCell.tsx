@@ -4,6 +4,7 @@ import { AlertTriangle } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Tooltip } from "@/components/ui/tooltip";
 import type { Quote } from "@/lib/api";
 import {
@@ -13,6 +14,7 @@ import {
 } from "@/lib/format";
 import {
   decideCellRender,
+  type CellRenderKind,
   type MetricKey,
 } from "@/lib/status";
 import { cn } from "@/lib/utils";
@@ -29,6 +31,8 @@ export type StatusCellProps = {
   className?: string;
   /** Extra tooltip lines (effective price, fees, etc.). */
   tooltipExtra?: ReactNode;
+  /** Optional retry handler for error cells (wired by LiveSpreadDemo / section pages). */
+  onRetry?: () => void;
 };
 
 /** Shared status rendering for matrix cells and fixture demos. */
@@ -40,6 +44,7 @@ export function StatusCell({
   heatClassName,
   className,
   tooltipExtra,
+  onRetry,
 }: StatusCellProps) {
   const decision = decideCellRender(quote, { formattedMetric, metricKey });
 
@@ -67,8 +72,23 @@ export function StatusCell({
       {decision.kind === "error" && (
         <div className="flex flex-col items-center gap-0.5">
           <Badge variant="danger">{decision.badge ?? "error"}</Badge>
-          {decision.hint && (
-            <span className="text-[10px] text-zinc-500">{decision.hint}</span>
+          {onRetry ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-auto px-1 py-0 text-[10px] text-zinc-500"
+              onClick={(e) => {
+                e.stopPropagation();
+                onRetry();
+              }}
+            >
+              Retry
+            </Button>
+          ) : (
+            decision.hint && (
+              <span className="text-[10px] text-zinc-500">{decision.hint}</span>
+            )
           )}
         </div>
       )}
@@ -77,34 +97,33 @@ export function StatusCell({
       )}
 
       {decision.midStale && (
-        <Tooltip
-          content={
-            <span>
-              mid stale
-              {decision.midTimestamp
-                ? ` · mid ${formatTimestamp(decision.midTimestamp)}`
-                : ""}
-            </span>
+        <span
+          className="absolute right-0.5 top-0.5 text-amber-500"
+          aria-label={
+            decision.midTimestamp
+              ? `mid stale · mid ${formatTimestamp(decision.midTimestamp)}`
+              : "mid stale"
+          }
+          title={
+            decision.midTimestamp
+              ? `mid stale · mid ${formatTimestamp(decision.midTimestamp)}`
+              : "mid stale"
           }
         >
-          <span
-            className="absolute right-0.5 top-0.5 text-amber-500"
-            aria-label="mid stale"
-          >
-            <AlertTriangle className="h-3 w-3" />
-          </span>
-        </Tooltip>
+          <AlertTriangle className="h-3 w-3" />
+        </span>
       )}
     </div>
   );
 
-  const tip = buildTooltip(quote, decision.kind, tooltipExtra);
+  const tip = buildTooltip(quote, decision.kind, decision.midStale, tooltipExtra);
   return <Tooltip content={tip}>{body}</Tooltip>;
 }
 
 function buildTooltip(
   quote: Quote | null | undefined,
-  kind: string,
+  kind: CellRenderKind,
+  midStale: boolean,
   extra?: ReactNode,
 ): ReactNode {
   if (!quote) {
@@ -115,6 +134,14 @@ function buildTooltip(
       <div className="font-medium">
         {quote.venue} · {quote.side} · {quote.status}
       </div>
+      {midStale && (
+        <p className="text-amber-700 dark:text-amber-300">
+          mid stale
+          {quote.mid_timestamp
+            ? ` · mid ${formatTimestamp(quote.mid_timestamp)}`
+            : ""}
+        </p>
+      )}
       {kind === "value" || kind === "cost_incomplete" ? (
         <ul className="space-y-0.5 text-zinc-600 dark:text-zinc-300">
           <li>effective: {formatPrice(quote.effective_price)}</li>

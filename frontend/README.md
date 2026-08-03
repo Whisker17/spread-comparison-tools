@@ -26,7 +26,15 @@ pnpm dev
 ```
 
 Open http://localhost:3000 — `/` redirects to `/blue-chips`, which polls
-`GET /quotes` for BTC (mock adapter is enough when no live credentials).
+`GET /quotes` for BTC across **all registered adapters** (empty `venues` filter).
+Per-venue failures degrade to `status=error` / `no_quote` rather than failing the
+page. Reference mid still needs a working mid source (Binance index by default);
+without network, `/quotes` may 503. Section configs (WHI-809+) can pin `venues`
+to a subset (e.g. `["mock"]`) when desired.
+
+UI primitives under `src/components/ui/` follow the shadcn/new-york stack
+(Radix + CVA + `cn`). `components.json` is checked in so section agents can run
+`pnpm dlx shadcn@latest add <component>` without re-initializing.
 
 Env:
 

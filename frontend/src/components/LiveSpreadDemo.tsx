@@ -133,6 +133,7 @@ export function LiveSpreadDemo({
             hiddenVenues={section.hiddenVenues}
             sideView={sideView}
             metric={section.cellMetric}
+            onRetry={() => void query.refetch()}
           />
           {section.showTopOfBook && venues.length > 0 && (
             <TopOfBookRow byVenue={tobByVenue} venues={venues} />
