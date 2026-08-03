@@ -28,7 +28,7 @@
 5. **费用**：`outAmount` 为扣除 AMM fee（及可选 platform fee）后的净输出；prop AMM 响应中 **`feeAmount`/`feeMint` 字段缺失**（OpenAPI 标 deprecated；实测不返回），`platformFee` 默认为 `null`。
 6. **`excludeDexes` 同样可用**（与 `dexes` **不可同时设置**，同时传返回 400）；见 §3.5。
 7. **资产范围（live 探测，Solana）**：三家核心都在 **SOL/稳定币 + 主流大币（cbBTC、WETH）**；memecoin / LST / 多数中盘币 **无直连报价**。详见 §6。
-8. **Tessera 是多链 venue（v2 新增）**：DefiLlama 收录链为 **Solana + Base + BSC**；24h（2026-08-03）**BSC $195M > Solana $34M > Base $2.6M**（7d：BSC $952M / Solana $241M / Base $67M）——**BSC 是 Tessera 交易量最大的链**（BSC 全链 DEX 排名 #3），只看 Solana 会漏掉大头。EVM 两链共用同一合约 **`TesseraSwap` `0x55555522005BcAE1c2424D474BfD5ed477749E3e`**（Base 部署于 2025-10-30，BSC 自 2025-11-13 活跃）。HumidiFi / BisonFi 确认无非 Solana 部署。详见 §7。
+8. **Tessera 是多链 venue（v2 新增）**：DefiLlama 收录链为 **Solana + Base + BSC**；24h（2026-08-03）**BSC $195M > Solana $34M > Base $2.6M**（7d：BSC $952M / Solana $241M / Base $67M）——**BSC 是 Tessera 交易量最大的链**（BSC 全链 DEX 排名 #3），只看 Solana 会漏掉大头。EVM 两链共用同一合约 **`TesseraSwap` `0x55555522005BcAE1c2424D474BfD5ed477749E3e`**（Base 部署于 2025-10-30，BSC 自 2025-11-13 活跃）。HumidiFi / BisonFi 确认无非 Solana 部署。Base/BSC 排查过其余 prop AMM：ElfomoFi（Base+BSC，~$4.5M/d，**唯一报 BNB 的 prop AMM**）、Lunarbase（Base，~$4.1M/d）、Axima（Base，未被 DefiLlama 收录）均可经 KyberSwap 隔离报价但体量与 Tessera 差两个数量级，列为 watchlist 不入基准；BSC 第一大 DEX **Native Swap（$437M/d）是多 MM 的 PMM/RFQ 网络**，属另一 venue class。详见 §7、§7.6。
 9. **EVM 报价路径（v2 新增）**：KyberSwap Aggregator API（keyless 可用）`includedSources=tessera` / `excludedSources=tessera` 可在 Base、BSC 单独隔离 Tessera 报价；source id 全小写 **`tessera`**。Base 直连：WETH、cbBTC、AERO、VIRTUAL、EURC（全部 vs USDC）；BSC 直连：BTCB/USDT + **tokenized stocks（QQQB、SPCXB、NVDAB、NVDAon，全部 vs USDT）**。ParaSwap 无 Tessera；0x / 1inch / OKX 需 API key 未验证。详见 §7。
 10. **Tessera BSC 的成交主力是 tokenized equities（v2 新增，与 WHI-798 直接相关）**：链上采样约 **94% 的 swap 是 QQQB/USDT 等股票代币对**，且 ~95% 流量来自 Binance Wallet DEX Router（非公开聚合器）。**prop AMM × tokenized stocks 在 BSC 上是真实存在的可报价交叉**。详见 §7.4。
 
@@ -657,7 +657,27 @@ curl -sS "https://aggregator-api.kyberswap.com/bsc/api/v1/routes?tokenIn=0x7130d
 - [`samples/ks-route-wrong-source-id.json`](./samples/ks-route-wrong-source-id.json)（错误 id → 40011）
 - [`samples/ks-route-tessera-bsc-wbnb-usdt-noroute.json`](./samples/ks-route-tessera-bsc-wbnb-usdt-noroute.json)（无池 pair → 4008）
 
-### 7.6 其他聚合器（EVM 侧替代路径评估）
+### 7.6 Base / BSC 其他 prop AMM（watchlist，live 2026-08-03）
+
+按「Base/BSC 上还有没有其他大体量 prop AMM」做了一轮排查：拉 DefiLlama 两链 DEX 24h 榜 top 25，逐个核对分类标签，再用 KyberSwap `includedSources` 验证可隔离性：
+
+| 名称 | 分类（DefiLlama tags） | 链 | 24h 交易量 | KyberSwap id | 隔离报价验证（pair 覆盖） | 结论 |
+| --- | --- | --- | --- | --- | --- | --- |
+| **ElfomoFi** | `Prop AMM`（oracle-based） | Base + BSC | ~$4.5M（Base $3.4M / BSC $1.0M） | `elfomofi` | ✅ Base：WETH/USDC；**BSC：BTCB、WBNB、ETH（均 vs USDT）**——BSC 上唯一报 BNB 的 prop AMM；无 stocks | watchlist |
+| **Lunarbase** | `Prop AMM`（PMM + 集中流动性） | Base（+Monad） | ~$4.1M | `lunarbase` | ✅ WETH/USDC、cbBTC/USDC | watchlist |
+| **Axima** | **未被 DefiLlama 收录**（体量未知） | Base | ? | `axima-v2` | ✅ WETH/USDC、cbBTC/USDC、AERO/USDC；实测偶尔给出全场最优价 | watchlist（隐身运营，关注） |
+| Hanji Protocol | `Order Book`（自述 CLOB + prop-amm 混合） | Base 等 | Base ~$2.5M | `hanji`（poolType `lgl-clob`） | ✅ WETH/USDC | 形态混合，暂不归入 prop AMM |
+| **Native Swap** | `AMM`（实为 **PMM/RFQ 流动性网络**，多家 MM 接入） | **BSC #1（$437M/24h**，DefiLlama 标记非双计）+ 7 链 | $447M 全链 | ❌ 无 KyberSwap source id（`native`/`native-v2`/`native-v3` 均无效） | 报价需走 native.org 自有 API（要 key） | **另一类 venue**：不是单一 prop 桌而是多 MM RFQ 网络；若产品未来加「RFQ 网络」venue class，它是 BSC 头号候选 |
+| Metric（metric.xyz） | 无 tags，自述仅 "DEX" | Base $18.4M / BSC $3.9M 等 10 链 | ~$67M 全链 | ❌ 无 source id | — | 分类不明（多链新部署、无公开定性），**待查**，暂不认定为 prop AMM |
+| GoonFi | `Prop AMM` | Solana only（$59.9M/24h） | — | —（Jupiter label `GoonFi V2`） | — | Solana 侧候选，与本节无关 |
+
+**结论**：Base/BSC 上 Tessera 之外**没有体量接近的纯 prop AMM**——ElfomoFi/Lunarbase/Axima 合计 <$10M/d，与 Tessera BSC 单日 $195M 差两个数量级；基准名单维持 HumidiFi/Tessera/BisonFi 不变。但有两个值得跟踪的点：
+1. **ElfomoFi 是唯一同时部署 Base+BSC 且报 BNB 的 prop AMM**——若未来纳入，可给 BNB 补上 prop AMM 报价点（当前基准三家都不报 BNB）；
+2. **Native Swap $437M/24h 是 BSC 第一大 DEX**，形态是多 MM 的 PMM/RFQ 网络（非单一 prop 桌、无免 key 报价路径）——是否作为独立 venue class 建议在 DESIGN.md 层面单独决策，不塞进 prop AMM 语义。
+
+样本：[`samples/ks-route-elfomofi-bsc-wbnb-usdt.json`](./samples/ks-route-elfomofi-bsc-wbnb-usdt.json)、[`samples/ks-route-lunarbase-base-weth-usdc.json`](./samples/ks-route-lunarbase-base-weth-usdc.json)。
+
+### 7.7 其他聚合器（EVM 侧替代路径评估）
 
 | 聚合器 | Tessera 收录 | source 过滤 | 结论 |
 | --- | --- | --- | --- |
@@ -759,6 +779,10 @@ let url = format!(
 - Blockworks 0xResearch「Prop AMMs expand to Base」：https://blockworks.com/newsletter/0xresearch/issue/post_27a40a19-c423-4427-9dfe-28002a03ca74  
 - 0x「PropAMM Shenanigans」（Base prop AMM 集成与报价行为观察）：https://0x.org/post/propamm-shenanigans  
 - DL News：Wintermute 确认运营 Tessera V：https://www.dlnews.com/articles/defi/solana-dark-amms-make-trading-more-efficient-but-at-a-cost/  
+- DefiLlama 分链 DEX 榜（watchlist 排查来源）：https://defillama.com/dexs/chain/base ；https://defillama.com/dexs/chain/bsc  
+- ElfomoFi：https://elfomo.fi/ ；DefiLlama：https://defillama.com/protocol/elfomofi  
+- Lunarbase（Prop AMM，Base）：https://defillama.com/protocol/lunarbase  
+- Native（PMM/RFQ 网络，BSC 第一大 DEX）：https://native.org ；DefiLlama：https://defillama.com/protocol/native-swap  
 
 ---
 

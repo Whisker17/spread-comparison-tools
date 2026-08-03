@@ -34,3 +34,18 @@ bsc	ASTER->USDT	untested		seen in on-chain TesseraTrade sampling
 # base: WETH 0x4200000000000000000000000000000000000006 / USDC 0x833589fcd6edb6e08f4c7c32d4f71b54bda02913 / cbBTC 0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf / USDT 0xfde4c96c8593536e31f229ea8f37b2ada2699bb2 / AERO 0x940181a94a35a4569e4529a3cdfb74e38fd98631 / wstETH 0xc1cba3fcea344f92d9239c08c0568f6f2f0ee452 / VIRTUAL 0x0b3e328455c4059eeb9e3f84b5543f74e24e7e1b / EURC 0x60a3e35cc302bfa44cb288bc5a4f316fdb1adb42
 # bsc: WBNB 0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c / USDT 0x55d398326f99059ff775485246999027b3197955 / USDC 0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d / ETH 0x2170ed0880ac9a755fd29b2688956bd959f933f8 / BTCB 0x7130d2a12b9bcbfae4f2634d864a1ee1ce3ead9c / CAKE 0x0e09fabb73bd3ade0a17ecc321fd13a19e81ce82 / USD1 0x8d0d000ee44948fc98c9b98a4fa4921476f08b0d / DOGE 0xba2ae424d960c26247dd6c32edc70b295c744c43 / XRP 0x1d2f0da169ceb9fc7b3144628db156f3f6c60dbe / SOL 0x570a5d26f7765ecb712c0924e4de545b89fd43df / WBETH 0xa2e3356610840701bdf5611a53974510ae27e2e1
 # bsc stocks: QQQB 0x205812cdbed920aff76c6580abd681a46d11efc7 / SPCXB 0xbe9d156892e55e7154bcd3cb0fea677f9d3103e1 / NVDAB 0x02fca66c1d1afb4e2a7884261eb00f63598a7436 / NVDAon 0xa9ee28c80f960b889dfbd1902055218cba016f75 / TSLAB 0x5b1910eaad6450e50f816082aa078c41f10c292f / SKHYB 0xca750ef65f295bbecd685abf54e82caf297bdb61 / SNDKB 0x3ee4df61bd4f867e349beae8bfe07bc31b4850fb / MUB 0xcdf2f3e0fa43c47a6662a91c9e4a7c5f69762699
+# --- other EVM prop AMMs (watchlist probe, 2026-08-03, same method) ---
+# venue	chain	pair	result	kyber_source_id
+# elfomofi	base	WETH->USDC	direct	elfomofi
+# elfomofi	base	cbBTC/AERO/VIRTUAL/USDT legs	no(4008)	elfomofi
+# elfomofi	bsc	BTCB->USDT	direct	elfomofi
+# elfomofi	bsc	WBNB->USDT	direct	elfomofi   <- only prop AMM quoting BNB
+# elfomofi	bsc	ETH->USDT	direct	elfomofi
+# elfomofi	bsc	USDT->QQQB	no(4008)	elfomofi
+# lunarbase	base	WETH->USDC	direct	lunarbase
+# lunarbase	base	cbBTC->USDC	direct	lunarbase
+# lunarbase	base	AERO/VIRTUAL/USDT legs	no(4008)	lunarbase
+# axima	base	WETH->USDC	direct	axima-v2
+# axima	base	cbBTC->USDC	direct	axima-v2
+# axima	base	AERO->USDC	direct	axima-v2
+# native-swap: no kyberswap source id (native/native-v2/native-v3 all 40011); quote via native.org API (key required)

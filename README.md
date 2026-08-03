@@ -26,6 +26,8 @@ Early research phase (M1). No application runtime yet.
 
 Tessera volume is **majority BSC** (DefiLlama 7d: BSC ≈ $136M/d, Solana ≈ $34M/d, Base ≈ $9.5M/d) — Solana-only coverage misses most of it. HumidiFi / BisonFi are Solana-only.
 
+EVM watchlist (verified quotable via KyberSwap, too small for baseline): ElfomoFi (`elfomofi`, Base+BSC, only prop AMM quoting BNB), Lunarbase (`lunarbase`, Base), Axima (`axima-v2`, Base, unlisted on DefiLlama). Native Swap ($437M/d, BSC #1) is a multi-MM PMM/RFQ network — a different venue class, not a prop AMM. See research doc §7.6.
+
 Quote paths for WHI-806 (isolate **one** venue per request):
 
 ```text
