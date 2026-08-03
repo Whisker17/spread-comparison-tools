@@ -1,12 +1,14 @@
-# WHI-797：Prop AMM 基准名单 + Jupiter Quote API 接入验证
+# WHI-797：Prop AMM 基准名单 + 多链报价接入验证（Solana Jupiter / EVM KyberSwap）
 
 | 字段 | 值 |
 | --- | --- |
 | Issue | [WHI-797](https://linear.app/whisker-personal/issue/WHI-797) |
 | Milestone | M1 调研与口径定义 |
-| Blocks | WHI-806（Prop AMM adapter：Jupiter Quote API + `dexes` 过滤） |
-| 调研日期 | 2026-08-03（UTC） |
-| 验证环境 | 公网 live 调用 `api.jup.ag` / `lite-api.jup.ag`，**无 API key** |
+| Blocks | WHI-806（Prop AMM adapter：按 chain 选聚合器 + venue 过滤） |
+| 调研日期 | 2026-08-03（UTC；v2 同日补 Tessera Base/BSC 多链验证） |
+| 验证环境 | 公网 live 调用 `api.jup.ag` / `lite-api.jup.ag` / `aggregator-api.kyberswap.com`，**无 API key** |
+
+> **v2 变更**：初版只覆盖 Solana（Jupiter 路径），漏掉了 Tessera 在 **Base / BSC** 上的高交易量部署（DefiLlama 口径下 BSC 是 Tessera 交易量最大的链）。本版按 **venue × chain** 补齐：新增 §7 Tessera 多链接入（KyberSwap Aggregator API），§8 实现建议改为多链 venue 模型。
 
 ---
 
@@ -25,21 +27,24 @@
 4. **Rate limit（keyless）**：官方文档 **0.5 RPS**；冷窗口 live burst 实测 **连续 5 次 200 后第 6 次起 429**（`x-ratelimit-current` 顶到 5）。安全默认间隔 **≥ 2s**。详见 §3.3。
 5. **费用**：`outAmount` 为扣除 AMM fee（及可选 platform fee）后的净输出；prop AMM 响应中 **`feeAmount`/`feeMint` 字段缺失**（OpenAPI 标 deprecated；实测不返回），`platformFee` 默认为 `null`。
 6. **`excludeDexes` 同样可用**（与 `dexes` **不可同时设置**，同时传返回 400）；见 §3.5。
-7. **资产范围（live 探测）**：三家核心都在 **SOL/稳定币 + 主流大币（cbBTC、WETH）**；memecoin / LST / 多数中盘币 **无直连报价**。详见 §6。
+7. **资产范围（live 探测，Solana）**：三家核心都在 **SOL/稳定币 + 主流大币（cbBTC、WETH）**；memecoin / LST / 多数中盘币 **无直连报价**。详见 §6。
+8. **Tessera 是多链 venue（v2 新增）**：DefiLlama 收录链为 **Solana + Base + BSC**，近 7 日（2026-07-27 ~ 08-02）BSC 日均 **$136M** > Solana 日均 **$34M** > Base 日均 **$9.5M**——**BSC 才是 Tessera 交易量最大的链**，只看 Solana 会漏掉大头。HumidiFi / BisonFi 未发现非 Solana 部署。详见 §7。
+9. **EVM 报价路径（v2 新增）**：KyberSwap Aggregator API（keyless 可用）`includedSources=tessera` / `excludedSources=tessera` 可在 Base、BSC 单独隔离 Tessera 报价；source id 全小写 **`tessera`**。Base 直连池：WETH/USDC、cbBTC/USDC、AERO/USDC；BSC 直连池：**仅 BTCB/USDT**。ParaSwap 无 Tessera；0x / 1inch / OKX 需 API key 未验证。详见 §7。
 
-> WHI-806 实现时：**不要**写 `Tessera` / `Tessera V` / `Humidifi` 等近似字符串——会直接 `No routes found`。
+> WHI-806 实现时：**不要**写 `Tessera` / `Tessera V` / `Humidifi` 等近似字符串——Jupiter 会直接 `No routes found`；KyberSwap 传错 source id 返回 `40011 filtered liquidity sources`。
 
 ---
 
 ## 2. 背景
 
-Prop AMM 无公开前端、无独立报价 HTTP API；约 90% 成交量经 Jupiter 路由。现实路径：
+Prop AMM 无公开前端、无独立报价 HTTP API；成交量几乎全部经聚合器路由。因此「拿某家 prop AMM 的报价」= **该链主流聚合器的 Quote API + venue 过滤参数**：
 
-```
-GET /swap/v1/quote?dexes=<Label>&inputMint=...&outputMint=...&amount=...
-```
+| Chain | 聚合器 | venue 过滤参数 | 本文验证 |
+| --- | --- | --- | --- |
+| Solana | Jupiter Metis `GET /swap/v1/quote` | `dexes=<Label>` / `excludeDexes` | §3–§6 |
+| Base / BSC | KyberSwap `GET /{chain}/api/v1/routes` | `includedSources=<id>` / `excludedSources` | §7 |
 
-通过 `dexes` 限定单一 prop AMM，即可近似「该 venue 的报价」。
+通过 venue 过滤限定单一 prop AMM，即可近似「该 venue 的报价」。
 
 相关行业背景（非本文核心）：prop AMM 依赖高频轻量 oracle 更新 + 自有 vault 库存；Jupiter 集成是其主要获流渠道。参见 Helius 综述 *Solana’s Proprietary AMM Revolution*。
 
@@ -434,6 +439,7 @@ BisonFi / TesseraV 同样可在无直连时走同 venue 多跳（经 USDC），�
 | 报价获取 | `GET /swap/v1/quote?...&dexes=TesseraV` |
 | 单独报价 | ✅ 验证通过 |
 | 运营背景 | Wintermute 运营；2025-06 前后接入 Jupiter |
+| **多链** | ⚠️ 本表仅 Solana 侧。Tessera 另部署于 **Base、BSC**（BSC 交易量最大）——报价路径、池子与资产见 **§7** |
 
 **直连市场（live 探测）**：
 
@@ -518,15 +524,149 @@ BisonFi / TesseraV 同样可在无直连时走同 venue 多跳（经 USDC），�
 
 ---
 
-## 7. 对 WHI-806 的实现建议
+## 7. Tessera 多链接入：Base / BSC（v2 新增）
+
+### 7.1 量级：为什么不能只看 Solana
+
+DefiLlama（protocol `tessera-v`，id 6557）收录 Tessera 的链为 **Solana、Base、BSC**。近 7 日分链日交易量（USD，live 拉取 2026-08-03）：
+
+| 日期 | Solana | Base | BSC |
+| --- | --- | --- | --- |
+| 2026-07-27 | 33.4M | 16.1M | **184.1M** |
+| 2026-07-28 | 46.3M | 11.6M | **124.9M** |
+| 2026-07-29 | 43.0M | 13.8M | **89.9M** |
+| 2026-07-30 | 33.1M | 10.1M | **110.3M** |
+| 2026-07-31 | 30.7M | 10.9M | **169.7M** |
+| 2026-08-01 | 20.9M | 1.8M | **77.7M** |
+| 2026-08-02 | 33.8M | 2.6M | **195.1M** |
+
+汇总（DefiLlama，2026-08-03）：`total24h ≈ $231M`、`total7d ≈ $1.26B`、`total30d ≈ $3.11B`。**BSC 占比约 70%+，是 Tessera 最大的链**；只覆盖 Solana 会漏掉绝大部分 Tessera 流量。对照：HumidiFi（24h $45.6M）与 BisonFi（24h $89.3M）在 DefiLlama 均为 **Solana 单链**，无非 Solana 部署。
+
+链上佐证：Base WETH/USDC 池 `0xf524…5a7c` 首笔交易 **2025-10-30**（Blockscout），即 Tessera Base 部署自 2025-10 起活跃。
+
+### 7.2 报价路径：KyberSwap Aggregator API
+
+EVM 链上与「Jupiter + `dexes`」等价的现实路径是 **KyberSwap Aggregator API**（三大免 key 聚合器里唯一同时收录 Tessera 且暴露 source 过滤的）：
+
+| 项目 | 值 |
+| --- | --- |
+| Base URL | `https://aggregator-api.kyberswap.com/{chain}/api/v1/routes`（GET，报价）；`/route/build`（POST，构造 calldata，报价场景不需要） |
+| chain slug | `base`（8453）、`bsc`（56） |
+| venue 过滤 | `includedSources=<id>` / `excludedSources=<id>`（逗号分隔 DEX id） |
+| Tessera source id | **`tessera`**（全小写；`routeSummary.route[].exchange` 亦返回 `tessera`） |
+| Auth | 无需 API key；header `x-client-id: <app>` 标识集成方，**不带会被更严限速**（官方未公布数字） |
+| Rate limit 实测 | keyless 无 `x-client-id` 冷启动连打 12 次全 200，未触发 429——远宽松于 Jupiter keyless 的 0.5 RPS；生产仍建议带 `x-client-id` + 客户端限速 |
+| 报价字段 | `routeSummary.amountOut`（wei）、`amountOutUsd`、`gas`/`gasUsd`、`route[][]`（hop 数组：`exchange`/`pool`/`swapAmount`/`amountOut`） |
+| Fee 语义 | 默认不收平台费；`extraFee` 对象（`feeAmount`/`chargeFeeBy`/`isInBps`/`feeReceiver`）为集成方自定义抽成，报价对比场景**不传**即可 |
+| 文档 | https://docs.kyberswap.com/developer-guide/aggregator-api/aggregator-api-specification/evm-swaps |
+
+### 7.3 错误语义（与 Jupiter 对照）
+
+| 场景 | Jupiter (Solana) | KyberSwap (Base/BSC) |
+| --- | --- | --- |
+| venue 对该 pair 无报价 | HTTP 400 `NO_ROUTES_FOUND` | HTTP 200，body `code: 4008, message: "route not found"` |
+| venue 标识符拼错 / 该链不存在 | HTTP 400 `NO_ROUTES_FOUND`（与无路由**同形**，不可区分） | body `code: 40011, message: "filtered liquidity sources"`（与无路由**可区分**） |
+| 参数非法 | HTTP 400 其他 error | `code: 4000, message: "bad request"`——注意：**混合大小写地址必须是合法 EIP-55 checksum**，错一个字母就 4000；全小写地址可接受 |
+| include 与 exclude 冲突 | 400 `Cannot set dexes and exclude dexes at the same time` | 未验证（避免同传） |
+
+判别要点：KyberSwap 的 `40011` 能把「source id 写错」从「无路由」里区分出来，比 Jupiter 更友好；但 `tessera` id 在**不存在该 venue 的链**（如 Ethereum）同样返回 40011，所以 40011 = 「过滤后无可用 source」，启动时仍建议对每条链做一次已知 pair 的冒烟验证。
+
+### 7.4 直连池与资产范围（live 探测 2026-08-03）
+
+**Base（3 个直连池）**：
+
+| Pair | Tessera pool | 直连 | 多跳 |
+| --- | --- | --- | --- |
+| WETH/USDC | `0xf524c1bc1c64a2c99bc7eccf19ede9a1d89d5a7c` | ✅ 双向 | — |
+| cbBTC/USDC | `0xed57bacdc2a990b631f8817853935791c122c356` | ✅ 双向 | — |
+| AERO/USDC | `0x3b84be4d48888a6bc385eea93e522246b214069e` | ✅ 双向 | — |
+| WETH↔cbBTC / WETH↔AERO / cbBTC↔AERO | — | ❌ | ✅ 全 tessera 2-hop 经 USDC |
+| 任何 USDT / wstETH 腿 | — | ❌ | ❌（Base 无 tessera USDT/wstETH 池） |
+
+原生 ETH 伪地址（`0xeeee…eeee`）可直接当 tokenIn，路由等同 WETH。
+
+**BSC（仅 1 个直连池）**：
+
+| Pair | Tessera pool | 直连 |
+| --- | --- | --- |
+| BTCB/USDT | `0xe1191102bdcea1928a93b4d6ea7bf5c4e9207210` | ✅ 双向 |
+| WBNB、ETH、USDC、CAKE、USD1、DOGE、XRP、SOL、WBETH 的任意组合 | — | ❌ 全部 4008 |
+
+⚠️ BSC 日均 $100M+ 的交易量当前**几乎全部来自这一个 BTCB/USDT 池**——单池快照，Wintermute 随时可能增/撤池子；WHI-806 的资产发现不要硬编码 pair 列表（同 Solana 侧「无路由是业务态」原则）。
+
+完整矩阵（含全部 token 地址与 amount）：[`samples/WHI-797-tessera-evm-matrix.tsv`](./samples/WHI-797-tessera-evm-matrix.tsv)。
+
+**对 M1 资产池的含义**：跨链交集里 Tessera 三链都能报的 logical 资产 = **BTC**（Solana cbBTC / Base cbBTC / BSC BTCB）与 **ETH**（Solana WETH / Base WETH；BSC ❌）；**SOL 仅 Solana**。Base 特有增量：**AERO**。
+
+### 7.5 示例请求 / 响应
+
+```bash
+# Base: 1 WETH -> USDC，只走 Tessera
+curl -sS "https://aggregator-api.kyberswap.com/base/api/v1/routes?tokenIn=0x4200000000000000000000000000000000000006&tokenOut=0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913&amountIn=1000000000000000000&includedSources=tessera" \
+  -H "x-client-id: spread-comparison-tools"
+
+# BSC: 0.02 BTCB -> USDT，只走 Tessera
+curl -sS "https://aggregator-api.kyberswap.com/bsc/api/v1/routes?tokenIn=0x7130d2a12b9bcbfae4f2634d864a1ee1ce3ead9c&tokenOut=0x55d398326f99059ff775485246999027b3197955&amountIn=20000000000000000&includedSources=tessera" \
+  -H "x-client-id: spread-comparison-tools"
+```
+
+响应摘录（Base WETH→USDC，完整见 samples）：
+
+```json
+{
+  "code": 0,
+  "data": {
+    "routeSummary": {
+      "amountIn": "1000000000000000000",
+      "amountOut": "1854960936",
+      "amountOutUsd": "1845.07",
+      "gas": "693831",
+      "route": [[{ "exchange": "tessera", "pool": "0xf524c1bc1c64a2c99bc7eccf19ede9a1d89d5a7c", "swapAmount": "1000000000000000000", "amountOut": "1854960936" }]]
+    }
+  }
+}
+```
+
+样本文件（全部 live 捕获 2026-08-03）：
+
+- [`samples/ks-route-tessera-base-weth-usdc.json`](./samples/ks-route-tessera-base-weth-usdc.json)
+- [`samples/ks-route-tessera-base-cbbtc-usdc.json`](./samples/ks-route-tessera-base-cbbtc-usdc.json)
+- [`samples/ks-route-tessera-bsc-btcb-usdt.json`](./samples/ks-route-tessera-bsc-btcb-usdt.json)
+- [`samples/ks-route-exclude-tessera-base-weth-usdc.json`](./samples/ks-route-exclude-tessera-base-weth-usdc.json)（`excludedSources` 对照）
+- [`samples/ks-route-wrong-source-id.json`](./samples/ks-route-wrong-source-id.json)（错误 id → 40011）
+- [`samples/ks-route-tessera-bsc-wbnb-usdt-noroute.json`](./samples/ks-route-tessera-bsc-wbnb-usdt-noroute.json)（无池 pair → 4008）
+
+### 7.6 其他聚合器（EVM 侧替代路径评估）
+
+| 聚合器 | Tessera 收录 | source 过滤 | 结论 |
+| --- | --- | --- | --- |
+| KyberSwap | ✅ `tessera`（Base+BSC） | `includedSources`/`excludedSources`，免 key | **主路径** |
+| ParaSwap | ❌ Base source 列表无 Tessera（live 2026-08-03） | `includeDEXS` | 不可用 |
+| Odos | 未知（`/info/liquidity-sources` 被 Cloudflare 1033 拦） | `sourceWhitelist` | 未验证 |
+| 0x | 未知 | `includedSources` | 需 API key，未验证 |
+| 1inch | 未知 | `protocols` | 需 API key，未验证 |
+| OKX DEX | 未知 | `dexIds` | 需 API key，未验证 |
+
+**建议**：主依赖 KyberSwap；若后续拿到 0x/1inch key，可再验证一条冗余路径（记录到 ADR）。
+
+---
+
+## 8. 对 WHI-806 的实现建议
+
+**venue 模型必须带 chain 与 quote_source 维度**（v2 变更——Tessera 一家对应三个 venue 实例）：
 
 ```text
 PropAmmVenue {
-  id: "humidifi" | "tesserav" | "bisonfi"
-  jupiter_dex_label: "HumidiFi" | "TesseraV" | "BisonFi"  // 精确字符串
-  program_id: ...
+  id: "humidifi@solana" | "tesserav@solana" | "bisonfi@solana"
+    | "tessera@base"    | "tessera@bsc"
+  chain: "solana" | "base" | "bsc"
+  quote_source: Jupiter { dex_label: "HumidiFi" | "TesseraV" | "BisonFi" }   // 精确字符串，大小写敏感
+              | KyberSwap { source_id: "tessera", chain_slug: "base" | "bsc" }
+  program_id / pool_allowlist: ...   // Solana: program id；EVM: 可选记录已知池（仅用于展示，不做路由硬编码）
 }
 ```
+
+`QuoteProvider` 抽象出两个实现：`JupiterQuoteProvider`（§3–§4）与 `KyberSwapQuoteProvider`（§7）。以下 1–7 条为 Solana/Jupiter 侧细节，EVM 侧对应差异见 §7.2–§7.3。
 
 1. **Quote client**
    - Base: `https://api.jup.ag/swap/v1`
@@ -566,21 +706,23 @@ let url = format!(
 
 ---
 
-## 8. 风险与局限
+## 9. 风险与局限
 
 | 风险 | 说明 |
 | --- | --- |
 | 报价 ≠ 可成交保证 | Quote 瞬时有效；prop AMM 曲线高频更新，落地价可能偏移 |
 | 库存/风控拒单 | 大 size 可能无路由或冲击显著 |
-| Label 变更 | 以 `/program-id-to-label` 为准，避免硬编码过期 |
+| Label 变更 | Solana 以 `/program-id-to-label` 为准；KyberSwap source id 无公开枚举接口，靠已知 pair 冒烟验证 |
 | lite-api 退役 | 迁移到 `api.jup.ag` |
 | Metis v1 维护状态 | 官方已指向 Swap V2；功能仍可用但需关注废弃时间表 |
-| 资产列表时效 | 本节矩阵为单日探测快照 |
-| 无独立 API | 完全依赖 Jupiter 集成质量与可用性 |
+| 资产列表时效 | 本文矩阵均为单日探测快照；**BSC 侧当前单池（BTCB/USDT），池集变动风险最高** |
+| 无独立 API | Solana 完全依赖 Jupiter；Base/BSC 完全依赖 KyberSwap 的 Tessera 集成质量（ParaSwap 无收录，0x/1inch/OKX 未验证，暂无冗余路径） |
+| KyberSwap 限速未量化 | 官方不公布数字，仅承诺带 `x-client-id` 更宽松；实测 12 连发未限流，但生产仍需客户端限速 + 429 退避 |
+| 跨链表示差异 | 同一 logical 资产在三链是不同合约（cbBTC vs BTCB；Wormhole WETH vs 原生 WETH），价差语义须带表示标签（同 WHI-798 口径） |
 
 ---
 
-## 9. 参考链接
+## 10. 参考链接
 
 - Jupiter Quote OpenAPI：https://developers.jup.ag/docs/api-reference/swap/v1/quote  
 - Developer Portal / key：https://developers.jup.ag/portal  
@@ -588,10 +730,14 @@ let url = format!(
 - lite-api 迁移说明：https://developers.jup.ag/docs/portal/migration  
 - program-id-to-label（live）：https://api.jup.ag/swap/v1/program-id-to-label  
 - Helius：Solana’s Proprietary AMM Revolution  
+- KyberSwap Aggregator API（EVM Swaps 规格）：https://docs.kyberswap.com/developer-guide/aggregator-api/aggregator-api-specification/evm-swaps  
+- DefiLlama Tessera V（多链交易量）：https://defillama.com/protocol/tessera-v ；API：https://api.llama.fi/summary/dexs/tessera-v  
+- Base WETH/USDC Tessera 池：https://basescan.org/address/0xf524c1bc1c64a2c99bc7eccf19ede9a1d89d5a7c  
+- BSC BTCB/USDT Tessera 池：https://bscscan.com/address/0xe1191102bdcea1928a93b4d6ea7bf5c4e9207210  
 
 ---
 
-## 10. 产出物清单
+## 11. 产出物清单
 
 | 路径 | 说明 |
 | --- | --- |
@@ -602,6 +748,8 @@ let url = format!(
 | `docs/research/samples/quote-no-routes-wrong-label.json` | 错误 label → 400 body |
 | `docs/research/samples/quote-humidifi-sol-jup-multihop.json` | HumidiFi 同 venue 多跳 |
 | `docs/research/samples/quote-bisonfi-sol-cbbtc-multihop.json` | BisonFi 同 venue 多跳 |
-| `docs/research/samples/asset-matrix.tsv` | 资产探测矩阵（含元数据注释） |
+| `docs/research/samples/asset-matrix.tsv` | Solana 资产探测矩阵（含元数据注释） |
+| `docs/research/samples/ks-route-*.json` | **v2**：Tessera Base/BSC KyberSwap 样本（隔离 / exclude / 错误 id / 无路由） |
+| `docs/research/samples/WHI-797-tessera-evm-matrix.tsv` | **v2**：Tessera Base/BSC pair 探测矩阵 |
 
 **本 issue 范围**：调研与 live 验证 only，**不含** WHI-806 adapter 实现。

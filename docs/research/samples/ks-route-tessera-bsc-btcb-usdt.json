@@ -1,0 +1,51 @@
+{
+    "code": 0,
+    "message": "successfully",
+    "data": {
+        "routeSummary": {
+            "tokenIn": "0x7130d2a12b9bcbfae4f2634d864a1ee1ce3ead9c",
+            "amountIn": "20000000000000000",
+            "amountInUsd": "1255.3048082376292",
+            "tokenOut": "0x55d398326f99059ff775485246999027b3197955",
+            "amountOut": "1256536244583618607770",
+            "amountOutUsd": "1255.205357242767",
+            "gas": "693831",
+            "gasPrice": "1000000000",
+            "gasUsd": "0.404276933680309",
+            "l1FeeUsd": "0",
+            "extraFee": {
+                "feeAmount": "",
+                "chargeFeeBy": "",
+                "isInBps": false,
+                "feeReceiver": ""
+            },
+            "route": [
+                [
+                    {
+                        "pool": "0xe1191102bdcea1928a93b4d6ea7bf5c4e9207210",
+                        "tokenIn": "0x7130d2a12b9bcbfae4f2634d864a1ee1ce3ead9c",
+                        "tokenOut": "0x55d398326f99059ff775485246999027b3197955",
+                        "swapAmount": "20000000000000000",
+                        "amountOut": "1256536244583618607770",
+                        "exchange": "tessera",
+                        "poolType": "tessera",
+                        "poolExtra": {
+                            "blockNumber": 113721355,
+                            "tesseraSwap": "0x55555522005BcAE1c2424D474BfD5ed477749E3e"
+                        },
+                        "extra": {
+                            "_cs": "11206484241475688810",
+                            "_ts": "1785734763",
+                            "ri": "3bbe40eaJp9PHby9"
+                        }
+                    }
+                ]
+            ],
+            "routeID": "3bbe40eaJp9PHby9",
+            "checksum": "11206484241475688810",
+            "timestamp": 1785734763
+        },
+        "routerAddress": "0x6131B5fae19EA4f9D964eAc0408E4408b66337b5"
+    },
+    "requestId": "3bbe40ea-269f-4f1d-bcbd-f221fbb05c60"
+}
