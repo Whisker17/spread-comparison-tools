@@ -33,6 +33,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
 
+    # Load .env before any adapter reads required secrets (AGENTS.md runtime config).
+    from dotenv import load_dotenv
+
+    load_dotenv()
+
     # Import here so --help stays cheap and dry-run still exercises app construction.
     from spread_compare.api.app import create_app
 

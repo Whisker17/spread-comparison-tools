@@ -13,8 +13,10 @@ import logging
 from spread_compare.adapters.base import VenueAdapter
 from spread_compare.venues import known_slugs
 
-# Scaffold-only adapter slug (not a production venue in WHI-799 §6.5).
-_EXTRA_ALLOWED_SLUGS: frozenset[str] = frozenset({"mock"})
+# Scaffold/test-only slugs (not production venues in WHI-799 §6.5).
+# ``_test_discovery`` is reserved for tests/test_adapter_discovery.py so that
+# test never claims a real venue slug (WHI-802 landmine fix).
+_EXTRA_ALLOWED_SLUGS: frozenset[str] = frozenset({"mock", "_test_discovery"})
 
 _REGISTRY: dict[str, VenueAdapter] = {}
 _INITIALIZED: set[str] = set()

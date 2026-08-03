@@ -63,7 +63,7 @@ def test_quotes_happy_path_with_injected_mid(client: TestClient) -> None:
 
     client.app.state.aggregator.mid_service.resolve = fake_resolve  # type: ignore[method-assign]
 
-    resp = client.get("/quotes", params={"asset": "BTC", "notional": "10000"})
+    resp = client.get("/quotes", params={"asset": "BTC", "notional": "10000", "venues": "mock"})
     assert resp.status_code == 200
     body = resp.json()
     assert body["asset"] == "BTC"
@@ -99,7 +99,7 @@ def test_quotes_mid_failure_returns_503(client: TestClient) -> None:
         raise MidResolutionError("all sources down")
 
     client.app.state.aggregator.mid_service.resolve = boom  # type: ignore[method-assign]
-    resp = client.get("/quotes", params={"asset": "BTC", "notional": "10000"})
+    resp = client.get("/quotes", params={"asset": "BTC", "notional": "10000", "venues": "mock"})
     assert resp.status_code == 503
     assert "reference mid" in resp.json()["detail"].lower()
 
