@@ -101,8 +101,28 @@ async def test_startup_all_failure_is_visible(monkeypatch: pytest.MonkeyPatch) -
     assert any(isinstance(e, RuntimeError) for e in exc_info.value.exceptions)
     assert "binance" not in _INITIALIZED
 
-    _REGISTRY.pop("binance", None)
     await aclose_all()
+
+
+@pytest.mark.asyncio
+async def test_aclose_all_clears_even_when_one_aclose_raises(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """One aclose failure is logged; _INITIALIZED is still fully cleared."""
+
+    class BoomCloseAdapter(StubAdapter):
+        venue: str = "binance"
+
+        async def aclose(self) -> None:
+            raise RuntimeError("simulated close failure")
+
+    boom = BoomCloseAdapter()
+    monkeypatch.setitem(_REGISTRY, "binance", boom)
+    _INITIALIZED.add("binance")
+    _INITIALIZED.add("mock")
+
+    await aclose_all()
+    assert initialized_count() == 0
 
 
 @pytest.mark.asyncio

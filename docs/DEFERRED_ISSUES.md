@@ -56,7 +56,9 @@ defines none: `docs/GIT_WORKFLOW.md` § High-risk paths), **Medium**
   `spread_compare/adapters/registry.py::_INITIALIZED` — `/health`'s
   `adapters_initialized` count is shared across all `create_app()` instances in a
   process. Fine for the single-process CLI/server; wrong if multi-app TestClient
-  suites run concurrent lifespans. Stash on `app.state` if that ever lands.
+  suites run concurrent lifespans. Stash on `app.state` if that ever lands. Also:
+  if a slug is started then removed from `_REGISTRY` without `aclose_all`, the
+  count can go stale — clear both sets together when unregister is added.
 
 ---
 

@@ -18,9 +18,9 @@ from spread_compare.models import (
 
 
 class StubAdapter(BaseAdapter):
-    """Minimal async adapter surface; subclasses set ``venue`` / ``venue_class``."""
+    """Minimal async adapter surface; subclasses must set a real ``venue`` slug."""
 
-    venue: str = "binance"
+    venue: str = "stub_unregistered"
     venue_class: VenueClass = "cex"
 
     async def get_quote(
