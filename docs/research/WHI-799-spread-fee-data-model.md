@@ -6,7 +6,7 @@
 | Milestone | M1 调研与口径定义 |
 | Blocks | [WHI-801](https://linear.app/whisker-personal/issue/WHI-801)（FastAPI + adapter 接口）、[WHI-812](https://linear.app/whisker-personal/issue/WHI-812)（费用数据整理） |
 | Downstream | WHI-802…806（各 venue adapter）、WHI-807（`/quotes` + reference mid 服务）、WHI-813…815（fees / simulate） |
-| 调研日期 | 2026-08-03（UTC） |
+| 规范日期 | 2026-08-03（UTC） |
 | 性质 | **规范（spec）**，非 live 探测；字段名与公式以本文为准，M2 代码不得另立口径 |
 
 ---
@@ -15,50 +15,57 @@
 
 1. **名义金额（notional）**固定四档：`$1_000` / `$10_000` / `$100_000` / `$1_000_000`（USD）。先用 **reference mid** 换算目标 base 数量，再 walk book / 调 quoter。
 2. **Effective spread at size**（单边，bps）：
-   - Buy：`spread_bps = (effective_price − mid) / mid × 10_000`
-   - Sell：`spread_bps = (mid − effective_price) / mid × 10_000`
-   - 双边汇总默认展示 **round-trip** `buy_bps + sell_bps`，并附 **half-spread** `round_trip / 2`。
-3. **Top-of-book spread**仅 orderbook venue：`(best_ask − best_bid) / mid_ref × 10_000`；AMM / Prop AMM 返回 `null`。
-4. **Reference mid**（全 venue 共用，每资产每快照一条）：
-   - Crypto blue chips **主源**：Binance USDT 现货 index（不可用则 Binance spot TOB mid）；**备源** Pyth。
-   - Spot 与 Perp **共用同一 mid**（现货 index），禁止用各 venue 自有 mark 当跨 venue 基准。
-   - **Funding 不计入** `spread_bps` / 默认 `total_cost_bps`；单独字段记录，仅在「持仓期成本」可选视图中折算。
-5. **Total cost of execution**：`total_cost_bps = spread_bps + explicit_fee_bps + gas_bps`。**禁止双计**：若报价已内嵌 fee（Prop AMM / 多数 AMM quoter 的净输出），则 `embedded_in_price=true`，`explicit_fee_bps=0`，`spread_bps` 已含该 fee。
-6. **统一模型**（M2 直接落地）：`Quote`、`TopOfBook`、`FeeBreakdown`、`FeeSchedule`、`ReferenceMid`；adapter 抽象见 §7。
+   - Buy：`spread_bps = (effective_price - mid) / mid * 10_000`
+   - Sell：`spread_bps = (mid - effective_price) / mid * 10_000`
+   - 双边汇总：`round_trip_spread_bps = buy + sell`，`half_spread_bps = round_trip / 2`。
+3. **Top-of-book spread**仅 orderbook venue：`(best_ask - best_bid) / mid_ref * 10_000`；AMM / Prop AMM 的 `get_orderbook_spread` **返回 `None`**（不用假 TOB）。
+4. **Reference mid**（全 venue 共用，绑定 `snapshot_id`）：
+   - Crypto blue chips **P0**：Binance USDT-M **indexPrice**（`GET /fapi/v1/premiumIndex`）；**P1** Binance spot TOB mid；**P2** Bybit spot TOB；**P3** Pyth `price`（不用 conf 区间中点）。
+   - Spot 与 Perp **共用同一 mid**；**Funding 不计入**默认 `total_cost_bps`。
+5. **Total cost（单一权威公式，§5.2）**：
+   - `trading_component_bps` = 0 若 `embedded_in_price`，否则 = 显式 trading fee bps
+   - `total_cost_bps = spread_bps + trading_component_bps + platform_fee_bps + gas_bps`
+   - `explicit_fee_bps` 定义为 **已计入 total 的非价差费之和** = `trading_component_bps + platform_fee_bps + gas_bps`（始终与 total 一致，禁止第三套定义）
+6. **统一模型**：`Quote`、`TopOfBook`、`FeeBreakdown`、`FeeSchedule`、`ReferenceMid`；均携带 `snapshot_id`；adapter 抽象见 §7。
 
 ---
 
 ## 2. 范围与术语
 
-### 2.1 Venue classes（与 WHI-798 对齐）
+### 2.1 Venue classes（与 [WHI-798](./WHI-798-asset-category-inventory.md) 对齐）
 
 | Class | Venues（Phase 1） | 报价机制 |
 | --- | --- | --- |
 | CEX | Binance, Bybit | Orderbook walk |
 | Perp DEX | Hyperliquid, Lighter, ApeX | Orderbook walk |
 | AMM DEX | Uniswap (ETH), Aerodrome (Base), PancakeSwap (BSC) | Quoter / router |
-| Prop AMM | HumidiFi, TesseraV, BisonFi（via Jupiter `dexes`，见 WHI-797） | 净输出报价（fee 内嵌） |
+| Prop AMM | HumidiFi, **Tessera**（Jupiter label `TesseraV`）, BisonFi（见 [WHI-797](./WHI-797-prop-amm-jupiter-quote-api.md)） | 净输出报价（fee 内嵌） |
+
+Venue **显示名**用 Tessera；**slug** `tessera`；Jupiter `dexes` 参数仍必须精确 `TesseraV`（WHI-797）。
 
 ### 2.2 符号约定
 
 | 符号 | 含义 |
 | --- | --- |
-| `asset` | 规范资产 ID（`BTC` / `ETH` / `SOL` / …）；venue 本地 symbol 进 `venue_symbol`，不进 `asset` |
-| `mid` / `mid_ref` | 本快照该 `asset` 的 **reference mid**（quote per base，USD 计价） |
-| `notional_usd` \(N\) | 名义金额（USD） |
-| \(q^\* = N / mid\) | 目标 base 数量 |
-| `effective_price` \(P^\*\) | 成交均价（quote per base） |
+| `asset` | 规范资产 ID（`BTC` / `ETH` / `SOL` / …）；venue 本地 symbol 进 `venue_symbol` |
+| `snapshot_id` | 一次聚合/采集快照的 UUID 或时间桶 ID；同一快照内 mid 与全部 Quote 共享 |
+| `mid` / `mid_ref` | 该快照该 `asset` 的 **reference mid**（quote per base，USD） |
+| `N` / `notional_usd` | 名义金额（USD） |
+| `q_star = N / mid` | 目标 base 数量 |
+| `P_star` / `effective_price` | 成交均价（quote per base） |
 | `side` | `buy` = 用 quote 买 base；`sell` = 卖 base 得 quote |
-| bps | 1 bps = 0.01% = \(10^{-4}\) 相对 mid；公式统一 × `10_000` |
+| bps | 1 bps = 0.01%；相对量一律 `* 10_000` |
 
-价格单位：**quote per 1 base**（如 USDT per BTC）。稳定币按 1 USD 计名义；多稳定币对优先 USDC/USDT 映射见 WHI-798 表示表。
+价格单位：**quote per 1 base**（如 USDT per BTC）。稳定币按 1 USD 计名义；包装资产映射见 [WHI-798 §3.3](./WHI-798-asset-category-inventory.md)。
 
 ### 2.3 非目标（本 spec 不定义）
 
 - 具体 HTTP path 的 OpenAPI（属 WHI-801 / WHI-807）。
-- 各 venue 真实费率数字与官方链接清单（属 WHI-812；本文只定 **FeeSchedule 形状** 与入 `total_cost` 规则）。
+- 各 venue 真实费率数字与官方链接清单（属 WHI-812；本文只定 **FeeSchedule 形状** 与入 total 规则）。
 - 历史窗口统计（mean/median/P95，属 WHI-817）。
-- Slippage tolerance / 实际链上成交 vs 报价偏差（Phase 1 只做 **可成交报价** 对比，不做 fill 仿真）。
+- 聚合层超时/缓存的最终 SLA 数字（属 WHI-807；本文仅约定 adapter 同步返回语义）。
+- Slippage tolerance / 链上真实 fill vs 报价（Phase 1 只做 **可成交报价** 对比）。
+- 前端默认列、排序文案、闭市标注等 UI 政策（属 WHI-808+；§9 仅列**指标可选集合**，不锁死产品默认）。
 
 ---
 
@@ -66,53 +73,60 @@
 
 ### 3.1 为何必须「全 venue 同一 mid」
 
-跨 venue 比较的是「相对公允价的执行偏离」，不是「相对自家盘口 mid 的半价差」。若 Binance 用 Binance mid、HL 用 HL mark，则 mid 漂移会被算进 spread，**不可比**。
+跨 venue 比较的是「相对公允价的执行偏离」。若各 venue 用自家 mid/mark，mid 漂移会被算进 spread，**不可比**。
 
-规则：**同一 `(asset, snapshot_id)` 只取一次 mid**，所有 venue 的 `Quote.mid` 填同一值与同一 `mid_source`。
+规则：
+
+1. 每次聚合或采集 tick 分配一个 **`snapshot_id`**。
+2. 对该 `snapshot_id` 下每个 `asset` **只解析一次** `ReferenceMid`。
+3. 所有 venue 的 `Quote.mid` / `Quote.mid_source` / `Quote.snapshot_id` / `Quote.mid_timestamp` 填同一套值。
 
 ### 3.2 选取优先级（Crypto blue chips：BTC / ETH / SOL）
 
-| 优先级 | 来源 | 定义 | 何时用 |
+| 优先级 | `mid_source` 枚举值 | 定义与可调用端点 | 何时用 |
 | --- | --- | --- | --- |
-| **P0** | Binance **spot index**（USDT 对） | 交易所公布的 index price | 有则必用 |
-| **P1** | Binance spot TOB mid | `(best_bid + best_ask) / 2` | index 不可用 |
-| **P2** | Bybit spot TOB mid | 同上 | Binance 不可用 |
-| **P3** | Pyth price feed（对应资产） | oracle 置信区间中点或官方 price | CEX 均不可用；或配置强制 oracle 模式 |
+| **P0** | `binance_usdm_index` | Binance USDT-M **indexPrice**：`GET https://fapi.binance.com/fapi/v1/premiumIndex?symbol=BTCUSDT`（字段 `indexPrice`；ETH/SOL 同理 `ETHUSDT` / `SOLUSDT`）。这是合约 index（一篮子现货合成），**不是** spot 专用 index API——行业里常作 crypto fair mid。 | 有则必用 |
+| **P1** | `binance_spot_tob` | Spot bookTicker mid：`GET https://api.binance.com/api/v3/ticker/bookTicker?symbol=BTCUSDT` → `(bidPrice+askPrice)/2` | P0 失败 |
+| **P2** | `bybit_spot_tob` | Bybit spot best bid/ask mid（linear/spot ticker） | Binance 均失败 |
+| **P3** | `pyth` | Pyth Hermes/price feed 的 **`price` 字段**（已按 `expo` 缩放后的实数价）。**不要**用 conf 区间中点。Feed id 进配置（WHI-807）。 | CEX 均失败；或配置 `MID_FORCE_PYTH=true` |
 
-实现备注（WHI-807）：
+Staleness：
 
-- 一次聚合请求内 mid 只解析一次，写入 `ReferenceMid` 并下发给各 adapter 或在聚合层统一重算 `spread_bps`。
-- 记录 `mid_timestamp`；与 quote 时间差超过阈值（建议 **5s**）时，响应带 `mid_stale=true` 警告，**不**静默使用过期 mid。
+- `ReferenceMid.timestamp` = mid 观测 UTC。
+- 每个 Quote 复制 `mid_timestamp`；并算 `mid_stale = abs(quote.timestamp - mid_timestamp) > 5s`（阈值常量 `MID_STALE_THRESHOLD_SEC = 5`，可配置）。
+- mid 服务整体失败 → 聚合 **不**返回残缺可比集（503/422）；**禁止**静默用过期缓存超过配置上限（建议 max age 30s）。
 
 ### 3.3 Stocks / Others
 
 | 资产类 | mid 策略 |
 | --- | --- |
-| Equity perps（TSLA 等） | 优先该标的 **CEX TradFi index / mark 的现货等价 index**（若有）；否则用 **多 venue perp mark 的中位数** 作 *proxy mid*，并在 UI 标注 `mid_source=proxy_perp_mark_median`（**弱于** crypto P0） |
-| Tokenized spot（xStocks） | 优先对应 equity 参考价（与 perp 对比时共用）；链上仅有池价时 **不得** 用单池 mid 当跨 venue reference |
-| Others（meme / L1） | 同 §3.2；无可靠 index 时降级到 Binance/Bybit spot TOB mid |
+| Equity perps | 优先 CEX TradFi index（若 API 有）；否则 **多 venue perp mark 中位数**，`mid_source=proxy_perp_mark_median`（弱于 crypto P0，UI 须标注） |
+| Tokenized spot（xStocks） | 与对应 equity 共用参考价；**禁止**单池 mid 当跨 venue reference |
+| Others | 同 §3.2；无 index 时 P1/P2 spot TOB |
 
 ### 3.4 Spot vs Perp 可比性
 
 | 决策 | 口径 |
 | --- | --- |
-| 共用 mid | Perp 与 spot **都相对同一 spot/index mid** 算 `spread_bps` |
-| Basis 可见性 | 可选字段 `venue_mark` / `basis_bps = (venue_mark − mid) / mid × 10_000`，**不**并入 `spread_bps` |
-| Funding | **默认不计入** spread / total cost（见 §5.3） |
-| 合约乘数 | `1000PEPE` / `kPEPE` 等在 adapter 内换算为规范 `asset` 的 1× 单位后再报价（WHI-798） |
+| 共用 mid | Perp 与 spot 都相对 **同一** reference mid 算 `spread_bps` |
+| Basis | 可选 `venue_mark`、`basis_bps = (venue_mark - mid) / mid * 10_000`；**不**并入 `spread_bps` |
+| Funding | **默认不计入** spread / total cost（§5.3） |
+| 合约乘数 | `1000PEPE` / `kPEPE` 等在 adapter 内换算为规范 `asset` 的 1× 单位（[WHI-798](./WHI-798-asset-category-inventory.md)） |
 
 ### 3.5 `ReferenceMid` 模型
 
 ```text
 ReferenceMid {
-  asset:            str              # 规范资产 ID
-  mid:              Decimal          # quote per base
-  mid_source:       str              # e.g. "binance_spot_index" | "binance_spot_tob" | "pyth" | "proxy_perp_mark_median"
-  quote_currency:   str              # "USD" （名义与展示统一折 USD）
-  timestamp:        datetime         # mid 观测 UTC
-  sources_detail:   list[str] | null # 可选：多源合成时的原始来源
+  snapshot_id:      str              # 与同批 Quote 共享
+  asset:            str
+  mid:              Decimal          # quote per base，USD
+  mid_source:       str              # 仅允许 §3.2 / §3.3 枚举值
+  timestamp:        datetime         # mid 观测 UTC（= Quote.mid_timestamp）
+  sources_detail:   list[str] | null # 多源合成时的原始源
 }
 ```
+
+`quote_currency` 固定为 USD 名义口径，**不**进模型字段（避免单值字段）。
 
 ---
 
@@ -124,94 +138,75 @@ ReferenceMid {
 NOTIONAL_TIERS_USD = [1_000, 10_000, 100_000, 1_000_000]
 ```
 
-- Dashboard 默认四档全出；API 允许子集，但 collector（WHI-816）必须四档都采。
-- `notional_usd` 与档位比较用数值相等（Decimal），禁止用「约 1k」模糊匹配。
+- API 允许子集；collector（WHI-816）必须四档都采。
+- `notional_usd` 与档位用 Decimal 精确相等比较。
 
 ### 4.2 数量换算（所有 venue 统一）
 
-\[
-q^\* = \frac{N}{mid}
-\]
+```text
+q_star = notional_usd / mid
+```
 
-- 在 **reference mid** 下把 USD 名义换成 base 数量，再向该 venue 要「买入/卖出 \(q^\*\) base」的执行价。
-- **不要**按 venue-local mid 换算 \(q^\*\)（否则各 venue 实际比较的 size 不一致）。
-- 深度不足：无法填满 \(q^\*\) → `status=insufficient_liquidity`，`effective_price` / `spread_bps` 为 `null`（见 §6.5）。
+- **只用** reference mid 换算；禁止 venue-local mid。
+- 深度不足以成交 `q_star` → `status=insufficient_liquidity`，价格字段 null（§6.5）。
 
 ### 4.3 Orderbook：walk-the-book → VWAP
 
-对 **买**（吃 ask）：
+**Buy**（吃 ask）：从最优 ask 起累加 base 至 ≥ `q_star`（末档可 partial）。
 
-1. 从最优 ask 起沿价位累加 base，直到累计 base \(\ge q^\*\)（最后一档按比例吃 partial level）。
-2. \(P^\* = \dfrac{\sum_i p_i \cdot q_i}{\sum_i q_i}\)（成交 quote 总额 / 成交 base 总额）。
+```text
+P_star = sum(price_i * qty_i) / sum(qty_i)
+```
 
-对 **卖**（吃 bid）：对称，从最优 bid 向下 walk。
+**Sell**（吃 bid）：对称从最优 bid 向下。
 
-实现约束：
-
-- 使用 **可成交** 深度（L2）；忽略自己的挂单（公开 API 通常无此区分，Phase 1 忽略）。
-- 价格与数量精度：中间计算用 `Decimal`；写入 Quote 时价格建议 8 位有效小数、bps 保留 4 位小数（展示可再圆整）。
+- 中间计算 `Decimal`；落库/API：价格 ≥8 位有效数字，bps 保留 4 位小数。
 
 ### 4.4 AMM / Prop AMM：报价 → effective price
 
-目标：得到与 orderbook 同语义的 \(P^\*\)（quote per base）。
-
-| Side | 推荐请求语义 | \(P^\*\) |
+| Side | 推荐请求 | `P_star` |
 | --- | --- | --- |
-| `buy` | ExactIn **quote** 使输出 base \(\approx q^\*\)，或 ExactOut base \(= q^\*\)（若 API 支持） | `quote_in / base_out` |
-| `sell` | ExactIn base \(= q^\*\) | `quote_out / base_in` |
+| `buy` | ExactOut base = `q_star`（若支持）；否则 ExactIn quote≈N | `quote_in / base_out` |
+| `sell` | ExactIn base = `q_star` | `quote_out / base_in` |
 
-**Prop AMM / Jupiter**（WHI-797）：
+**Prop AMM / Jupiter**（[WHI-797](./WHI-797-prop-amm-jupiter-quote-api.md)）：
 
-- 使用 `outAmount`（已扣 AMM fee；`platformFee` 保持 null / 0）。
+- 用 `outAmount`（已扣 AMM fee；`platformFee` 保持 0）。
 - `embedded_in_price = true`。
-- 无路由：`status=no_quote`（**不**抛 5xx）。
+- 无路由：`status=no_quote`（不抛 5xx）。
 
-**公共 AMM**（Uniswap 等）：
+**公共 AMM**：
 
-- 优先 quoter 的净输出；LP fee 通常已嵌在价格中 → `embedded_in_price=true`，并在 `FeeBreakdown` 中把 **可知的 pool fee tier** 记为信息字段（`lp_fee_tier_bps`），**不**再加进 `explicit_fee_bps`。
-- Gas **不**嵌在价格里 → 记入 `gas_usd` / `gas_bps`。
+- 净输出 → `embedded_in_price=true`；池费档写入 `lp_fee_tier_bps`（**信息字段**，不进 `trading_component_bps`）。
+- Gas **不**在价内 → `gas_usd` / `gas_bps`；若无法估算 → `gas_usd=null` 且 `gas_unknown=true`（§5.2）。
 
-ExactOut 不可用时的近似（允许，但必须标记 `qty_method=quote_exact_in_approx`）：
+ExactOut 不可用时允许 approx，且必须 `qty_method=quote_exact_in_approx`。
 
-1. 用 \(N\) 作为 ExactIn quote 买 base，得 `base_out`；
-2. \(P^\* = N / base_out`；
-3. 实际 base 可能 ≠ \(q^\*\)；在深度较好时误差可接受。M2 单测需覆盖「ExactOut 路径」与「approx 路径」分支。
+### 4.5 Spread 公式（单边）— 唯一权威
 
-### 4.5 Spread 公式（单边）
+```text
+buy:  spread_bps = (P_star - mid) / mid * 10_000
+sell: spread_bps = (mid - P_star) / mid * 10_000
+```
 
-\[
-\begin{aligned}
-\text{buy:  } & spread\_bps = \frac{P^\* - mid}{mid} \times 10\,000 \\
-\text{sell: } & spread\_bps = \frac{mid - P^\*}{mid} \times 10\,000
-\end{aligned}
-\]
-
-性质：
-
-- 正常流动性下 **\(spread\_bps \ge 0\)**（买贵卖贱）。负值表示优于 mid（rebate、错价、或 mid 源偏差）——**保留符号**，不截断为 0，便于发现 mid 问题。
-- 该 `spread_bps` 是 **价差成本**；是否已含 trading fee 由 `fee_breakdown.embedded_in_price` 解释（§5）。
+- 正常流动性下 ≥ 0；负值保留（优于 mid / mid 偏差），**不**截断为 0。
+- **谁计算**：adapter 在已知 `mid` 后计算 `spread_bps` 与 `total_cost_bps`。聚合层 **不得**改 bps 定义；仅在「adapter 只回 raw price、由聚合层统一套 mid」的实现变体中，聚合层用**同一公式**补算——两种实现选其一，测试锁定结果。
 
 ### 4.6 双边汇总
 
-对同一 `(venue, asset, notional_usd, snapshot)`：
+对同一 `(snapshot_id, venue, asset, notional_usd)`：
 
-| 指标 | 公式 | 用途 |
-| --- | --- | --- |
-| `buy_spread_bps` / `sell_spread_bps` | §4.5 | 主表可切换 side |
-| `round_trip_spread_bps` | `buy + sell` | 「来回一次」价差 |
-| `half_spread_bps` | `round_trip / 2` | 与「单边平均」对齐的摘要 |
-| `max_side_spread_bps` | `max(buy, sell)` | 最差单边 |
+| 指标 | 公式 |
+| --- | --- |
+| `round_trip_spread_bps` | `buy_spread_bps + sell_spread_bps` |
+| `half_spread_bps` | `round_trip_spread_bps / 2` |
+| `round_trip_total_cost_bps` | `buy.total_cost_bps + sell.total_cost_bps`（两侧皆 `ok` 且 gas 可知） |
 
-**默认 dashboard 主指标**：`half_spread_bps`（或同时展示 buy/sell 列）。Summary 文案应用 round-trip 或 half 时必须写明用的是哪一个。
-
-任一侧 `insufficient_liquidity` / `no_quote`：
-
-- 汇总字段为 `null`；
-- 另一侧单边 Quote 仍可返回。
+任一侧非 `ok` → 对应汇总字段 `null`；另一侧单边 Quote 仍返回。
 
 ### 4.7 数值示例（规范测试向量）
 
-**设定**：`mid = 100_000` USD/BTC，`N = 10_000` → \(q^\* = 0.1\) BTC。
+**设定**：`mid = 100_000` USD/BTC，`N = 10_000` → `q_star = 0.1` BTC。
 
 **Orderbook asks**（buy）：
 
@@ -221,15 +216,33 @@ ExactOut 不可用时的近似（允许，但必须标记 `qty_method=quote_exac
 | 2 | 100_050 | 0.04 |
 | 3 | 100_100 | 0.10 |
 
-Walk 0.1 BTC：`0.04×100010 + 0.04×100050 + 0.02×100100 = 4000.4 + 4002 + 2002 = 10004.4`  
-\(P^\* = 10004.4 / 0.1 = 100\_044\)  
-\(spread\_bps = (100044 - 100000) / 100000 × 10000 = 4.4\)
+Walk 0.1 BTC：`0.04*100010 + 0.04*100050 + 0.02*100100 = 10004.4`  
+`P_star = 10004.4 / 0.1 = 100_044`  
+`spread_bps = (100044 - 100000) / 100000 * 10000 = 4.4`
 
-**若 taker fee = 10 bps 且价未含 fee**：`explicit_fee_bps = 10`，`total_cost_bps = 4.4 + 10 = 14.4`（gas=0）。
+**CEX，taker 10 bps，价未含 fee**：
 
-**若 Prop AMM 净价** \(P^\* = 100\_044\) 且 fee 已嵌：`spread_bps = 4.4`，`embedded_in_price=true`，`explicit_fee_bps=0`，`total_cost_bps=4.4`（+ gas_bps）。
+```text
+embedded_in_price = false
+trading_component_bps = 10
+platform_fee_bps = 0
+gas_bps = 0
+explicit_fee_bps = 10
+total_cost_bps = 4.4 + 10 = 14.4
+```
 
-CEX adapter 单测（WHI-802）应固定上述 book fixture，断言 `spread_bps == 4.4`。
+**Prop AMM，净价 `P_star = 100_044`，fee 已嵌，无 gas**：
+
+```text
+embedded_in_price = true
+trading_component_bps = 0
+platform_fee_bps = 0
+gas_bps = 0
+explicit_fee_bps = 0
+total_cost_bps = 4.4
+```
+
+WHI-802 单测应固定上述 book fixture，断言 `spread_bps == 4.4`。
 
 ---
 
@@ -237,213 +250,247 @@ CEX adapter 单测（WHI-802）应固定上述 book fixture，断言 `spread_bps
 
 ### 5.1 费用组件
 
-| 组件 | 适用 | 计入默认 `total_cost_bps`？ | 说明 |
+| 组件 | 适用 | 计入默认 total？ | 说明 |
 | --- | --- | --- | --- |
-| Trading fee（taker/maker） | CEX / Perp DEX | ✅ 作为 `explicit_fee_bps` | Phase 1 默认 **taker** 档；VIP 档由配置选择 |
-| LP / pool fee | AMM | ❌ 若已嵌价格；仅信息字段 | 见 `lp_fee_tier_bps` |
-| Embedded AMM/prop fee | Prop AMM / 部分 AMM | ❌ 不再加项 | 已在 \(P^\*\) 内 |
-| Platform / aggregator fee | Jupiter 等 | ✅ 若非 0 | Phase 1 Metis 默认 0（WHI-797） |
-| Gas | 链上 venue | ✅ `gas_bps` | `gas_usd / N × 10_000` |
-| Funding | Perp | ❌ 默认 | 见 §5.3 |
-| Deposit/withdraw / bridge | 跨所进出金 | ❌ Phase 1 | 非目标 |
+| Trading fee（taker/maker） | CEX / Perp | ✅ 经 `trading_component_bps` | Phase 1 默认 **taker** |
+| LP / pool fee | AMM | ❌ 价内；仅 `lp_fee_tier_bps` 信息 | |
+| Embedded AMM/prop fee | Prop / 部分 AMM | ❌ 已在 `P_star` | `embedded_in_price=true` |
+| Platform fee | 聚合器 | ✅ `platform_fee_bps` | Phase 1 Jupiter 默认 0 |
+| Gas | 链上 | ✅ `gas_bps`；未知则见下 | |
+| Funding | Perp | ❌ 默认 | §5.3 |
+| 出入金 / bridge | — | ❌ Phase 1 | |
 
-### 5.2 公式
+### 5.2 唯一权威公式
+
+所有章节（含 TL;DR、示例）引用本节，不得另写分支语义。
 
 ```text
-gas_bps            = (gas_usd / notional_usd) * 10_000     # gas_usd 缺失则 0
-explicit_fee_bps   = trading_fee_bps + platform_fee_bps    # 仅非内嵌部分
-                     # 若 fee 以 USD 给出：fee_usd / notional_usd * 10_000
-
-if embedded_in_price:
-    # spread 已含交易 fee；禁止再加 trading_fee_bps
-    total_cost_bps = spread_bps + gas_bps + platform_fee_bps
+# 1) trading 是否已在价内
+if fee_breakdown.embedded_in_price:
+    trading_component_bps = 0
 else:
-    total_cost_bps = spread_bps + explicit_fee_bps + gas_bps
+    trading_component_bps = trading_fee_bps   # 来自 FeeSchedule 选用档，通常 taker
+
+# 2) gas
+if gas_unknown:
+    gas_bps = null                            # 见下：total 也 null
+elif gas_usd is null:
+    gas_bps = 0                               # 明确「无链上 gas」（CEX/perp）
+else:
+    gas_bps = gas_usd / notional_usd * 10_000
+
+# 3) platform（即使 embedded 也加——平台费不在 pool 曲线内）
+platform_fee_bps = platform_fee_bps or 0
+
+# 4) 汇总
+explicit_fee_bps = trading_component_bps + platform_fee_bps + (gas_bps or 0)
+# 注意：gas_unknown 时不定义 explicit/total（见下）
+
+if gas_unknown:
+    total_cost_bps = null                     # 禁止把未知 gas 当 0 去排序
+    fee_breakdown.explicit_fee_bps = null
+else:
+    total_cost_bps = spread_bps + trading_component_bps + platform_fee_bps + gas_bps
+    fee_breakdown.explicit_fee_bps = explicit_fee_bps
 ```
 
-`platform_fee_bps` 在 Jupiter 默认路径为 0；若用户启用平台费，**即使** `embedded_in_price` 也要加（平台费通常不在 pool 曲线内，WHI-797：未设时 `platformFee=null`）。
+**排序规则（给 dashboard / simulate）**：仅 `status=ok` 且 `total_cost_bps is not null` 参与「最优」排序；`gas_unknown` 行单独分组或标「成本不完整」，**不得**因 gas=0 幻觉排到最前。
 
-### 5.3 Funding 政策（明确）
+### 5.3 Funding 政策
 
 | 场景 | 处理 |
 | --- | --- |
-| 即时执行质量对比（dashboard 主表、`/quotes`） | **忽略 funding** |
-| 费用页信息展示 | 展示 `funding_rate_8h` / 年化，**不**加进主排序 |
-| 可选「持有 \(T\) 小时的成本」 | `funding_cost_bps ≈ funding_rate_8h × (T/8) × 10_000`（方向：多付正 funding 为成本）—— **独立字段** `total_cost_with_funding_bps`，默认 API 可省略 |
+| 主表 / `/quotes` | **忽略 funding** |
+| 费用信息展示 | 展示 `funding_rate_8h`（**小数**，如 `0.0001` = 每 8h 1 bps 名义） |
+| 可选持有 T 小时 | 见下式；字段名 `total_cost_with_funding_bps`，默认 API 可省略 |
 
-理由：funding 是 **持仓时间** 的函数，与「市价吃 \(N\) 美元」的瞬时执行质量不同维；混进主指标会让「谁 spread 更低」变成「谁 funding 碰巧为负」。
+```text
+# position_side: 与 Quote.side 对齐——buy=开/持有多，sell=开/持有空（Phase 1 简化）
+# funding_rate_8h > 0 表示多头支付空头
+sign = +1 if position_side == "buy" else -1
+funding_cost_bps = sign * funding_rate_8h * (T_hours / 8) * 10_000
+total_cost_with_funding_bps = total_cost_bps + funding_cost_bps
+# 仅当 total_cost_bps 非 null
+```
 
 ### 5.4 `FeeBreakdown`（每笔 Quote 内嵌）
 
 ```text
 FeeBreakdown {
   embedded_in_price:   bool
-  fee_tier:            str | null          # e.g. "default_taker" | "vip0" | "pool_0.05%"
-  trading_fee_bps:     Decimal | null      # 显式费率；内嵌时可为 null
-  trading_fee_usd:     Decimal | null
-  platform_fee_bps:    Decimal | null      # 默认 0
-  lp_fee_tier_bps:     Decimal | null      # 信息：池费档，不自动计入 total
+  fee_tier:            str | null          # "default_taker" | "vip0" | "pool_0.05%"
+  trading_fee_bps:     Decimal | null      # 费率表取值；embedded 时可为 null
+  trading_fee_usd:     Decimal | null      # 可选；若填则应 ≈ trading_fee_bps/1e4 * N
+  platform_fee_bps:    Decimal             # 默认 0，非 null
+  lp_fee_tier_bps:     Decimal | null      # 信息
   gas_usd:             Decimal | null
   gas_bps:             Decimal | null
-  funding_rate_8h:     Decimal | null      # 小数或 bps 须在字段注释统一：用「小数」e.g. 0.0001 = 1 bps per 8h
-  explicit_fee_bps:    Decimal             # 参与 total 的显式费（见 §5.2）
+  gas_unknown:         bool                # true ⇒ total_cost_bps 必须 null
+  funding_rate_8h:     Decimal | null      # 小数，非 bps
+  explicit_fee_bps:    Decimal | null      # §5.2 定义
   notes:               str | null
 }
 ```
 
-### 5.5 `FeeSchedule`（venue 级 / 资产级费率表，WHI-812 填充）
+bps 与 USD 成对字段：以 **bps 为权威**；USD 为派生展示，测试只锁 bps。
+
+### 5.5 `FeeSchedule`（venue 级，WHI-812 填充）
 
 ```text
 FeeSchedule {
-  venue:               str
-  asset:               str | null          # null = venue 默认
-  instrument_type:     "spot" | "perp" | "amm_pool" | "prop_amm"
-  maker_bps:           Decimal | null
-  taker_bps:           Decimal | null
-  tiers:               list[FeeTier] | null
-  default_tier:        str                 # Phase 1: "default_taker"
-  lp_fee_tiers_bps:    list[Decimal] | null
-  gas_estimate_usd:    Decimal | null      # 静态缺省；实时以 Quote.fee_breakdown.gas_usd 为准
-  funding_model:       "none" | "perp_8h" | "perp_continuous"
-  fee_embedded_in_quote: bool              # Prop AMM / 多数 AMM = true
-  source_urls:         list[str]           # 官方费率页（WHI-812 验收）
-  updated_at:          datetime
+  venue:                 str               # §6.4 slug
+  asset:                 str | null        # null = venue 默认
+  instrument_type:       "spot" | "perp" | "amm_pool" | "prop_amm"
+  maker_bps:             Decimal | null
+  taker_bps:             Decimal | null
+  tiers:                 list[FeeTier] | null
+  default_tier:          str               # Phase 1: "default_taker"
+  lp_fee_tiers_bps:      list[Decimal] | null
+  gas_estimate_usd:      Decimal | null    # 静态缺省；实时以 Quote 为准
+  funding_model:         "none" | "perp_8h" | "perp_continuous"
+  fee_embedded_in_quote: bool
+  source_urls:           list[str]         # 官方费率页（WHI-812 验收）
+  updated_at:            datetime
 }
 
 FeeTier {
-  name:                str
-  maker_bps:           Decimal
-  taker_bps:           Decimal
-  volume_requirement:  str | null
+  name:                  str
+  maker_bps:             Decimal
+  taker_bps:             Decimal
+  volume_requirement:    str | null
 }
 ```
-
-静态档进配置文件；动态 gas/funding 由 adapter 实时写入 `FeeBreakdown`。
 
 ---
 
 ## 6. 统一数据模型
 
-### 6.1 `Quote`（核心）
+### 6.1 共享状态枚举
 
-Issue 要求字段 + M2 必需扩展：
+```text
+QuoteStatus =
+  | "ok"
+  | "no_quote"                 # 无市场 / 无路由
+  | "insufficient_liquidity"   # 深度不够 q_star
+  | "unsupported_asset"
+  | "error"
+```
+
+（`TopOfBook` 不复用该枚举——orderbook 适配器用返回值 `None` 表示「本 venue 无 TOB 概念」，见 §6.2 / §7。）
+
+### 6.2 `Quote`
 
 ```text
 Quote {
   # --- identity ---
-  venue:              str                 # 稳定 slug：binance | bybit | hyperliquid | lighter | apex
-                                          # | uniswap_eth | aerodrome_base | pancakeswap_bsc
-                                          # | humidifi | tesserav | bisonfi
-  asset:              str                 # 规范资产 ID
-  venue_symbol:       str | null          # 本地符号 / mint / market id
+  snapshot_id:        str
+  venue:              str                 # §6.4 slug
+  asset:              str
+  venue_symbol:       str | null
   instrument_type:    "spot" | "perp" | "amm_pool" | "prop_amm"
   side:               "buy" | "sell"
-  notional_usd:       Decimal             # 1000 | 10000 | 100000 | 1000000
+  notional_usd:       Decimal
 
   # --- mid & price ---
-  mid:                Decimal             # = ReferenceMid.mid（同快照）
+  mid:                Decimal
   mid_source:         str
-  effective_price:    Decimal | null      # quote per base；失败时 null
+  mid_timestamp:      datetime
+  mid_stale:          bool
+  effective_price:    Decimal | null
   spread_bps:         Decimal | null
 
   # --- fees & total ---
   fee_breakdown:      FeeBreakdown
-  total_cost_bps:     Decimal | null
+  total_cost_bps:     Decimal | null      # gas_unknown 或 status!=ok 时 null
 
   # --- book-keeping ---
-  timestamp:          datetime            # 该 venue 报价时刻 UTC
+  timestamp:          datetime            # venue 报价时刻 UTC
   status:             QuoteStatus
-  qty_base:           Decimal | null      # 实际用于定价的 base 数量（目标为 N/mid）
+  qty_base:           Decimal | null
   qty_method:         "base_from_mid" | "quote_exact_in_approx" | null
-  venue_mark:         Decimal | null      # perp mark；可选
+  venue_mark:         Decimal | null
   basis_bps:          Decimal | null
-  raw_ref:            str | null          # 可选：上游请求 id / 样本路径，便于调试
+  raw_ref:            str | null
 
-  # --- errors ---
   error_code:         str | null
   error_message:      str | null
 }
-
-QuoteStatus =
-  | "ok"
-  | "no_quote"                 # 无市场 / 无路由
-  | "insufficient_liquidity"   # 深度不够 N
-  | "unsupported_asset"        # venue 不支持该 asset
-  | "error"                    # 上游失败等
 ```
 
-**不变量（实现与测试必须遵守）**：
+**不变量**：
 
-1. `status == "ok"` ⇒ `effective_price`、`spread_bps`、`total_cost_bps`、`qty_base` 均非 null。
-2. `status != "ok"` ⇒ 上述价格字段为 null；`fee_breakdown` 仍可部分填充。
-3. `mid` / `mid_source` 即使失败也应尽量带上（便于 UI 显示「相对何价」）；若 mid 服务整体失败，聚合层失败，不返回残缺可比集。
-4. `spread_bps` 与 `total_cost_bps` 的计算 **只** 使用本文公式；adapter 不得自定义 bps 定义。
+1. `status == "ok"` ⇒ `effective_price`、`spread_bps`、`qty_base` 非 null；且（`gas_unknown` ⇒ `total_cost_bps is null`）或（非 `gas_unknown` ⇒ `total_cost_bps` 非 null）。
+2. `status != "ok"` ⇒ `effective_price`、`spread_bps`、`total_cost_bps`、`qty_base` 均为 null。
+3. `snapshot_id` / `mid` / `mid_source` / `mid_timestamp` 在同快照同资产上全 venue 一致。
+4. bps 公式 **仅** §4.5 / §5.2。
 
-### 6.2 `TopOfBook`
+### 6.3 `TopOfBook`
+
+仅 orderbook venue 返回该对象；AMM / Prop 的接口返回 **`None`**（不是带 `unsupported` status 的空壳）。
 
 ```text
 TopOfBook {
+  snapshot_id:        str
   venue:              str
   asset:              str
   best_bid:           Decimal
   best_ask:           Decimal
-  bid_size:           Decimal | null      # base 数量
+  bid_size:           Decimal | null      # base
   ask_size:           Decimal | null
   mid_local:          Decimal             # (bid+ask)/2
-  mid_ref:            Decimal             # reference mid
+  mid_ref:            Decimal
+  mid_timestamp:      datetime
   spread_bps:         Decimal             # (ask - bid) / mid_ref * 10_000
   spread_bps_local:   Decimal             # (ask - bid) / mid_local * 10_000
   timestamp:          datetime
-  status:             "ok" | "no_book" | "unsupported" | "error"
 }
 ```
 
-- **仅 orderbook venue** 实现 `get_orderbook_spread`；AMM / Prop AMM 返回 `null`（不是假 TOB）。
-- 主对比表展示 `spread_bps`（相对 `mid_ref`）；`spread_bps_local` 供微观结构调试。
+- 拉簿失败：`get_orderbook_spread` 抛错或由 adapter 约定返回错误由聚合层记 venue error——**不要**用「status 枚举 + 空价格」双轨。成功则字段全非 null（size 除外）。
+- 主对比用 `spread_bps`（相对 `mid_ref`）。
 
-### 6.3 双边汇总视图（API 可合成，非 adapter 必返回）
+### 6.4 双边汇总视图（聚合层可合成）
 
 ```text
 SizeQuotePair {
-  venue: str
-  asset: str
-  notional_usd: Decimal
-  buy:  Quote | null
-  sell: Quote | null
-  round_trip_spread_bps: Decimal | null
-  half_spread_bps:       Decimal | null
-  round_trip_total_cost_bps: Decimal | null   # buy.total + sell.total（两侧皆 ok）
-  top_of_book: TopOfBook | null
+  snapshot_id:               str
+  venue:                     str
+  asset:                     str
+  notional_usd:              Decimal
+  buy:                       Quote | null
+  sell:                      Quote | null
+  round_trip_spread_bps:     Decimal | null
+  half_spread_bps:           Decimal | null
+  round_trip_total_cost_bps: Decimal | null
+  top_of_book:               TopOfBook | null
 }
 ```
 
-### 6.4 Venue slug 注册表（稳定，禁止别名漂移）
+### 6.5 Venue slug 注册表（稳定，禁止别名漂移）
 
-| slug | Class |
-| --- | --- |
-| `binance` | CEX |
-| `bybit` | CEX |
-| `hyperliquid` | Perp DEX |
-| `lighter` | Perp DEX |
-| `apex` | Perp DEX |
-| `uniswap_eth` | AMM |
-| `aerodrome_base` | AMM |
-| `pancakeswap_bsc` | AMM |
-| `humidifi` | Prop AMM |
-| `tesserav` | Prop AMM |
-| `bisonfi` | Prop AMM |
+| slug | 显示名 | Class | 备注 |
+| --- | --- | --- | --- |
+| `binance` | Binance | CEX | |
+| `bybit` | Bybit | CEX | |
+| `hyperliquid` | Hyperliquid | Perp DEX | |
+| `lighter` | Lighter | Perp DEX | |
+| `apex` | ApeX | Perp DEX | |
+| `uniswap_eth` | Uniswap (Ethereum) | AMM | |
+| `aerodrome_base` | Aerodrome (Base) | AMM | |
+| `pancakeswap_bsc` | PancakeSwap (BSC) | AMM | |
+| `humidifi` | HumidiFi | Prop AMM | Jupiter `dexes=HumidiFi` |
+| `tessera` | Tessera | Prop AMM | Jupiter `dexes=TesseraV`（label ≠ slug） |
+| `bisonfi` | BisonFi | Prop AMM | Jupiter `dexes=BisonFi` |
 
-新增 venue 必须改本表（或后续 ADR），adapter registry 的 key 与此一致。
+### 6.6 错误与降级语义
 
-### 6.5 错误与降级语义
-
-| 情况 | status | HTTP 聚合（WHI-807） |
+| 情况 | Quote.status | 聚合 |
 | --- | --- | --- |
 | 无 pair / 无路由 | `no_quote` | 200，该行 N/A |
-| 深度 < \(q^\*\) | `insufficient_liquidity` | 200，该 size N/A |
-| 资产不在 venue | `unsupported_asset` | 200 |
-| 超时 / 5xx / 解析失败 | `error` | 200 + 该 venue 错误；**不**导致整包失败 |
-| mid 不可用 | — | **整包 503 或 422**（无 mid 则所有 spread 无意义） |
+| 深度 < `q_star` | `insufficient_liquidity` | 200 |
+| 资产不支持 | `unsupported_asset` | 200 |
+| 超时 / 上游失败 | `error` | 200 + 该 venue 错误；不整包失败 |
+| mid 不可用 | — | 整包 503/422 |
 
 ---
 
@@ -451,17 +498,17 @@ SizeQuotePair {
 
 ```text
 class VenueAdapter(Protocol):
-    venue: str                          # §6.4 slug
-    venue_class: Literal["cex","perp_dex","amm_dex","prop_amm"]
+    venue: str                          # §6.5 slug
+    venue_class: Literal["cex", "perp_dex", "amm_dex", "prop_amm"]
 
     def get_quote(
         self,
         asset: str,
-        side: Literal["buy","sell"],
+        side: Literal["buy", "sell"],
         notional_usd: Decimal,
         *,
-        mid: ReferenceMid,
-        fee_tier: str | None = None,    # 默认 schedule.default_tier
+        mid: ReferenceMid,              # 含 snapshot_id
+        fee_tier: str | None = None,
     ) -> Quote: ...
 
     def get_orderbook_spread(
@@ -470,7 +517,7 @@ class VenueAdapter(Protocol):
         *,
         mid: ReferenceMid,
     ) -> TopOfBook | None:
-        """Orderbook venues: TopOfBook. AMM/Prop: None."""
+        """CEX/Perp: TopOfBook. AMM/Prop: always None."""
         ...
 
     def get_fees(self, asset: str | None = None) -> FeeSchedule: ...
@@ -478,67 +525,81 @@ class VenueAdapter(Protocol):
     def supported_assets(self) -> list[str]: ...
 ```
 
-**职责切分**：
-
 | 层 | 职责 |
 | --- | --- |
-| Adapter | 拉深度/报价；walk 或 quoter；填 `effective_price`、本地 fee/gas；算 `spread_bps` / `total_cost_bps`（公式固定） |
-| Mid service（WHI-807） | 解析 `ReferenceMid`，同一快照共用 |
-| Aggregator | 并发调用、超时、缓存；拼 `SizeQuotePair`；**不**改 bps 定义 |
-| Fee config（WHI-812） | 静态 `FeeSchedule`；adapter 读取 |
-
-**并发契约（给 WHI-807）**：单 venue 超时建议 ≤ 2s；整体 ≤ 3s；结果可含混合 status。
+| Adapter | 深度/报价；walk 或 quoter；填 `effective_price`、fee/gas；按 §4.5/§5.2 算 bps |
+| Mid service | 解析 `ReferenceMid`（含 `snapshot_id`） |
+| Aggregator | 并发、超时、缓存；拼 `SizeQuotePair`；**不**另立 bps 公式 |
+| Fee config | 静态 `FeeSchedule` |
 
 ---
 
 ## 8. 按 venue class 的实现备忘
 
-| Class | `get_quote` | TOB | Fee 要点 |
+| Class | `get_quote` | `get_orderbook_spread` | Fee |
 | --- | --- | --- | --- |
-| CEX | L2 walk \(q^\*\) | ✅ | 默认 taker；`embedded_in_price=false` |
-| Perp DEX | L2 walk；注意 lot/tick | ✅ | 同上 + `funding_rate_8h` 信息字段；`venue_mark` 可选 |
-| AMM DEX | Quoter；gas 估算 | `None` | 价内嵌 LP fee；+ `gas_bps` |
-| Prop AMM | Jupiter `dexes=<Label>` 净 `outAmount` | `None` | `embedded_in_price=true`；platform 0；无路由 → `no_quote` |
+| CEX | L2 walk `q_star` | `TopOfBook` | 默认 taker；`embedded_in_price=false`；`gas_unknown=false`，`gas_bps=0` |
+| Perp DEX | L2 walk；lot/tick | `TopOfBook` | 同上 + `funding_rate_8h`；可选 `venue_mark` |
+| AMM DEX | Quoter + gas | `None` | 价内嵌 LP；gas 可知则填，否则 `gas_unknown=true` |
+| Prop AMM | Jupiter `dexes=<Label>` 净输出 | `None` | `embedded_in_price=true`；platform 0；无路由 → `no_quote` |
 
 ---
 
-## 9. 展示与排序约定（前端 / summary）
+## 9. 指标在产品中的用法（非 UI 规格）
 
-1. 主表：venue × size，单元格默认 **`half_spread_bps`** 或 **`total_cost_bps`（buy）**——产品可切换；切换控件必须标注指标名。
-2. 排序「最优」：`total_cost_bps` 升序（仅 `status=ok`）；N/A 沉底。
-3. bps 展示：保留 2 位小数（`4.40 bps`）；导出/API 保留 4 位。
-4. 时间：UI 显示 quote 与 mid 的时间戳；相差 >5s 显示 stale 提示。
-5. Stocks 闭市：链上/ perps 仍可能有价——标注 session（WHI-810），**不**改公式。
+供 dashboard / summary **选用**的指标集合（具体默认列由 WHI-808+ 定）：
+
+- 单边：`spread_bps`、`total_cost_bps`（buy 或 sell）
+- 双边：`half_spread_bps`、`round_trip_spread_bps`、`round_trip_total_cost_bps`
+- 盘口：`TopOfBook.spread_bps`（仅 orderbook）
+- 完整性：过滤 `status!=ok` 与 `total_cost_bps is null`（`gas_unknown`）后再比「谁更便宜」
+- 时间：展示 `timestamp` 与 `mid_timestamp`；`mid_stale=true` 时提示
+
+bps API 保留 4 位小数；展示可再圆整到 2 位。
 
 ---
 
 ## 10. 验收标准（本 issue）
 
-- [x] 定义 effective spread at size（四档、买/卖、双边汇总）
-- [x] 定义 top-of-book（仅 orderbook）
-- [x] 定义 reference mid 优先级与 spot/perp/funding 政策
-- [x] 定义 total cost 与 **反双计** 规则
-- [x] 给出 `Quote` / `TopOfBook` / `FeeBreakdown` / `FeeSchedule` / `ReferenceMid` 字段级模型
-- [x] 给出 adapter Protocol，可供 WHI-801 直接编码
-- [x] 含可复制的数值测试向量（§4.7）
-
-WHI-801 验收时应：Pydantic 模型字段 ⊆ 本文命名；mock adapter 对 §4.7 fixture 得到 `spread_bps=4.4`。
+- [x] Effective spread at size（四档、买/卖、双边汇总）
+- [x] Top-of-book（仅 orderbook；AMM 返回 `None`）
+- [x] Reference mid 优先级（可调用端点）+ spot/perp/funding 政策
+- [x] Total cost **单一**公式 + 反双计 + `gas_unknown` 不假排序
+- [x] `Quote` / `TopOfBook` / `FeeBreakdown` / `FeeSchedule` / `ReferenceMid`（含 `snapshot_id`、`mid_stale`）
+- [x] Adapter Protocol 可供 WHI-801 直接编码
+- [x] 数值测试向量（§4.7 → `spread_bps=4.4`）
 
 ---
 
-## 11. 开放问题（不阻塞 M2；需产品拍板时再 ADR）
+## 11. 开放问题（不阻塞 M2；拍板后 ADR）
 
 | ID | 问题 | 临时默认 |
 | --- | --- | --- |
-| Q1 | Stocks 无稳健 index 时是否强制 Pyth equity feed | 用 proxy mark 中位数并标注 |
-| Q2 | 主表默认列是 half-spread 还是 total cost (buy) | **total cost (buy)** 更贴近「买入成本」；文档/UI 可切换 |
-| Q3 | VIP 费率是否进 Phase 1 主路径 | 仅 `default_taker`；VIP 配置预留 |
-| Q4 | Gas 用即时 gas price 还是分位估计 | 即时 + 保守 L2 gas limit；WHI-804/812 细化 |
+| Q1 | Stocks 是否强制外部 equity feed | proxy mark 中位数 + 标注 |
+| Q2 | 产品主列默认 half-spread 还是 total cost (buy) | 建议 total cost (buy)；UI 可切换 |
+| Q3 | VIP 是否进 Phase 1 主路径 | 仅 `default_taker` |
+| Q4 | Gas 用即时价还是分位 | 即时 + 保守 gas limit（WHI-804/812） |
 
 ---
 
-## 12. 修订记录
+## 12. 产出物清单
+
+| 路径 | 说明 |
+| --- | --- |
+| `docs/research/WHI-799-spread-fee-data-model.md` | 本文（M2 口径与模型 SSOT） |
+| `README.md` | Research 表增加本 issue 链接 |
+
+## 13. 参考与复用来源
+
+- [WHI-797 Prop AMM + Jupiter Quote](./WHI-797-prop-amm-jupiter-quote-api.md) — `dexes` label、fee 内嵌、`outAmount` 语义
+- [WHI-798 资产清单](./WHI-798-asset-category-inventory.md) — venue class、包装资产、乘数
+- Binance USDT-M premium index：`GET /fapi/v1/premiumIndex`
+- Binance spot bookTicker：`GET /api/v3/ticker/bookTicker`
+- Linear [WHI-799](https://linear.app/whisker-personal/issue/WHI-799)、[WHI-801](https://linear.app/whisker-personal/issue/WHI-801)、[WHI-812](https://linear.app/whisker-personal/issue/WHI-812)
+
+## 14. 修订记录
 
 | 日期 | 变更 |
 | --- | --- |
-| 2026-08-03 | 初版：口径 + 模型 + adapter 契约（WHI-799） |
+| 2026-08-03 | 初版 |
+| 2026-08-03 | Review round 1：统一 total/explicit 公式；`snapshot_id`/`mid_stale`/`gas_unknown`；可调用 mid 端点；Tessera slug；去掉 LaTeX；TOB 仅 `None` 双轨消除；funding 带 side |
