@@ -1,0 +1,106 @@
+{
+    "code": 0,
+    "message": "successfully",
+    "data": {
+        "routeSummary": {
+            "tokenIn": "0x4200000000000000000000000000000000000006",
+            "amountIn": "1000000000000000000",
+            "amountInUsd": "1854.4526317646596",
+            "tokenOut": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+            "amountOut": "1855995442",
+            "amountOutUsd": "1845.6676830222773",
+            "gas": "794863",
+            "gasPrice": "6000000",
+            "gasUsd": "0.008844214693454115",
+            "l1FeeUsd": "0.000011376724860632783",
+            "extraFee": {
+                "feeAmount": "",
+                "chargeFeeBy": "",
+                "isInBps": false,
+                "feeReceiver": ""
+            },
+            "route": [
+                [
+                    {
+                        "pool": "0x11d5a5e1633c3a99fd023b8fd2d3486773c50993",
+                        "tokenIn": "0x4200000000000000000000000000000000000006",
+                        "tokenOut": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+                        "swapAmount": "1000000000000000000",
+                        "amountOut": "1855995442",
+                        "exchange": "axima-v2/elfomofi",
+                        "poolType": "axima",
+                        "poolExtra": {
+                            "swapDir": true,
+                            "priceProvider": "0xbfB141d1F0253b1080289b9f945c0D92a8d75C79"
+                        },
+                        "extra": {
+                            "_ce": {
+                                "prCnt": 2,
+                                "tgtAmtOut": "1855995442",
+                                "ces": [
+                                    {
+                                        "pool": "0x501568a7c6d9257ded9506008de044565c68fd60",
+                                        "tokenIn": "0x4200000000000000000000000000000000000006",
+                                        "tokenOut": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+                                        "swapAmount": "1000000000000000000",
+                                        "amountOut": "1855946533",
+                                        "exchange": "metric-propamm",
+                                        "poolType": "metric-propamm",
+                                        "poolExtra": {
+                                            "swapDir": true,
+                                            "priceProvider": ""
+                                        },
+                                        "extra": null
+                                    },
+                                    {
+                                        "pool": "0x72ab388e2e2f6facef59e3c3fa2c4e29011c2d38",
+                                        "tokenIn": "0x4200000000000000000000000000000000000006",
+                                        "tokenOut": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+                                        "swapAmount": "1000000000000000000",
+                                        "amountOut": "1855573223",
+                                        "exchange": "pancake-v3",
+                                        "poolType": "pancake-v3",
+                                        "poolExtra": {
+                                            "swapFee": 100,
+                                            "priceLimit": "4295128740"
+                                        },
+                                        "extra": {
+                                            "rAI": "0",
+                                            "nSqrtRx96": "3412952839178962037519098",
+                                            "nT": -201061
+                                        }
+                                    }
+                                ]
+                            },
+                            "_cs": "16419784589315871051",
+                            "_fr": {
+                                "amountOut": "1855902350",
+                                "amountOutUsd": 1845.5751090363399
+                            },
+                            "_fs": {
+                                "pool": "elfomofi_0x4200000000000000000000000000000000000006_0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+                                "tokenIn": "0x4200000000000000000000000000000000000006",
+                                "tokenOut": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+                                "swapAmount": "1000000000000000000",
+                                "amountOut": "1855902350",
+                                "exchange": "elfomofi",
+                                "poolType": "elfomofi",
+                                "poolExtra": {
+                                    "approvalAddress": "0xf0f0F0F0FB0d738452EfD03A28e8be14C76d5f73"
+                                },
+                                "extra": null
+                            },
+                            "_ts": "1785734765",
+                            "ri": "bf64a0ceIBZO5baC"
+                        }
+                    }
+                ]
+            ],
+            "routeID": "bf64a0ceIBZO5baC",
+            "checksum": "16419784589315871051",
+            "timestamp": 1785734765
+        },
+        "routerAddress": "0x6131B5fae19EA4f9D964eAc0408E4408b66337b5"
+    },
+    "requestId": "bf64a0ce-2016-4ee5-b682-a36a8eb017c7"
+}

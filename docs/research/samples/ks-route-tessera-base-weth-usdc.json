@@ -1,0 +1,51 @@
+{
+    "code": 0,
+    "message": "successfully",
+    "data": {
+        "routeSummary": {
+            "tokenIn": "0x4200000000000000000000000000000000000006",
+            "amountIn": "1000000000000000000",
+            "amountInUsd": "1854.4526317646596",
+            "tokenOut": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+            "amountOut": "1855680187",
+            "amountOutUsd": "1845.408476838612",
+            "gas": "693831",
+            "gasPrice": "6000000",
+            "gasUsd": "0.007720060343699433",
+            "l1FeeUsd": "0.000011611222478469732",
+            "extraFee": {
+                "feeAmount": "",
+                "chargeFeeBy": "",
+                "isInBps": false,
+                "feeReceiver": ""
+            },
+            "route": [
+                [
+                    {
+                        "pool": "0xf524c1bc1c64a2c99bc7eccf19ede9a1d89d5a7c",
+                        "tokenIn": "0x4200000000000000000000000000000000000006",
+                        "tokenOut": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+                        "swapAmount": "1000000000000000000",
+                        "amountOut": "1855680187",
+                        "exchange": "tessera",
+                        "poolType": "tessera",
+                        "poolExtra": {
+                            "blockNumber": 49472704,
+                            "tesseraSwap": "0x55555522005BcAE1c2424D474BfD5ed477749E3e"
+                        },
+                        "extra": {
+                            "_cs": "4807409205222737763",
+                            "_ts": "1785734759",
+                            "ri": "c0e13a42745HzblV"
+                        }
+                    }
+                ]
+            ],
+            "routeID": "c0e13a42745HzblV",
+            "checksum": "4807409205222737763",
+            "timestamp": 1785734759
+        },
+        "routerAddress": "0x6131B5fae19EA4f9D964eAc0408E4408b66337b5"
+    },
+    "requestId": "c0e13a42-ef8e-47cd-b955-d9ac7ab092a9"
+}

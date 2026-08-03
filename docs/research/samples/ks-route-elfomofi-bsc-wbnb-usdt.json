@@ -1,0 +1,50 @@
+{
+    "code": 0,
+    "message": "successfully",
+    "data": {
+        "routeSummary": {
+            "tokenIn": "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c",
+            "amountIn": "1000000000000000000",
+            "amountInUsd": "581.6917751817427",
+            "tokenOut": "0x55d398326f99059ff775485246999027b3197955",
+            "amountOut": "582180188700000059392",
+            "amountOutUsd": "581.5701013811552",
+            "gas": "578831",
+            "gasPrice": "1000000000",
+            "gasUsd": "0.33670123192022333",
+            "l1FeeUsd": "0",
+            "extraFee": {
+                "feeAmount": "",
+                "chargeFeeBy": "",
+                "isInBps": false,
+                "feeReceiver": ""
+            },
+            "route": [
+                [
+                    {
+                        "pool": "elfomofi_0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c_0x55d398326f99059ff775485246999027b3197955",
+                        "tokenIn": "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c",
+                        "tokenOut": "0x55d398326f99059ff775485246999027b3197955",
+                        "swapAmount": "1000000000000000000",
+                        "amountOut": "582180188700000059392",
+                        "exchange": "elfomofi",
+                        "poolType": "elfomofi",
+                        "poolExtra": {
+                            "approvalAddress": "0xf0f0F0F0FB0d738452EfD03A28e8be14C76d5f73"
+                        },
+                        "extra": {
+                            "_cs": "4132049922540518413",
+                            "_ts": "1785740739",
+                            "ri": "a5da96f0KmJLA7Sa"
+                        }
+                    }
+                ]
+            ],
+            "routeID": "a5da96f0KmJLA7Sa",
+            "checksum": "4132049922540518413",
+            "timestamp": 1785740739
+        },
+        "routerAddress": "0x6131B5fae19EA4f9D964eAc0408E4408b66337b5"
+    },
+    "requestId": "a5da96f0-2a62-4b03-b49a-d75434f45fb2"
+}
