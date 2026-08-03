@@ -75,8 +75,19 @@ describe("constrainSimulateSelection", () => {
       META,
     );
     expect(next.sell).toBe("USDT");
-    expect(META.assets.map((a) => a)).toContain(next.buy);
+    // Prefer the previous non-stable (direction flip keeps SOL, not firstAsset).
+    expect(next.buy).toBe("SOL");
     expect(isValidSimulatePair(next.sell, next.buy, META)).toBe(true);
+  });
+
+  it("keeps the user's asset when flipping sell to the other stable", () => {
+    const next = constrainSimulateSelection(
+      { sell: "ETH", buy: "USDC" },
+      "sell",
+      "USDC",
+      META,
+    );
+    expect(next).toEqual({ sell: "USDC", buy: "ETH" });
   });
 
   it("keeps a still-valid other leg when possible", () => {

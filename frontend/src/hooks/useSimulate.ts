@@ -60,28 +60,30 @@ export type UseSimulateResult = UseQueryResult<SimulateResponse, Error> & {
 
 export function useSimulate(params: UseSimulateParams): UseSimulateResult {
   const debounceMs = params.debounceMs ?? SIMULATE_DEBOUNCE_MS;
+  // Debounce free-form amount only — discrete select changes should fire
+  // immediately (AC: debounce keystrokes, not every UI control).
   const debouncedAmount = useDebouncedValue(params.amount, debounceMs);
-  const debouncedSell = useDebouncedValue(params.sellAsset, debounceMs);
-  const debouncedBuy = useDebouncedValue(params.buyAsset, debounceMs);
+  const sell = params.sellAsset;
+  const buy = params.buyAsset;
 
   const meta = params.pairMeta;
   const canSimulate =
     Boolean(meta) &&
-    isValidSimulatePair(debouncedSell, debouncedBuy, meta ?? { stables: [], assets: [] }) &&
+    isValidSimulatePair(sell, buy, meta ?? { stables: [], assets: [] }) &&
     isValidSimulateAmount(debouncedAmount);
 
   const enabled = (params.enabled ?? true) && canSimulate;
 
   const query = useQuery({
     queryKey: simulateQueryKey({
-      sellAsset: debouncedSell,
-      buyAsset: debouncedBuy,
+      sellAsset: sell,
+      buyAsset: buy,
       amount: debouncedAmount.trim(),
     }),
     queryFn: ({ signal }) => {
       const body: SimulateRequest = {
-        sell_asset: debouncedSell,
-        buy_asset: debouncedBuy,
+        sell_asset: sell,
+        buy_asset: buy,
         amount: debouncedAmount.trim(),
       };
       return postSimulate(body, { signal });

@@ -85,21 +85,43 @@ function parseResponseBody(text: string): unknown {
   }
 }
 
-function errorDetailMessage(body: unknown, fallback: string): string {
-  if (typeof body === "object" && body !== null && "detail" in body) {
-    const detail = (body as { detail: unknown }).detail;
-    if (typeof detail === "string") return detail;
-    if (
-      typeof detail === "object" &&
-      detail !== null &&
-      "message" in detail &&
-      typeof (detail as { message: unknown }).message === "string"
-    ) {
-      return (detail as { message: string }).message;
-    }
-    if (detail !== undefined) return String(detail);
+/**
+ * Unwrap FastAPI error bodies: `{detail: string | {message} | ValidationError[]}`.
+ * Exported so simulateView (and callers) share one walk instead of re-deriving.
+ */
+export function unwrapApiDetail(body: unknown): {
+  message: string | null;
+  detail: unknown;
+} {
+  if (typeof body !== "object" || body === null || !("detail" in body)) {
+    return { message: null, detail: null };
   }
-  return fallback;
+  const detail = (body as { detail: unknown }).detail;
+  if (typeof detail === "string") {
+    return { message: detail, detail };
+  }
+  if (Array.isArray(detail)) {
+    // Pydantic / HTTPValidationError: list of {loc, msg, type}.
+    const first = detail[0] as { msg?: unknown } | undefined;
+    if (first && typeof first.msg === "string") {
+      return { message: first.msg, detail };
+    }
+    return { message: "Request validation failed", detail };
+  }
+  if (
+    typeof detail === "object" &&
+    detail !== null &&
+    "message" in detail &&
+    typeof (detail as { message: unknown }).message === "string"
+  ) {
+    return { message: (detail as { message: string }).message, detail };
+  }
+  return { message: null, detail };
+}
+
+function errorDetailMessage(body: unknown, fallback: string): string {
+  const { message } = unwrapApiDetail(body);
+  return message ?? fallback;
 }
 
 async function apiGet<T>(

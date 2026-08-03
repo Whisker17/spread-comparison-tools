@@ -172,7 +172,18 @@ describe("feeBreakdownLines", () => {
     const gas = lines.find((l) => l.id === "gas");
     const total = lines.find((l) => l.id === "total");
     expect(trading?.note).toMatch(/embedded/i);
-    expect(gas?.note).toMatch(/unknown/i);
+    expect(gas?.unknown).toBe(true);
     expect(total?.note).toMatch(/incomplete/i);
+  });
+
+  it("does not stringify pydantic 422 lists as [object Object]", () => {
+    const err = parseSimulateError(
+      new ApiError("POST /simulate failed: 422 [object Object]", 422, {
+        detail: [{ loc: ["body", "amount"], msg: "value is not a valid decimal", type: "type_error.decimal" }],
+      }),
+    );
+    expect(err.kind).toBe("validation");
+    expect(err.message.toLowerCase()).toContain("decimal");
+    expect(err.message).not.toMatch(/\[object Object\]/i);
   });
 });

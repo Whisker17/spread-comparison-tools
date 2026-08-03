@@ -5,12 +5,13 @@
  * formats only — never re-derives a winner from expected_output or costs.
  */
 
+import { VENUE_META } from "@/config/sections/helpers";
 import type {
   SimulatePairErrorDetail,
   SimulateRowResponse,
   VenueResponse,
 } from "@/lib/api";
-import { ApiError } from "@/lib/api";
+import { ApiError, unwrapApiDetail } from "@/lib/api";
 import { compareSlug, parseDecimal } from "@/lib/format";
 
 export type SimulateRowPartition = {
@@ -91,25 +92,32 @@ export type VenueDisplayMeta = {
   classLabel: string;
 };
 
+/** Class badge labels — shared wording with fee table / section boards. */
 const CLASS_LABELS: Record<string, string> = {
   cex: "CEX",
   perp_dex: "Perp DEX",
   amm_dex: "Public AMM",
   prop_amm: "Prop AMM",
-  mock: "Mock",
 };
 
-/** Map GET /venues rows for simulate row chrome. */
+/**
+ * Map venue chrome for simulate rows.
+ *
+ * Prefer section SSOT (`VENUE_META` in helpers.ts) for display name + class;
+ * overlay chain from live GET /venues (helpers has no chain field).
+ */
 export function buildVenueMetaMap(
   venues: readonly VenueResponse[],
 ): Record<string, VenueDisplayMeta> {
   const out: Record<string, VenueDisplayMeta> = {};
   for (const v of venues) {
+    const staticMeta = VENUE_META[v.slug];
+    const venueClass = staticMeta?.venueClass ?? v.venue_class;
     out[v.slug] = {
-      displayName: v.display_name,
-      venueClass: v.venue_class,
+      displayName: staticMeta?.displayName ?? v.display_name,
+      venueClass,
       chain: v.chain ?? null,
-      classLabel: CLASS_LABELS[v.venue_class] ?? v.venue_class,
+      classLabel: CLASS_LABELS[venueClass] ?? venueClass,
     };
   }
   return out;
@@ -174,15 +182,17 @@ export function parseSimulateError(error: unknown): SimulateUserError {
           "Invalid pair — exactly one leg must be a USD stablecoin (USDC/USDT).",
       };
     }
+    const { message } = unwrapApiDetail(error.body);
     return {
       kind: "validation",
-      message: pair?.message || errorDetailString(error.body) || error.message,
+      message: pair?.message || message || "Request validation failed",
     };
   }
 
+  const { message } = unwrapApiDetail(error.body);
   return {
     kind: "generic",
-    message: errorDetailString(error.body) || error.message,
+    message: message || error.message,
   };
 }
 
@@ -209,23 +219,6 @@ function isPairErrorDetail(value: unknown): value is SimulatePairErrorDetail {
   );
 }
 
-function errorDetailString(body: unknown): string | null {
-  if (typeof body !== "object" || body === null) return null;
-  if ("detail" in body) {
-    const d = (body as { detail: unknown }).detail;
-    if (typeof d === "string") return d;
-    if (
-      typeof d === "object" &&
-      d !== null &&
-      "message" in d &&
-      typeof (d as { message: unknown }).message === "string"
-    ) {
-      return (d as { message: string }).message;
-    }
-  }
-  return null;
-}
-
 /**
  * Fee-breakdown lines for the expandable panel. Display only — never recomputes
  * total_cost_bps (backend / costs.py is SSOT).
@@ -234,6 +227,8 @@ export type FeeBreakdownLine = {
   id: string;
   label: string;
   bps: string | number | null | undefined;
+  /** True when the value is intentionally unknown (e.g. gas_unknown). */
+  unknown?: boolean;
   note?: string;
 };
 
@@ -262,7 +257,7 @@ export function feeBreakdownLines(
       id: "gas",
       label: "Gas",
       bps: fb.gas_unknown ? null : fb.gas_bps,
-      note: fb.gas_unknown ? "unknown" : undefined,
+      unknown: Boolean(fb.gas_unknown),
     },
     {
       id: "total",

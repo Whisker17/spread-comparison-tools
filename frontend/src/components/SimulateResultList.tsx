@@ -7,9 +7,10 @@ import { Badge } from "@/components/ui/badge";
 import type { SimulateResponse, SimulateRowResponse } from "@/lib/api";
 import {
   formatBps,
+  formatDeltaVsBest,
   formatPrice,
   formatTimestamp,
-  parseDecimal,
+  formatUsdAmount,
 } from "@/lib/format";
 import {
   bestSimulateRow,
@@ -60,8 +61,8 @@ export function SimulateResultList({
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-zinc-500">
         <span>
           {data.side} {data.asset} · notional ≈ $
-          {formatUsd(data.notional_usd)} · mid {formatPrice(data.mid.mid)} (
-          {data.mid.mid_source})
+          {formatUsdAmount(data.notional_usd)} · mid {formatPrice(data.mid.mid)}{" "}
+          ({data.mid.mid_source})
         </span>
         {isRefreshing && (
           <span className="text-amber-600 dark:text-amber-400">Refreshing…</span>
@@ -179,7 +180,7 @@ function SimulateResultRow({
                 className="min-w-[7rem] text-xs text-zinc-500"
                 data-testid={`delta-${row.venue}`}
               >
-                {formatDelta(delta.absolute, delta.bps, buyAsset)}
+                {formatDeltaVsBest(delta.absolute, delta.bps, buyAsset)}
               </span>
               <span className="text-xs text-zinc-500">
                 px {formatPrice(row.effective_price)}
@@ -218,12 +219,12 @@ function SimulateResultRow({
               <div key={line.id} className="flex justify-between gap-2">
                 <dt className="text-zinc-500">{line.label}</dt>
                 <dd className="tabular-nums text-zinc-800 dark:text-zinc-100">
-                  {line.note === "unknown"
+                  {line.unknown
                     ? "unknown"
                     : line.bps == null || line.bps === ""
                       ? "—"
                       : `${formatBps(line.bps)} bps`}
-                  {line.note && line.note !== "unknown" && (
+                  {line.note && (
                     <span className="ml-1 text-zinc-400">({line.note})</span>
                   )}
                 </dd>
@@ -321,25 +322,4 @@ function SkeletonList() {
   );
 }
 
-function formatDelta(
-  absolute: number | null,
-  bps: number | null,
-  unit: string,
-): string {
-  if (absolute === null) return "Δ —";
-  if (absolute === 0) return "Δ 0";
-  const absStr =
-    Math.abs(absolute) >= 1
-      ? absolute.toLocaleString(undefined, { maximumFractionDigits: 4 })
-      : absolute.toPrecision(4);
-  const bpsStr = bps === null ? "" : ` · ${formatBps(bps)} bps`;
-  return `Δ ${absStr} ${unit}${bpsStr}`;
-}
 
-function formatUsd(value: string | number): string {
-  const n = parseDecimal(value);
-  if (n === null) return String(value);
-  return n.toLocaleString(undefined, {
-    maximumFractionDigits: n >= 100 ? 0 : 2,
-  });
-}

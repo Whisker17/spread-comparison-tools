@@ -380,12 +380,9 @@ describe("SimulateSection (WHI-815)", () => {
   });
 
   it("does not fire a new simulation on each amount keystroke before debounce settles", async () => {
-    // Re-enable real debounce for this test only.
-    vi.doUnmock?.("@/hooks/useDebouncedValue");
-    // With identity debounce mock still active in this file, simulate
-    // keystroke batching by checking that intermediate invalid amounts
-    // never call postSimulate: type "0" then "01" then clear to "1".
-    // Identity debounce means only valid amounts fire — "0" is invalid.
+    // Identity debounce mock is active for this file — verify the amount
+    // gate: intermediate invalid amounts never POST; a final valid amount does.
+    // Real timer debounce is covered by useDebouncedValue.test.ts (AC5).
     postSimulateMock.mockClear();
 
     render(

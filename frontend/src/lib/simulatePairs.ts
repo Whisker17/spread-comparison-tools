@@ -103,29 +103,52 @@ export function constrainSimulateSelection(
 
   const firstStable = stables[0]!;
   const firstAsset = assets[0]!;
-  const keepAsset = (prefer: string) =>
-    isCatalogAsset(prefer, meta) ? upper(prefer) : firstAsset;
-  const keepStable = (prefer: string) =>
-    isTradeableStable(prefer, meta) ? upper(prefer) : firstStable;
+
+  /**
+   * Prefer keeping the user's non-stable when flipping direction
+   * (SOL→USDC, change sell to USDC → USDC→SOL, not USDC→firstAsset).
+   */
+  const preferAsset = (primary: string, secondary: string): string => {
+    if (isCatalogAsset(primary, meta) && upper(primary) !== nextValue) {
+      return upper(primary);
+    }
+    if (isCatalogAsset(secondary, meta) && upper(secondary) !== nextValue) {
+      return upper(secondary);
+    }
+    return firstAsset === nextValue
+      ? (assets.find((a) => a !== nextValue) ?? firstAsset)
+      : firstAsset;
+  };
+  const preferStable = (primary: string, secondary: string): string => {
+    if (isTradeableStable(primary, meta) && upper(primary) !== nextValue) {
+      return upper(primary);
+    }
+    if (isTradeableStable(secondary, meta) && upper(secondary) !== nextValue) {
+      return upper(secondary);
+    }
+    return firstStable === nextValue
+      ? (stables.find((s) => s !== nextValue) ?? firstStable)
+      : firstStable;
+  };
 
   if (field === "sell") {
     if (isTradeableStable(nextValue, meta)) {
-      // Sell stable → buy must be catalog asset.
-      return { sell: nextValue, buy: keepAsset(current.buy) };
+      // Sell stable → buy must be catalog asset (prefer previous sell if asset).
+      return { sell: nextValue, buy: preferAsset(current.sell, current.buy) };
     }
     if (isCatalogAsset(nextValue, meta)) {
       // Sell non-stable → buy must be tradeable stable.
-      return { sell: nextValue, buy: keepStable(current.buy) };
+      return { sell: nextValue, buy: preferStable(current.buy, current.sell) };
     }
     return current;
   }
 
   // field === "buy"
   if (isTradeableStable(nextValue, meta)) {
-    return { sell: keepAsset(current.sell), buy: nextValue };
+    return { sell: preferAsset(current.buy, current.sell), buy: nextValue };
   }
   if (isCatalogAsset(nextValue, meta)) {
-    return { sell: keepStable(current.sell), buy: nextValue };
+    return { sell: preferStable(current.sell, current.buy), buy: nextValue };
   }
   return current;
 }
