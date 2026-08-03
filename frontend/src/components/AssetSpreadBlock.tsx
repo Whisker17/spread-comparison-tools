@@ -47,7 +47,7 @@ export type AssetSpreadBlockProps = {
    * Defaults to a generic multi-venue line.
    */
   subtitle?: string;
-  /** Static caveat / badge text under the title (e.g. watchlist coverage). */
+  /** Static caveat / badge text under the title (e.g. coverage note). */
   caveat?: ReactNode;
   /**
    * When true, after quotes load, surface a venue_symbol contract note
@@ -65,8 +65,6 @@ export type AssetSpreadBlockProps = {
    * memes so CEX hits 1000× books). Default = adapter default.
    */
   instrumentType?: "spot" | "perp" | "amm_pool" | "prop_amm";
-  /** When false, skip polling (lazy watchlist rows). Default true. */
-  enabled?: boolean;
 };
 
 export function AssetSpreadBlock({
@@ -81,7 +79,6 @@ export function AssetSpreadBlock({
   showVenueSymbolNote = false,
   venueDisplayNames,
   instrumentType,
-  enabled = true,
 }: AssetSpreadBlockProps) {
   const [sideView, setSideView] = useState<SideView>(section.defaultSideView);
 
@@ -92,7 +89,6 @@ export function AssetSpreadBlock({
     venues: venues.length > 0 ? venues : undefined,
     instrument_type: instrumentType,
     refetchInterval: section.pollIntervalMs,
-    enabled,
   });
 
   const pairs = useMemo(() => query.data?.pairs ?? [], [query.data?.pairs]);
@@ -135,21 +131,14 @@ export function AssetSpreadBlock({
   }, [mid, pairs]);
 
   const contractNote = useMemo(() => {
-    if (!showVenueSymbolNote || !enabled) return null;
+    if (!showVenueSymbolNote) return null;
     const symbols = venueSymbolsFromPairs(pairs, venues);
     const names: Record<string, string> = {};
     for (const slug of venues) {
       names[slug] = venueDisplayNames?.[slug] ?? slug;
     }
     return formatVenueSymbolNote(asset, symbols, names);
-  }, [
-    showVenueSymbolNote,
-    enabled,
-    pairs,
-    venues,
-    venueDisplayNames,
-    asset,
-  ]);
+  }, [showVenueSymbolNote, pairs, venues, venueDisplayNames, asset]);
 
   const proseLabels = summaryVenueLabels ?? venueLabels;
   const pollMs = section.pollIntervalMs;
@@ -214,7 +203,7 @@ export function AssetSpreadBlock({
             variant="outline"
             size="sm"
             onClick={() => void query.refetch()}
-            disabled={!enabled || query.isFetching}
+            disabled={query.isFetching}
             aria-label={`Refresh ${asset} quotes`}
           >
             <RefreshCw
@@ -269,18 +258,15 @@ export function AssetSpreadBlock({
             id: <code className="text-[10px]">{snapshotId.slice(0, 12)}…</code>
           </span>
         ) : null}
-        {pollMs && enabled ? (
+        {pollMs ? (
           <span>Auto-refresh {Math.round(pollMs / 1000)}s</span>
         ) : null}
       </div>
 
-      {!enabled && (
-        <p className="text-sm text-zinc-500">Expand to load live quotes.</p>
-      )}
-      {enabled && query.isLoading && (
+      {query.isLoading && (
         <p className="text-sm text-zinc-500">Loading {asset} quotes…</p>
       )}
-      {enabled && query.isError && (
+      {query.isError && (
         <div className="rounded-md border border-rose-300 bg-rose-50 px-3 py-2 text-sm text-rose-800 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-200">
           <p className="font-medium">Failed to load {asset} quotes</p>
           <p className="mt-0.5 text-xs opacity-90">
@@ -299,7 +285,7 @@ export function AssetSpreadBlock({
         </div>
       )}
 
-      {enabled && !query.isLoading && !query.isError && (
+      {!query.isLoading && !query.isError && (
         <>
           <SnapshotSummary
             pairs={pairs}

@@ -7,10 +7,10 @@ import {
   OTHER_P2_WATCHLIST,
   OTHER_VENUES,
   buildVenueLabels,
-  buildVenueLabelsForInstrument,
   expandedOtherAssets,
   isOrderbookVenue,
-  isScaledContractAsset,
+  otherVenuesDisplayList,
+  otherVenuesQueryParam,
   othersSection,
   venueSummaryLabel,
 } from "@/config/sections/others";
@@ -34,7 +34,6 @@ describe("others section config (WHI-811)", () => {
       ...OTHER_P0_ASSETS,
       ...OTHER_P1_SCALED_ASSETS,
     ]);
-    // Groups are the rendering SSOT — flat assets must match group union.
     expect(OTHER_ASSET_GROUPS.flatMap((g) => [...g.assets])).toEqual(
       othersSection.assets,
     );
@@ -49,6 +48,12 @@ describe("others section config (WHI-811)", () => {
       "apex",
     ]);
     expect(othersSection.venues).toEqual([...OTHER_VENUES]);
+    expect(otherVenuesQueryParam()).toBe(
+      "binance,bybit,hyperliquid,lighter,apex",
+    );
+    expect(otherVenuesDisplayList()).toBe(
+      "Binance · Bybit · Hyperliquid · Lighter · ApeX",
+    );
 
     const propLike = [
       "humidifi",
@@ -66,10 +71,7 @@ describe("others section config (WHI-811)", () => {
         expect(venues).not.toContain(p);
       }
       expect(venues).toHaveLength(5);
-      // Explicit filter string that useQuotesMatrix will join for /quotes.
-      expect(venues.join(",")).toBe(
-        "binance,bybit,hyperliquid,lighter,apex",
-      );
+      expect(venues.join(",")).toBe(otherVenuesQueryParam());
     }
   });
 
@@ -77,12 +79,9 @@ describe("others section config (WHI-811)", () => {
     const p1 = OTHER_ASSET_GROUPS.find((g) => g.id === "p1");
     expect(p1?.preferPerp).toBe(true);
     expect(p1?.showVenueSymbolNote).toBe(true);
-    expect(isScaledContractAsset("PEPE")).toBe(true);
-    expect(isScaledContractAsset("bonk")).toBe(true);
-    expect(isScaledContractAsset("DOGE")).toBe(false);
   });
 
-  it("defines P2 watchlist with coverage caveats outside section.assets", () => {
+  it("defines P2 watchlist with caveats outside live board assets", () => {
     expect(OTHER_P2_WATCHLIST.map((w) => w.id)).toEqual([
       "JUP",
       "AERO",
@@ -101,10 +100,11 @@ describe("others section config (WHI-811)", () => {
     expect(spot.binance).toMatch(/USDT/);
     expect(spot.hyperliquid).toMatch(/perp/i);
     expect(spot.hyperliquid).toMatch(/USDC/);
-    // Representation must not be appended to CEX/perp rows.
     expect(spot.binance.split(" · ")).toHaveLength(3);
 
-    const perp = buildVenueLabelsForInstrument([...OTHER_VENUES], "perp");
+    const perp = buildVenueLabels("PEPE", [...OTHER_VENUES], {
+      instrument: "perp",
+    });
     expect(perp.binance).toMatch(/perp/i);
     expect(perp.hyperliquid).toMatch(/perp/i);
   });

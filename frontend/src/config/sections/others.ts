@@ -48,31 +48,36 @@ export type WatchlistAsset = {
 };
 
 /**
- * P2 watchlist — default-collapsed list of labels; live matrices mount only
- * when the user expands a row (avoids polling dead catalogs).
+ * P2 watchlist — labels + caveats only (no live /quotes). Prop-side notes
+ * explain why these stay off the main CEX+perp board; Phase-1 symbol maps
+ * do not cover them yet.
  */
 export const OTHER_P2_WATCHLIST: readonly WatchlistAsset[] = [
   {
     id: "JUP",
-    caveat: "Prop coverage = HumidiFi only (not the three-venue prop intersection)",
+    caveat:
+      "Prop coverage = HumidiFi only (not the three-venue prop intersection). Not on the Phase-1 CEX+perp board.",
   },
   {
     id: "AERO",
-    caveat: "Tessera-Base-only prop quotes vs CEX (WHI-798 §1.3)",
+    caveat:
+      "Tessera-Base-only prop quotes vs CEX (WHI-798 §1.3). Not on the Phase-1 CEX+perp board.",
   },
   {
     id: "VIRTUAL",
-    caveat: "Tessera-Base-only prop quotes vs CEX (WHI-798 §1.3)",
+    caveat:
+      "Tessera-Base-only prop quotes vs CEX (WHI-798 §1.3). Not on the Phase-1 CEX+perp board.",
   },
   {
     id: "EURC",
-    caveat: "Tessera-Base-only prop quotes vs CEX (WHI-798 §1.3)",
+    caveat:
+      "Tessera-Base-only prop quotes vs CEX (WHI-798 §1.3). Not on the Phase-1 CEX+perp board.",
   },
 ] as const;
 
 /** Grouped board content — SSOT for OthersSection rendering. */
 export type OtherAssetGroup = {
-  id: "p0" | "p1";
+  id: string;
   title: string;
   description?: string;
   assets: readonly string[];
@@ -134,16 +139,19 @@ const ORDERBOOK_VENUE_CLASSES: ReadonlySet<VenueClass> = new Set([
 
 export const OTHER_POLL_MS = 30_000;
 
-const SCALED_SET = new Set<string>(OTHER_P1_SCALED_ASSETS);
-
-/** True for PEPE/BONK-style assets that need venue_symbol contract notes. */
-export function isScaledContractAsset(asset: string): boolean {
-  return SCALED_SET.has(asset.toUpperCase());
-}
-
 /** Flat expanded board (P0+P1) — also feeds section.assets SSOT. */
 export function expandedOtherAssets(): string[] {
   return OTHER_ASSET_GROUPS.flatMap((g) => [...g.assets]);
+}
+
+/** Comma-separated venue filter for /quotes (and tests / footer copy). */
+export function otherVenuesQueryParam(): string {
+  return OTHER_VENUES.join(",");
+}
+
+/** Human venue list for page copy, derived from OTHER_VENUE_META. */
+export function otherVenuesDisplayList(): string {
+  return OTHER_VENUES.map((slug) => venueDisplayName(slug)).join(" · ");
 }
 
 export const othersSection: SectionConfig = {
@@ -152,7 +160,7 @@ export const othersSection: SectionConfig = {
   description:
     "High-volume CEX + perp-DEX assets (no prop AMM). Where is it cheapest to buy at your size right now?",
   // SSOT for "which assets are on the main board". Groups above are the
-  // rendering structure; both must stay in lockstep via expandedOtherAssets().
+  // rendering structure; both stay in lockstep via expandedOtherAssets().
   assets: expandedOtherAssets(),
   venues: [...OTHER_VENUES],
   notionals: [...NOTIONAL_TIERS_USD],
@@ -170,17 +178,23 @@ function defaultInstrumentType(
   return undefined;
 }
 
+export type BuildVenueLabelsOptions = {
+  /**
+   * Force instrument label + intent for CEX/perp rows (e.g. "perp" for scaled
+   * memes). Default derives spot for CEX and perp for perp_dex.
+   */
+  instrument?: "spot" | "perp";
+};
+
 /**
  * Build matrix row labels for Others (CEX / perp only).
- * CEX / perp: display · instrument · quote currency.
- * No representation append — wire symbols are not on-chain wrappers.
- *
- * First arg mirrors blue-chips `buildVenueLabels(asset, venues)` call shape
- * for parallel-section consistency (asset unused: no wrapper labels here).
+ * display · instrument · quote currency.
+ * First arg mirrors blue-chips call shape (asset unused: no wrapper labels).
  */
 export function buildVenueLabels(
   asset: string,
   venues: readonly string[],
+  options: BuildVenueLabelsOptions = {},
 ): Record<string, string> {
   void asset;
   const out: Record<string, string> = {};
@@ -188,35 +202,15 @@ export function buildVenueLabels(
     const meta = OTHER_VENUE_META[slug];
     const display = meta?.displayName ?? slug;
     const quote = meta?.quoteCurrency;
-    const instrument = defaultInstrumentType(meta?.venueClass);
+    const venueClass = meta?.venueClass;
+    let instrument: string | undefined;
+    if (venueClass === "cex" || venueClass === "perp_dex") {
+      instrument =
+        options.instrument ?? defaultInstrumentType(venueClass) ?? undefined;
+    }
 
     const parts: string[] = [display];
     if (instrument) parts.push(instrument);
-    if (quote) parts.push(quote);
-    out[slug] = parts.join(" · ");
-  }
-  return out;
-}
-
-/**
- * Labels when the request forces instrument_type=perp (scaled memes).
- * CEX rows say "perp" so the matrix matches the book we actually fetch.
- */
-export function buildVenueLabelsForInstrument(
-  venues: readonly string[],
-  instrument: "spot" | "perp",
-): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const slug of venues) {
-    const meta = OTHER_VENUE_META[slug];
-    const display = meta?.displayName ?? slug;
-    const quote = meta?.quoteCurrency;
-    const venueClass = meta?.venueClass;
-    const labelInstrument =
-      venueClass === "cex" || venueClass === "perp_dex" ? instrument : undefined;
-
-    const parts: string[] = [display];
-    if (labelInstrument) parts.push(labelInstrument);
     if (quote) parts.push(quote);
     out[slug] = parts.join(" · ");
   }

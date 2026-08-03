@@ -1,14 +1,16 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 
 import { AssetSpreadBlock } from "@/components/AssetSpreadBlock";
 import {
   OTHER_ASSET_GROUPS,
   OTHER_P2_WATCHLIST,
+  OTHER_VENUES,
   buildVenueLabels,
-  buildVenueLabelsForInstrument,
   isOrderbookVenue,
+  otherVenuesDisplayList,
+  otherVenuesQueryParam,
   othersSection,
   venueDisplayName,
   venueSummaryLabel,
@@ -22,6 +24,8 @@ import { venuesForAsset } from "@/config/sections/helpers";
  */
 export function OthersSection() {
   const section = othersSection;
+  const venueList = otherVenuesDisplayList();
+  const venueFilter = otherVenuesQueryParam();
 
   return (
     <div className="space-y-6">
@@ -31,12 +35,11 @@ export function OthersSection() {
           {section.description}
         </p>
         <p className="mt-2 text-xs text-zinc-500">
-          Venues: Binance + Bybit · Hyperliquid · Lighter · ApeX (five-venue
-          filter on every <code className="text-[11px]">/quotes</code> call).
-          Prop AMM columns are omitted — coverage beyond blue chips is ≈ zero
-          and would only burn Jupiter quota (WHI-798 §5). P0 uses CEX spot +
-          perp DEX books; P1 scaled memes force CEX perp so 1000× contracts
-          surface.
+          Venues: {venueList} ({OTHER_VENUES.length}-venue filter on every{" "}
+          <code className="text-[11px]">/quotes</code> call). Prop AMM columns
+          are omitted — coverage beyond blue chips is ≈ zero and would only burn
+          Jupiter quota (WHI-798 §5). P0 uses CEX spot + perp DEX books; P1
+          scaled memes force CEX perp so 1000× contracts surface.
         </p>
       </header>
 
@@ -70,12 +73,24 @@ export function OthersSection() {
         </summary>
         <div className="space-y-3 border-t border-zinc-200 px-4 py-4 dark:border-zinc-800">
           <p className="text-xs text-zinc-500">
-            Labels only until you expand a row — no prop AMM requests, and no
-            polling until opened. Caveats document prop-side gaps.
+            Observation labels only — no <code className="text-[11px]">/quotes</code>{" "}
+            for these tickers (not on the Phase-1 CEX+perp board). Caveats document
+            prop-side gaps.
           </p>
           <ul className="space-y-2">
             {OTHER_P2_WATCHLIST.map((row) => (
-              <WatchlistRow key={row.id} id={row.id} caveat={row.caveat} />
+              <li
+                key={row.id}
+                className="rounded-lg border border-zinc-200 px-3 py-2 dark:border-zinc-800"
+                data-testid={`watchlist-row-${row.id}`}
+              >
+                <div className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
+                  {row.id}
+                </div>
+                <p className="mt-0.5 text-xs text-amber-800 dark:text-amber-200/90">
+                  {row.caveat}
+                </p>
+              </li>
             ))}
           </ul>
         </div>
@@ -97,8 +112,7 @@ export function OthersSection() {
             No prop AMM.
           </strong>{" "}
           Every matrix pins{" "}
-          <code className="text-[11px]">venues=binance,bybit,hyperliquid,lighter,apex</code>
-          .
+          <code className="text-[11px]">venues={venueFilter}</code>.
         </p>
         <p>
           <strong className="font-medium text-zinc-700 dark:text-zinc-300">
@@ -123,17 +137,13 @@ export function OthersSection() {
 function OtherAssetBlock({
   asset,
   group,
-  caveat,
-  enabled = true,
 }: {
   asset: string;
-  group?: OtherAssetGroup;
-  caveat?: string;
-  enabled?: boolean;
+  group: OtherAssetGroup;
 }) {
   const section = othersSection;
-  const preferPerp = group?.preferPerp === true;
-  const showNote = group?.showVenueSymbolNote === true;
+  const preferPerp = group.preferPerp === true;
+  const showNote = group.showVenueSymbolNote === true;
 
   const venues = useMemo(
     () => venuesForAsset(section, asset),
@@ -142,9 +152,9 @@ function OtherAssetBlock({
 
   const venueLabels = useMemo(
     () =>
-      preferPerp
-        ? buildVenueLabelsForInstrument(venues, "perp")
-        : buildVenueLabels(asset, venues),
+      buildVenueLabels(asset, venues, {
+        instrument: preferPerp ? "perp" : undefined,
+      }),
     [asset, venues, preferPerp],
   );
 
@@ -180,45 +190,9 @@ function OtherAssetBlock({
       summaryVenueLabels={summaryVenueLabels}
       orderbookVenues={orderbookVenues}
       subtitle={`CEX + perp DEX · ${section.notionals.length} notional tiers`}
-      caveat={caveat}
       showVenueSymbolNote={showNote}
       venueDisplayNames={displayNames}
       instrumentType={preferPerp ? "perp" : undefined}
-      enabled={enabled}
     />
-  );
-}
-
-/** Collapsed label + on-demand matrix (no fetch until expanded). */
-function WatchlistRow({ id, caveat }: { id: string; caveat: string }) {
-  const [open, setOpen] = useState(false);
-
-  return (
-    <li
-      className="rounded-lg border border-zinc-200 dark:border-zinc-800"
-      data-testid={`watchlist-row-${id}`}
-    >
-      <button
-        type="button"
-        className="flex w-full flex-col items-start gap-0.5 px-3 py-2 text-left hover:bg-zinc-50 dark:hover:bg-zinc-900/40"
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={open}
-      >
-        <span className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
-          {id}
-          <span className="ml-2 text-xs font-normal text-zinc-500">
-            {open ? "Hide quotes" : "Show quotes"}
-          </span>
-        </span>
-        <span className="text-xs text-amber-800 dark:text-amber-200/90">
-          {caveat}
-        </span>
-      </button>
-      {open ? (
-        <div className="border-t border-zinc-200 p-3 dark:border-zinc-800">
-          <OtherAssetBlock asset={id} caveat={caveat} enabled />
-        </div>
-      ) : null}
-    </li>
   );
 }
