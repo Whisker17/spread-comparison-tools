@@ -93,11 +93,13 @@ Venue **显示名**用 Tessera；**slug** `tessera`；Jupiter `dexes` 参数仍�
 
 **配置键（非密钥，进 `config/` 类型化配置，不进 `.env`）**：
 
+文件建议：`config/mid.yaml`（WHI-807 落地时配合 pydantic settings）。下列默认值 **unvalidated（pending `docs/DESIGN.md` §2）**，仅作工程起点：
+
 | 键 | 默认 | 含义 |
 | --- | --- | --- |
 | `mid.force_pyth` | `false` | 强制 P3 |
 | `mid.stale_threshold_sec` | `5` | `mid_stale` 判定：`abs(quote.timestamp - mid_timestamp)` 秒 |
-| `mid.cache_max_age_sec` | `30` | mid **服务内部**缓存允许的最大年龄；超过则重新拉取或失败。与 `stale_threshold_sec` 独立：缓存命中仍可在 quote 慢时标 `mid_stale=true` |
+| `mid.cache_max_age_sec` | `30` | mid **服务内部**缓存最大年龄；超过则重拉或失败。与 `stale_threshold_sec` 独立 |
 
 Staleness 语义：
 
@@ -204,7 +206,7 @@ sell: spread_bps = (mid - P_star) / mid * 10_000
 
 ### 4.6 双边汇总
 
-对同一 `(snapshot_id, venue, asset, notional_usd)`：
+对同一 `(snapshot_id, venue, asset, instrument_type, notional_usd)`（**必须含 `instrument_type`**，避免 CEX spot 与 perp 被拼进同一 round-trip）：
 
 | 指标 | 公式 |
 | --- | --- |
@@ -252,8 +254,11 @@ explicit_fee_bps = 0
 total_cost_bps = 4.4
 ```
 
-**Sell 向量**（对称 bids：`100_000, 99_990, 99_950` 等同深度 walk 0.1）：若 `P_star = 99_956`，则  
-`spread_bps = (100000 - 99956) / 100000 * 10000 = 4.4`。
+**Sell 向量**（与 ask 关于 mid 对称的 bids：`99_990 / 99_950 / 99_900`，size `0.04 / 0.04 / 0.10`，walk 0.1）：
+
+`0.04*99990 + 0.04*99950 + 0.02*99900 = 3999.6 + 3998.0 + 1998.0 = 9995.6`  
+`P_star = 9995.6 / 0.1 = 99_956`  
+`spread_bps = (100000 - 99956) / 100000 * 10000 = 4.4`
 
 **gas_unknown 向量**：AMM `spread_bps=4.4`、`embedded_in_price=true`、`gas_unknown=true` → `total_cost_bps is null`，`explicit_fee_bps is null`。
 
@@ -437,7 +442,7 @@ Quote {
    - 若 `fee_breakdown.gas_unknown` 为 true，则 `total_cost_bps is null`；  
    - 若 `fee_breakdown.gas_unknown` 为 false，则 `total_cost_bps` 非 null。  
    （两条合取，不是析取。）
-2. 若 `status != "ok"`：则 `effective_price`、`spread_bps`、`total_cost_bps`、`qty_base` 均为 null。
+2. 若 `status != "ok"`：则 `effective_price`、`spread_bps`、`total_cost_bps`、`qty_base`、以及 `fee_breakdown.explicit_fee_bps` 均为 null。
 3. `snapshot_id` / `mid` / `mid_source` / `mid_timestamp` 在同快照同资产上全 venue 一致。
 4. bps 公式 **仅** §4.5 / §5.2。
 5. `mid_stale` 与 `status` 独立：`mid_stale=true` 仍可 `status=ok`。
@@ -482,13 +487,14 @@ SizeQuotePair {
   snapshot_id:               str
   venue:                     str
   asset:                     str
+  instrument_type:           "spot" | "perp" | "amm_pool" | "prop_amm"
   notional_usd:              Decimal
   buy:                       Quote | null
   sell:                      Quote | null
   round_trip_spread_bps:     Decimal | null
   half_spread_bps:           Decimal | null
   round_trip_total_cost_bps: Decimal | null
-  top_of_book:               TopOfBook | null
+  top_of_book:               TopOfBook | null  # 若有，instrument_type 必须与 pair 一致
 }
 ```
 
@@ -654,3 +660,4 @@ bps API 保留 4 位小数；展示可再圆整到 2 位。
 | 2026-08-03 | 初版 |
 | 2026-08-03 | Review round 1：统一 total/explicit 公式；`snapshot_id`/`mid_stale`/`gas_unknown`；可调用 mid 端点；Tessera slug；去掉 LaTeX；TOB 仅 `None` 双轨消除；funding 带 side |
 | 2026-08-03 | Review round 2：`instrument_type` 进 adapter；bps 仅 adapter 计算；TOB 失败抛错；修不变量合取；mid 配置键与 stale 语义；增 sell/gas_unknown 向量；修正 § 交叉引用 |
+| 2026-08-03 | Review round 3：修正 sell 测试向量盘口；`SizeQuotePair`/双边 key 含 `instrument_type`；非 ok 时 `explicit_fee_bps=null`；`config/mid.yaml` 标注 unvalidated |
