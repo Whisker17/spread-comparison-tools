@@ -53,7 +53,7 @@ can open it cold and know *what* to build, *why*, *where* in the codebase, what 
 
 | Field         | How to set it                                                            |
 | ------------- | ------------------------------------------------------------------------ |
-| **Project**   | `{{LINEAR_PROJECT}}` (always — the only project in scope for this repo). |
+| **Project**   | `spread-comparison-tools` (always — the only project in scope for this repo). |
 | **Milestone** | Attach to the project milestone matching the `[Mn]` title tag.          |
 | **Priority**  | `Urgent` / `High` / `Medium` / `Low` — see the table below.             |
 | **Labels**    | Triage role from `triage-labels.md` + any type label (`bug`, `feature`, `research`, `chore`, `hotfix`). `hotfix` changes the git base branch — see `triage-labels.md`. |
@@ -64,7 +64,7 @@ can open it cold and know *what* to build, *why*, *where* in the codebase, what 
 
 | Priority   | Use when…                                                                      |
 | ---------- | ------------------------------------------------------------------------------ |
-| **Urgent** | Blocks a milestone, or is a safety item on a {{HIGH_RISK_PATHS}} path. Do first. |
+| **Urgent** | Blocks a milestone. (Also safety items on a high-risk path — this project defines none.) Do first. |
 | **High**   | Core deliverable of the milestone; needed for it to be "done."                 |
 | **Medium** | Valuable but not blocking; can slip a milestone without derailing it.          |
 | **Low**    | Nice-to-have, polish, or opportunistic cleanup.                                |
@@ -84,7 +84,7 @@ Background a newcomer needs: the relevant `docs/DESIGN.md` section, prior resear
 or an external platform fact. Skip if the Objective is fully self-explanatory.
 
 ### `## Blocked By` / `## Blocks`
-Dependency graph. List issue identifiers (e.g. `{{ISSUE_PREFIX}}-42`) and a short
+Dependency graph. List issue identifiers (e.g. `WHI-42`) and a short
 reason. Prefer to *also* wire these as Linear `blocked-by` / `blocks` relations; the
 body lines are the human-readable mirror. Use `None (entry point)` when there are no
 blockers.

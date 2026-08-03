@@ -61,10 +61,10 @@ git fetch origin
 git checkout dev
 git pull --ff-only origin dev
 
-# Branch name: type/{{ISSUE_PREFIX_LOWER}}-<id>-short-topic (all lowercase, dash-separated)
-ISSUE={{ISSUE_PREFIX_LOWER}}-123
+# Branch name: type/whi-<id>-short-topic (all lowercase, dash-separated)
+ISSUE=whi-123
 BRANCH=feat/${ISSUE}-short-topic
-WT="../{{PROJECT_NAME}}-wt/${ISSUE}"
+WT="../spread-comparison-tools-wt/${ISSUE}"
 
 git worktree add -b "$BRANCH" "$WT" origin/dev
 cd "$WT"
@@ -101,13 +101,13 @@ but the base **must** be the latest `origin/dev`, never a stale tip.
 ```bash
 git push -u origin HEAD
 gh pr create --base dev \
-  --title "feat({{ISSUE_PREFIX}}-123): short description" \
+  --title "feat(WHI-123): short description" \
   --body "$(cat <<'EOF'
 ## Summary
 - ...
 
 ## Tracker
-Closes {{ISSUE_PREFIX}}-123
+Closes WHI-123
 
 ## Test plan
 - [ ] ...
@@ -122,7 +122,7 @@ PR conventions:
 
 - **base must be `dev`** (features/fixes never target `main` directly — the one exception
   is an issue labelled `hotfix`, see [§ Hotfix](#hotfix))
-- Title carries `{{ISSUE_PREFIX}}-NNN`
+- Title carries `WHI-NNN`
 - Body links the tracker issue
 - Merge strategy: **squash and merge** (per-lane rules:
   [§ Merge strategy](#merge-strategy-per-lane))
@@ -145,10 +145,20 @@ implementer. A self-review inside the implementing context does not open the fas
 
 **Exceptions that always stop at `In Review` for a human:**
 
-- Changes touching **{{HIGH_RISK_PATHS}}** (defined per-project at setup; e.g. payment
-  flows, auth, production data migrations, key handling)
 - `release/*` → `main` promotions
 - PRs that skipped the review loop (human-implemented, or loop not run)
+
+<a id="high-risk-paths"></a>
+> **High-risk paths: none defined for this project.** The template's third exception —
+> "changes touching a high-risk path" — is **inactive here**: this repo is a read-only
+> quote/spread comparison tool. It places no orders, signs no transactions, custodies no
+> funds, and holds only read-scope venue API keys. There is no code path where an
+> agent-authored change can move money.
+>
+> **This is a decision with an expiry date.** Define a real list — in this section, and
+> then in the sites that link here — the moment any of these land:
+> execution/order placement, transaction signing or key custody, or a production
+> database whose migrations can destroy collected history (see `WHI-816`).
 
 For those, a human reviewer:
 
@@ -167,9 +177,13 @@ Drive these from the **primary clone**; never commit to `dev` directly.
    worktree, `git merge origin/dev`, resolve, rerun the affected tests, and `git push`.
    The PR must read **MERGEABLE / CLEAN** before you merge.
 1. **Squash-merge + drop the remote branch:** `gh pr merge <N> --squash --delete-branch`
+   — the remote merge succeeds, then `gh` also tries to delete the **local** branch and
+   **fails** with `cannot delete branch … used by worktree`. That error is not a failed
+   merge: verify with `gh pr view <N> --json state` before reacting, then continue at
+   step 2 and let step 3 delete the local branch.
 2. **Remove the worktree:** `git worktree remove <worktree-path>` then
    `git worktree prune`
-3. **Delete the local branch:** `git branch -D feat/{{ISSUE_PREFIX_LOWER}}-123-topic`
+3. **Delete the local branch:** `git branch -D feat/whi-123-topic`
    (fails while the worktree still holds the branch — do step 2 first)
 4. **Fast-forward local `dev`:** `git fetch origin --prune` then
    `git merge --ff-only origin/dev` (must fast-forward — never create commits on `dev`)
@@ -254,11 +268,11 @@ base.
 
 ```bash
 git fetch origin
-git worktree add -b hotfix/{{ISSUE_PREFIX_LOWER}}-123-short-topic \
-    ../{{PROJECT_NAME}}-wt/hotfix-{{ISSUE_PREFIX_LOWER}}-123 origin/main
+git worktree add -b hotfix/whi-123-short-topic \
+    ../spread-comparison-tools-wt/hotfix-whi-123 origin/main
 
 # Verify the base immediately — these two values must be equal
-git -C ../{{PROJECT_NAME}}-wt/hotfix-{{ISSUE_PREFIX_LOWER}}-123 merge-base HEAD origin/main
+git -C ../spread-comparison-tools-wt/hotfix-whi-123 merge-base HEAD origin/main
 git rev-parse origin/main
 ```
 
@@ -267,7 +281,7 @@ Then:
 1. Fix **only** this one issue
 2. **Bump the project version to a patch release** (`0.1.5` → `0.1.5.1`) — otherwise tag
    `v0.1.5.1` points at a tree that calls itself `0.1.5`
-3. `gh pr create --base main`, title/body carry `{{ISSUE_PREFIX}}-NNN`; tracker →
+3. `gh pr create --base main`, title/body carry `WHI-NNN`; tracker →
    `In Review`
 4. **Merge with a merge commit, not squash** (see
    [§ Merge strategy](#merge-strategy-per-lane))
@@ -278,8 +292,9 @@ Then:
 8. Tracker: issue → `Done`, the corresponding Release → `Released`, and fill in that
    Release's `commitSha`
 
-When production is live, hotfixes outrank regular issues — anything on a
-{{HIGH_RISK_PATHS}} path takes this route.
+When production is live, hotfixes outrank regular issues. (The template also routes
+anything on a high-risk path here; this project defines none — see
+[§ High-risk paths](#high-risk-paths).)
 
 ## Version axis
 
@@ -324,14 +339,14 @@ This means the GitHub repo must have **both** `Allow squash merge` and
 
 | Type | Format | Example |
 |------|--------|---------|
-| Feature | `feat/{{ISSUE_PREFIX_LOWER}}-<id>-<topic>` | `feat/{{ISSUE_PREFIX_LOWER}}-101-user-auth` |
-| Fix | `fix/{{ISSUE_PREFIX_LOWER}}-<id>-<topic>` | `fix/{{ISSUE_PREFIX_LOWER}}-112-race-condition` |
-| Chore | `chore/{{ISSUE_PREFIX_LOWER}}-<id>-<topic>` | `chore/{{ISSUE_PREFIX_LOWER}}-108-lint-config` |
-| Hotfix | `hotfix/{{ISSUE_PREFIX_LOWER}}-<id>-<topic>` | `hotfix/{{ISSUE_PREFIX_LOWER}}-140-login-loop` |
+| Feature | `feat/whi-<id>-<topic>` | `feat/whi-101-user-auth` |
+| Fix | `fix/whi-<id>-<topic>` | `fix/whi-112-race-condition` |
+| Chore | `chore/whi-<id>-<topic>` | `chore/whi-108-lint-config` |
+| Hotfix | `hotfix/whi-<id>-<topic>` | `hotfix/whi-140-login-loop` |
 | Release | `release/v<version>` | `release/v0.1.0`, `release/v0.1.5.1` |
 
 - All lowercase, words joined with `-`
-- **Must include the tracker id** (`{{ISSUE_PREFIX_LOWER}}-NNN`) for PR ↔ issue tracing —
+- **Must include the tracker id** (`whi-NNN`) for PR ↔ issue tracing —
   hotfixes included, they are tracked issues too
 - One PR does one thing
 
@@ -339,10 +354,10 @@ This means the GitHub repo must have **both** `Allow squash merge` and
 
 ```text
 ~/Work/src/.../
-  {{PROJECT_NAME}}/              # primary clone (stays on dev)
-  {{PROJECT_NAME}}-wt/
-    {{ISSUE_PREFIX_LOWER}}-101/  # worktree
-    {{ISSUE_PREFIX_LOWER}}-105/
+  spread-comparison-tools/              # primary clone (stays on dev)
+  spread-comparison-tools-wt/
+    whi-101/  # worktree
+    whi-105/
     hotfix-…/
 ```
 
@@ -389,8 +404,10 @@ Implementing agents (including unattended ones) **must**:
    `In Review` and say which role was missing
 5. Respect module isolation when several issues run in parallel (see
    [§ Parallel issues](#parallel-issues))
-6. **Never** self-merge or deploy a change touching **{{HIGH_RISK_PATHS}}**, even with a
-   green test run — stop at `In Review` for human confirmation. This gate **overrides the
+6. **High-risk-path gate — currently inactive.** This project defines no high-risk paths
+   ([§ High-risk paths](#high-risk-paths)), so nothing is gated on this rule today. Once
+   a list exists, it means: never self-merge or deploy a change touching those paths even
+   with a green test run — stop at `In Review` for human confirmation, **overriding the
    self-merge pre-authorization in #4.**
 7. Never merge `release/*` → `main` without human approval
 

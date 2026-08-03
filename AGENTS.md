@@ -5,11 +5,14 @@ repository. `CLAUDE.md` is a symlink to this file — edit here only.
 
 ## What this is
 
-{{PROJECT_DESCRIPTION}}
+Tools and research for comparing execution quality / spreads across venues (CEX, public
+DEX, prop AMM) on Solana, Base and BSC.
 
 The full PRD — requirements, architecture, milestones, rejected alternatives, open
 risks — lives in `docs/DESIGN.md`. Read it before making any design or architectural
 decision; do not re-derive parameters or decisions that are already validated there.
+**Caveat: `docs/DESIGN.md` is still the empty template stub** (see §Status) — until it is
+written, the M1 research docs under `docs/research/` are the de-facto spec of record.
 
 ## Status
 
@@ -17,8 +20,19 @@ decision; do not re-derive parameters or decisions that are already validated th
 implemented yet. Update it the moment reality changes instead of leaving stale
 placeholders. Agents must not assume a module exists until its issue lands. -->
 
-Freshly bootstrapped from the project template. `docs/DESIGN.md` is not yet written —
-produce it via `/grill-me` + `/to-spec` before implementing anything.
+**Landed:** template bootstrap is complete (WHI-820 — placeholders filled, test/lint gate
+green, GitHub merge policy aligned). M1 research is done and merged: prop AMM quote paths
+across Solana/Base/BSC (WHI-797), asset inventory (WHI-798), spread & fee data model
+(WHI-799), venue API survey (WHI-800) — all under `docs/research/`.
+
+**Not implemented:** everything else. There is no application runtime yet — `main.py` is a
+skeleton entrypoint and no adapter, API, collector, or frontend module exists. Do not
+assume a module exists until its issue lands.
+
+**Blocking gap:** `docs/DESIGN.md` is still the empty template stub. Produce it via
+`/grill-me` + `/to-spec` before implementing anything — several sections of this file
+(§Architecture, and the PR checklist's "no new tunables outside DESIGN.md §2") point at
+sections that do not exist yet.
 
 ## Build, test, run
 
@@ -58,7 +72,7 @@ load-bearing interfaces other modules may depend on.
 Do **not** implement issues in the primary clone working tree.
 
 1. `git fetch` + create worktree/branch from `origin/dev`
-   (`fix/{{ISSUE_PREFIX_LOWER}}-NNN-topic` or `feat/{{ISSUE_PREFIX_LOWER}}-NNN-topic`).
+   (`fix/whi-NNN-topic` or `feat/whi-NNN-topic`).
    **Check the issue's labels first** — an issue labelled `hotfix` branches off
    `origin/main` instead and targets `main` (see **Promotion lanes** below). Verify the
    base right after creating the worktree — `git merge-base HEAD origin/dev` must equal
@@ -66,16 +80,19 @@ Do **not** implement issues in the primary clone working tree.
    Code's `EnterWorktree` defaults to `origin/main`, wrong for this lane. Any wrapper may
    have its own default; the check above is what settles it.)*
 2. Implement only that issue; tracker state → **`In Progress`**.
-3. `gh pr create --base dev` (title/body include `{{ISSUE_PREFIX}}-NNN`); tracker →
+3. `gh pr create --base dev` (title/body include `WHI-NNN`); tracker →
    **`In Review`**. Any review finding you intentionally leave unfixed goes in
    `docs/DEFERRED_ISSUES.md` as part of this PR — see that file for the format.
 4. A PR whose implementation went through `/implement`'s full three-round review loop
    (plus the escalation pass, when round 3 left findings open) is **pre-authorized to
    self-squash-merge** once it reads MERGEABLE/CLEAN and tests + lint pass — no separate
-   human approval. **Exceptions that stop at `In Review` for a human:** changes touching
-   **{{HIGH_RISK_PATHS}}**, and `release/*` → `main` promotions. PRs that skipped the
-   review loop also stop at `In Review`. After merging, run the **post-merge cleanup**
-   below.
+   human approval. **Exceptions that stop at `In Review` for a human:** `release/*` →
+   `main` promotions, and PRs that skipped the review loop. **This project defines no
+   high-risk paths** — it is read-only (no order placement, no transaction signing, no
+   custody), so the template's high-risk-path gate is inactive; revisit the moment
+   execution, key custody, or destructive DB migrations land
+   (`docs/GIT_WORKFLOW.md` § High-risk paths). After merging, run the **post-merge
+   cleanup** below.
 
 ### Post-merge cleanup (mandatory, in order)
 
@@ -87,7 +104,7 @@ Drive these from the **primary clone**; never commit to `dev` directly.
 1. **Squash-merge + drop the remote branch:** `gh pr merge <N> --squash --delete-branch`.
 2. **Remove the worktree:** `git worktree remove <worktree-path>` then
    `git worktree prune`.
-3. **Delete the local branch:** `git branch -D fix/{{ISSUE_PREFIX_LOWER}}-NNN-topic`
+3. **Delete the local branch:** `git branch -D fix/whi-NNN-topic`
    (this fails while the worktree still holds the branch — do step 2 first).
 4. **Fast-forward local `dev`:** `git fetch origin --prune` then
    `git merge --ff-only origin/dev` (must fast-forward — do not create commits on
@@ -119,15 +136,6 @@ Enable the local push guard once per clone **and per worktree**:
 `git config core.hooksPath .githooks`.
 
 Full rules: `docs/GIT_WORKFLOW.md`.
-
-## Template feedback loop
-
-This repo was bootstrapped from the shared project template
-(`{{TEMPLATE_REPO_URL}}`). When work here surfaces an improvement that belongs to the
-**template layer** — a workflow rule that bit us, a skills configuration fix, a doc
-convention worth standardizing — tell the user explicitly so they can port it back to
-the template repo (and its `CHANGELOG.md`). Project-specific learnings stay here;
-process-level learnings flow back.
 
 ## Agent runtime (any agent, any vendor)
 
@@ -163,8 +171,8 @@ is just markdown. The load-bearing ones:
 
 ### Issue tracker
 
-Issues and PRDs live in **Linear** (project `{{LINEAR_PROJECT}}`, team
-`{{LINEAR_TEAM}}`). Access is a fallback ladder — MCP tools, else the GraphQL API with
+Issues and PRDs live in **Linear** (project `spread-comparison-tools`, team
+`Whisker-Personal`). Access is a fallback ladder — MCP tools, else the GraphQL API with
 `LINEAR_API_KEY` — and reaching the tracker is mandatory, not optional: workflow state
 moves in lockstep with the PR. External PRs are not a triage surface. See
 `docs/agents/issue-tracker.md`.

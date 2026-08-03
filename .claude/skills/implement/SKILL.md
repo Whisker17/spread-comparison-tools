@@ -29,13 +29,13 @@ Commit your work to the current branch.
 
 A completed review loop means the work is ready to merge — take the PR all the way, unless the change is **gated** (below):
 
-1. Push and open the PR: `git push -u origin HEAD`, then `gh pr create --base dev` (title/body include `{{ISSUE_PREFIX}}-NNN`). Tracker → `In Review`.
+1. Push and open the PR: `git push -u origin HEAD`, then `gh pr create --base dev` (title/body include `WHI-NNN`). Tracker → `In Review`.
 2. Verify the PR reads **MERGEABLE / CLEAN** (if `dev` advanced, `git merge origin/dev`, resolve, rerun affected tests, push) and that the full test suite and lint pass.
 3. `gh pr merge <N> --squash --delete-branch`, then run the post-merge cleanup from AGENTS.md (remove worktree, delete local branch, fast-forward local `dev`). Tracker → `Done`.
 
 **Gated changes stop at `In Review` and wait for a human** — do steps 1–2, skip 3:
 
-- Anything touching **{{HIGH_RISK_PATHS}}** (`docs/GIT_WORKFLOW.md` § Agent / automation constraints #6 — it overrides this skill's merge authorization).
+- Anything touching a **high-risk path**. This project defines none (`docs/GIT_WORKFLOW.md` § High-risk paths), so this bullet gates nothing today; once a list exists it overrides this skill's merge authorization (§ Agent / automation constraints #6).
 - Any `release/*` → `main` promotion.
 
 The completed three-round review loop — plus the escalation pass, when round 3 left findings open — is what authorizes the self-merge. Work that skipped the loop must also stop at `In Review`, **including work that skipped it because `REVIEWER` was unavailable**. The authorization comes from the review having actually happened, never from the intention to review.

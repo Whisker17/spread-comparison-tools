@@ -1,7 +1,7 @@
 # Issue tracker: Linear
 
-Issues and PRDs for this repo live in **Linear**, project **"{{LINEAR_PROJECT}}"**, team
-`{{LINEAR_TEAM}}`.
+Issues and PRDs for this repo live in **Linear**, project **"spread-comparison-tools"**, team
+`Whisker-Personal`.
 
 ## How to reach Linear
 
@@ -34,7 +34,7 @@ The rest of this file names Linear MCP tools (namespace `linear`); under rung 2,
 as its GraphQL equivalent. Core tools:
 
 - **Create / update an issue**: `linear.save_issue({...})`. When creating, `title` and
-  `team` are required; also set `project` to `"{{LINEAR_PROJECT}}"` so it's scoped
+  `team` are required; also set `project` to `"spread-comparison-tools"` so it's scoped
   correctly. Omit `id` on create; pass `id` to update. Use `assignee` (a user id, name,
   email, or `"me"`) — not `assigneeId`. Set labels via the `labels` field (see
   `triage-labels.md` for the canonical strings).
@@ -78,7 +78,7 @@ fed from pull requests. `/triage` processes Linear issues only.
 ## When a skill says "publish to the issue tracker"
 
 Create a Linear issue with `linear.save_issue` (`title` + `team` required, `project` set
-to `"{{LINEAR_PROJECT}}"`). Follow the canonical structure in
+to `"spread-comparison-tools"`). Follow the canonical structure in
 `docs/agents/issue-template.md` — title convention, body sections, and acceptance
 criteria. All issue content is written in English.
 
@@ -95,7 +95,7 @@ like this:
    each edge as a human-readable `## Blocked By` line in the body per
    `issue-template.md`; the native relation is the source of truth, the body line is the
    mirror.
-3. **Scoping**: every issue gets `project: "{{LINEAR_PROJECT}}"` and, if the set belongs
+3. **Scoping**: every issue gets `project: "spread-comparison-tools"` and, if the set belongs
    to a milestone, the matching milestone attachment (title carries the `[Mn]` tag per
    `issue-template.md`).
 4. **State + labels**: state `Todo`, triage label `ready-for-agent` (unless the user
@@ -116,11 +116,11 @@ accurate.
 
 - **Map**: one Linear issue labelled `wayfinder:map`, holding the Notes /
   Decisions-so-far / Fog body. Create with `linear.save_issue({ title, team,
-  project: "{{LINEAR_PROJECT}}", labels: ["wayfinder:map"] })`. Create the label first
+  project: "spread-comparison-tools", labels: ["wayfinder:map"] })`. Create the label first
   with `linear.create_issue_label` if `linear.list_issue_labels` doesn't have it.
 - **Child ticket**: an issue whose **`parent`** is the map — Linear's native sub-issue
   relationship, visible in the map's own UI:
-  `linear.save_issue({ title, team, project: "{{LINEAR_PROJECT}}", parent: <map-id>,
+  `linear.save_issue({ title, team, project: "spread-comparison-tools", parent: <map-id>,
   labels: ["wayfinder:<type>"] })`, where `<type>` is `research` / `prototype` /
   `grilling` / `task`. Once claimed, set `assignee` to the driving dev (`"me"` for the
   agent's own session).
