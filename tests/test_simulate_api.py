@@ -12,8 +12,10 @@ from fastapi.testclient import TestClient
 
 from spread_compare.api.app import create_app
 from spread_compare.api.simulate import ClientRateGuard
+from spread_compare.assets import list_assets
 from spread_compare.mids import MidResolutionError
 from spread_compare.models import ReferenceMid
+from spread_compare.simulator import InvalidSimulatePairError, resolve_simulate_pair
 
 
 @pytest.fixture
@@ -235,8 +237,6 @@ def test_simulate_pairs_shape_excludes_usd(client: TestClient) -> None:
     assert "USDT" not in body["assets"]
     assert "USD" not in body["assets"]
     # Non-stable legs are the catalogued comparison assets (stable order).
-    from spread_compare.assets import list_assets
-
     assert body["assets"] == [a.id for a in list_assets()]
     assert "BTC" in body["assets"] and "SOL" in body["assets"]
 
@@ -247,8 +247,6 @@ def test_simulate_pairs_round_trip_matches_validation(client: TestClient) -> Non
     Advertised ⊆ accepted. Peg-only ``USD`` remains valid on POST /simulate
     (byte-identical validation) but is never listed for pickers.
     """
-    from spread_compare.simulator import InvalidSimulatePairError, resolve_simulate_pair
-
     body = client.get("/simulate/pairs").json()
     stables: list[str] = body["stables"]
     assets: list[str] = body["assets"]

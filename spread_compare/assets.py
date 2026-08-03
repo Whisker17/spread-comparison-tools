@@ -344,7 +344,7 @@ def list_simulate_pair_assets() -> list[str]:
     """Catalogued non-stable legs valid opposite a tradeable stable (WHI-833).
 
     Catalog rows are never USD stables today; filter defensively so a future
-    catalog mistake cannot advertise an invalid pair. Uses ``is_usd_stable``
-    (not raw set membership) so peg recognition stays a single predicate.
+    catalog mistake cannot advertise an invalid pair. Uses ``list_assets`` for
+    catalog order and ``is_usd_stable`` for the peg predicate (single SSOTs).
     """
-    return [a.id for a in _ALL_ROWS if not is_usd_stable(a.id)]
+    return [a.id for a in list_assets() if not is_usd_stable(a.id)]
