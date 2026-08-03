@@ -20,11 +20,12 @@ from spread_compare.adapters.registry import (
     startup_all,
 )
 
-_SKIP_MODULES: frozenset[str] = frozenset({"base", "registry"})
+# Infrastructure modules — not venue adapters. Spec WHI-823: skip base/registry/__init__.
+_SKIP_MODULES: frozenset[str] = frozenset({"base", "registry", "__init__"})
 
 
 def discover_adapters() -> None:
-    """Import every adapter module in this package (except base/registry).
+    """Import every adapter module in this package (except base/registry/__init__).
 
     Deterministic sorted order. Already-imported modules are not re-executed
     (``importlib`` cache), so re-running is safe for previously loaded adapters.
@@ -36,7 +37,7 @@ def discover_adapters() -> None:
         key=lambda m: m.name,
     )
     for info in module_infos:
-        if info.name in _SKIP_MODULES:
+        if info.name in _SKIP_MODULES or info.name.startswith("_"):
             continue
         importlib.import_module(f"{__name__}.{info.name}")
 

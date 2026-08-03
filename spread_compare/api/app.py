@@ -6,8 +6,18 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from pydantic import BaseModel, Field
 
 from spread_compare.adapters import aclose_all, initialized_count, startup_all
+
+
+class HealthResponse(BaseModel):
+    """Liveness payload for ``GET /health``."""
+
+    status: str = Field(description="Always 'ok' when the process is serving.")
+    adapters_initialized: int = Field(
+        description="Adapters whose startup() completed successfully."
+    )
 
 
 @asynccontextmanager
@@ -29,11 +39,11 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
-    @app.get("/health")
-    def health() -> dict[str, object]:
-        return {
-            "status": "ok",
-            "adapters_initialized": initialized_count(),
-        }
+    @app.get("/health", response_model=HealthResponse)
+    def health() -> HealthResponse:
+        return HealthResponse(
+            status="ok",
+            adapters_initialized=initialized_count(),
+        )
 
     return app

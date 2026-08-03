@@ -20,8 +20,12 @@ def test_new_adapter_module_auto_registers() -> None:
     slug = "bybit"  # known WHI-799 §6.5 slug, unused by mock
 
     assert slug not in list_venues()
+    # Minimal module body — same surface as tests.adapter_fakes.StubAdapter.
     source = textwrap.dedent(
         f"""\
+        from decimal import Decimal
+        from typing import Literal
+
         from spread_compare.adapters.base import BaseAdapter
         from spread_compare.adapters.registry import register_adapter
         from spread_compare.models import (
@@ -33,8 +37,6 @@ def test_new_adapter_module_auto_registers() -> None:
             TopOfBook,
             VenueClass,
         )
-        from decimal import Decimal
-        from typing import Literal
 
 
         @register_adapter
@@ -88,7 +90,6 @@ def test_new_adapter_module_auto_registers() -> None:
         path.unlink(missing_ok=True)
         _REGISTRY.pop(slug, None)
         sys.modules.pop(full_name, None)
-        # Drop bytecode cache if present.
         for pyc in package_dir.glob(f"{module_name}*.pyc"):
             pyc.unlink(missing_ok=True)
         cache_dir = package_dir / "__pycache__"

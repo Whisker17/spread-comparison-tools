@@ -45,6 +45,19 @@ defines none: `docs/GIT_WORKFLOW.md` § High-risk paths), **Medium**
   copy-paste drift. Promote a `build_quote(...)` (and optional mid/asset guard) into
   `adapters/base.py` with the first real adapter PR if duplication appears.
 
+- **Default HTTP timeout hardcoded on BaseAdapter** (Low, WHI-823).
+  `spread_compare/adapters/base.py::_DEFAULT_HTTP_TIMEOUT` — AGENTS.md requires
+  non-secret tunables in `config/` traced to DESIGN.md §2, but neither the config
+  loader nor DESIGN §2 exists yet. Subclasses can override via
+  `super().__init__(timeout=…)`. Move to typed YAML when the first real adapter
+  lands a shared HTTP config (or when DESIGN §2 is written).
+
+- **Adapter init state is process-global** (Low, WHI-823).
+  `spread_compare/adapters/registry.py::_INITIALIZED` — `/health`'s
+  `adapters_initialized` count is shared across all `create_app()` instances in a
+  process. Fine for the single-process CLI/server; wrong if multi-app TestClient
+  suites run concurrent lifespans. Stash on `app.state` if that ever lands.
+
 ---
 
 ## Resolved

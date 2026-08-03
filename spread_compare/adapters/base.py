@@ -113,14 +113,8 @@ class BaseAdapter:
     is a no-op so adapters with no network work at boot stay offline-safe.
     """
 
-    def __init__(
-        self,
-        *,
-        timeout: float = _DEFAULT_HTTP_TIMEOUT,
-        trust_env: bool = True,
-    ) -> None:
+    def __init__(self, *, timeout: float = _DEFAULT_HTTP_TIMEOUT) -> None:
         self._timeout = timeout
-        self._trust_env = trust_env
         self._client: httpx.AsyncClient | None = None
         self._started = False
 
@@ -128,10 +122,7 @@ class BaseAdapter:
     def http(self) -> httpx.AsyncClient:
         """Lazily create a shared async HTTP client."""
         if self._client is None:
-            self._client = httpx.AsyncClient(
-                timeout=self._timeout,
-                trust_env=self._trust_env,
-            )
+            self._client = httpx.AsyncClient(timeout=self._timeout)
         return self._client
 
     async def startup(self) -> None:

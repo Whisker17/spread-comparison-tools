@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-from decimal import Decimal
-from typing import Literal
+from typing import Any
 
 import pytest
 
@@ -17,15 +16,7 @@ from spread_compare.adapters.registry import (
     list_venues,
     startup_all,
 )
-from spread_compare.models import (
-    FeeSchedule,
-    InstrumentType,
-    Quote,
-    ReferenceMid,
-    Side,
-    TopOfBook,
-    VenueClass,
-)
+from tests.adapter_fakes import StubAdapter
 
 
 @pytest.mark.asyncio
@@ -46,12 +37,28 @@ async def test_base_adapter_aclose_without_startup() -> None:
 
 
 @pytest.mark.asyncio
-async def test_base_adapter_lazy_http_client() -> None:
-    # trust_env=False avoids requiring socksio when the host has a SOCKS proxy env.
-    adapter = BaseAdapter(trust_env=False)
+async def test_base_adapter_lazy_http_client(monkeypatch: pytest.MonkeyPatch) -> None:
+    created: list[Any] = []
+
+    class FakeClient:
+        async def aclose(self) -> None:
+            return None
+
+    def fake_async_client(**kwargs: object) -> FakeClient:
+        client = FakeClient()
+        created.append((client, kwargs))
+        return client
+
+    monkeypatch.setattr(
+        "spread_compare.adapters.base.httpx.AsyncClient",
+        fake_async_client,
+    )
+    adapter = BaseAdapter(timeout=3.5)
     assert adapter._client is None
     client = adapter.http
     assert adapter.http is client
+    assert len(created) == 1
+    assert created[0][1] == {"timeout": 3.5}
     await adapter.aclose()
     assert adapter._client is None
 
@@ -74,48 +81,11 @@ async def test_startup_all_initializes_mock() -> None:
 async def test_startup_all_failure_is_visible(monkeypatch: pytest.MonkeyPatch) -> None:
     """A venue whose startup raises must fail the group, not register as healthy."""
 
-    class BoomAdapter(BaseAdapter):
+    class BoomAdapter(StubAdapter):
         venue: str = "binance"
-        venue_class: VenueClass = "cex"
 
         async def startup(self) -> None:
             raise RuntimeError("simulated init failure")
-
-        async def get_quote(
-            self,
-            asset: str,
-            side: Side,
-            notional_usd: Decimal,
-            *,
-            mid: ReferenceMid,
-            instrument_type: InstrumentType | None = None,
-            fee_tier: str | None = None,
-        ) -> Quote:
-            raise NotImplementedError
-
-        async def get_orderbook_spread(
-            self,
-            asset: str,
-            *,
-            mid: ReferenceMid,
-            instrument_type: Literal["spot", "perp"] | None = None,
-        ) -> TopOfBook | None:
-            raise NotImplementedError
-
-        def get_fees(
-            self,
-            asset: str | None = None,
-            *,
-            instrument_type: InstrumentType | None = None,
-        ) -> FeeSchedule:
-            raise NotImplementedError
-
-        def supported_assets(
-            self,
-            *,
-            instrument_type: InstrumentType | None = None,
-        ) -> list[str]:
-            return []
 
     boom = BoomAdapter()
     monkeypatch.setitem(_REGISTRY, "binance", boom)
@@ -127,7 +97,6 @@ async def test_startup_all_failure_is_visible(monkeypatch: pytest.MonkeyPatch) -
     assert any(isinstance(e, RuntimeError) for e in exc_info.value.exceptions)
     assert "binance" not in _INITIALIZED
 
-    # Cleanup: drop boom and close real adapters if any started.
     _REGISTRY.pop("binance", None)
     await aclose_all()
 
