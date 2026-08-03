@@ -5,3 +5,8 @@
 cors_origins:
   - "http://localhost:3000"
   - "http://127.0.0.1:3000"
+
+# Per-client min interval for POST /simulate (WHI-814). Protects the shared
+# Jupiter keyless ~0.5 RPS budget when a request fans out to three Solana props.
+# Set to 0 to disable the guard (tests / private LAN).
+simulate_min_interval_sec: 2.0

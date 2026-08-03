@@ -30,3 +30,4 @@ def test_load_api_settings_cors_defaults() -> None:
     api = load_api_settings()
     assert "http://localhost:3000" in api.cors_origins
     assert "http://127.0.0.1:3000" in api.cors_origins
+    assert api.simulate_min_interval_sec == 2.0

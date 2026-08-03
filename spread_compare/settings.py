@@ -49,11 +49,13 @@ class AggregatorSettings(BaseModel):
 
 
 class ApiSettings(BaseModel):
-    """``config/api.yaml`` — HTTP surface tunables (CORS origins, WHI-808)."""
+    """``config/api.yaml`` — HTTP surface tunables (CORS origins, WHI-808 / WHI-814)."""
 
     model_config = ConfigDict(extra="forbid")
 
     cors_origins: list[str] = Field(min_length=0)
+    # Per-client min interval for POST /simulate (Jupiter keyless ~0.5 RPS budget).
+    simulate_min_interval_sec: float = Field(ge=0)
 
     @field_validator("cors_origins", mode="before")
     @classmethod

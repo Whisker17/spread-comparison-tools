@@ -1,4 +1,4 @@
-"""FastAPI application factory with adapter lifecycle (WHI-823) and quotes API (WHI-807)."""
+"""FastAPI application factory with adapter lifecycle (WHI-823) and quotes/simulate APIs."""
 
 from __future__ import annotations
 
@@ -12,6 +12,8 @@ from pydantic import BaseModel, Field
 from spread_compare.adapters import aclose_all, initialized_count, startup_all
 from spread_compare.aggregator import QuoteAggregator
 from spread_compare.api.quotes import router as quotes_router
+from spread_compare.api.simulate import build_simulate_rate_guard
+from spread_compare.api.simulate import router as simulate_router
 from spread_compare.fees import get_fee_catalog
 from spread_compare.mids import MidService
 from spread_compare.settings import (
@@ -19,6 +21,7 @@ from spread_compare.settings import (
     load_api_settings,
     load_mid_settings,
 )
+from spread_compare.simulator import TradeSimulator
 
 
 class HealthResponse(BaseModel):
@@ -36,6 +39,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Fail-fast typed config before any network work (AGENTS.md / WHI-812).
     mid_settings = load_mid_settings()
     agg_settings = load_aggregator_settings()
+    api_settings = load_api_settings()
     get_fee_catalog()
     mid_service = MidService(mid_settings)
     aggregator = QuoteAggregator(
@@ -43,8 +47,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         aggregator_settings=agg_settings,
         mid_settings=mid_settings,
     )
+    simulator = TradeSimulator(
+        mid_service,
+        aggregator_settings=agg_settings,
+        mid_settings=mid_settings,
+    )
     app.state.mid_service = mid_service
     app.state.aggregator = aggregator
+    app.state.simulator = simulator
+    app.state.simulate_rate_guard = build_simulate_rate_guard(api_settings)
     try:
         await startup_all()
         yield
@@ -66,7 +77,7 @@ def create_app() -> FastAPI:
         CORSMiddleware,
         allow_origins=list(api_settings.cors_origins),
         allow_credentials=False,
-        allow_methods=["GET", "OPTIONS"],
+        allow_methods=["GET", "POST", "OPTIONS"],
         allow_headers=["*"],
     )
 
@@ -78,4 +89,5 @@ def create_app() -> FastAPI:
         )
 
     app.include_router(quotes_router)
+    app.include_router(simulate_router)
     return app

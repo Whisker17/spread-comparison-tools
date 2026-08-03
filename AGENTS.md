@@ -60,9 +60,12 @@ stocks / equity perps / others in `assets.py`; instrument-aware `cex_symbols.Cex
 + contract multipliers; HL HIP-3 `xyz:` meta + `kPEPE`/`kBONK` scaling; PancakeSwap BSC
 bStocks tokens; `perp_symbols` shared maps. M4 fees page (WHI-813): `/fees` fee-structure
 table + live cost-composition stacked bars (`costComposition` / `feesTable` pure lib +
-fixture tests).
+fixture tests). M5 simulate API (WHI-814): `POST /simulate` pair+amount fan-out
+(`TradeSimulator` + `api/simulate.py`), USD-stable pair scope, free-form notional,
+expected-output ranking with WHI-799 §5.2 `best` eligibility, per-client rate guard,
+`not_supported` rows listed not omitted.
 
-**Not implemented:** remaining venue adapters (WHI-805), collector, simulate UI.
+**Not implemented:** remaining venue adapters (WHI-805), collector, simulate UI (WHI-815).
 Do not assume a module exists until its issue lands.
 
 **Blocking gap:** `docs/DESIGN.md` is still mostly the empty template stub (§4.2 module
@@ -116,8 +119,9 @@ load-bearing interfaces other modules may depend on.
 - **`spread_compare/fees.py`** — typed `config/fees/*.yaml` → `FeeSchedule` catalog; adapters + `GET /fees`.
 - **`spread_compare/mids.py`** — reference-mid service (WHI-799 §3 priority chain + cache).
 - **`spread_compare/aggregator.py`** — concurrent adapter fan-out, per-venue timeout, SizeQuotePair assembly, response cache; never recomputes bps.
+- **`spread_compare/simulator.py`** — `POST /simulate` fan-out (WHI-814): pair validation, free-form notional, expected_output derivation, §5.2 best ranking; no response cache; never recomputes bps.
 - **`spread_compare/adapters/`** — async `VenueAdapter` + `BaseAdapter`, auto-discovery, `@register_adapter` registry with `startup_all`/`aclose_all`, `mock` + CEX (`binance`/`bybit`) + perp DEX (`perp_hyperliquid`/`perp_lighter`/`perp_apex`) + AMM DEX (`amm_uniswap`/`amm_aerodrome`/`amm_pancakeswap`) + prop AMM (`prop_jupiter`/`prop_kyberswap`), shared `_cex_common` / `_perp_common` / `_amm_common` / `_prop_common`; one module per real venue (no hand-import list).
-- **`spread_compare/api/`** — FastAPI app factory with lifespan; `/health`, `/quotes`, `/venues`, `/assets`, `/fees`; CORS for local FE.
+- **`spread_compare/api/`** — FastAPI app factory with lifespan; `/health`, `/quotes`, `/venues`, `/assets`, `/fees`, `POST /simulate`; CORS for local FE.
 - **`frontend/`** — Next.js dashboard (WHI-808): typed API client, SpreadMatrix, section config modules, route shell.
 - **`main.py`** — CLI: `--dry-run` validates; live serves uvicorn.
 
