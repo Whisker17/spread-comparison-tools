@@ -1,4 +1,4 @@
-"""HTTP API tests for POST /simulate (WHI-814)."""
+"""HTTP API tests for POST /simulate (WHI-814) and GET /simulate/pairs (WHI-833)."""
 
 from __future__ import annotations
 
@@ -293,6 +293,31 @@ def test_simulate_pairs_stables_not_in_asset_catalog(client: TestClient) -> None
     for stable in pairs["stables"]:
         assert stable not in catalog_ids
     assert "USD" not in catalog_ids
+
+
+def test_quotes_usdc_still_free_form_not_catalog_gated(client: TestClient) -> None:
+    """GET /quotes?asset=USDC stays free-form (stables did not enter comparison catalog)."""
+    assert "USDC" not in {row["id"] for row in client.get("/assets").json()}
+
+    async def fake_resolve(asset: str, *, snapshot_id: str) -> ReferenceMid:
+        return ReferenceMid(
+            snapshot_id=snapshot_id,
+            asset=asset.upper(),
+            mid=Decimal("1"),
+            mid_source="binance_usdm_index",
+            timestamp=datetime(2026, 8, 3, tzinfo=UTC),
+        )
+
+    client.app.state.aggregator.mid_service.resolve = fake_resolve  # type: ignore[method-assign]
+    resp = client.get(
+        "/quotes",
+        params={"asset": "USDC", "notional": "10000", "venues": "mock"},
+    )
+    # Unchanged free-form path: no catalog 422; mock may mark unsupported.
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["asset"] == "USDC"
+    assert body["pairs"]
 
 
 def test_simulate_rate_guard_429() -> None:
