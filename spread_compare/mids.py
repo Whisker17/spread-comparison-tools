@@ -163,19 +163,22 @@ class DefaultMarkProvider:
         return _parse_decimal(raw, field="bybit.mark")
 
     async def _hyperliquid_mark(self, asset: str) -> Decimal | None:
-        """Resolve mark from main book or HIP-3 ``xyz`` (WHI-826 / WHI-798 §8 Q10)."""
+        """Resolve mark from main book or HIP-3 ``xyz`` (WHI-826 / WHI-798 §8 Q10).
+
+        Scales contract marks (e.g. kPEPE) to 1× canonical units before return.
+        """
         from spread_compare.perp_symbols import (
             UnsupportedPerpSymbolError,
             resolve_hl_coin,
         )
 
         try:
-            coin = resolve_hl_coin(asset).venue_symbol
+            resolved = resolve_hl_coin(asset)
         except UnsupportedPerpSymbolError:
-            coin = asset.upper()
-        dex = ""
-        if ":" in coin:
-            dex, _name = coin.split(":", 1)
+            resolved = None
+        coin = resolved.venue_symbol if resolved is not None else asset.upper()
+        mult = resolved.multiplier if resolved is not None else Decimal(1)
+        dex = coin.split(":", 1)[0] if ":" in coin else ""
         body: dict[str, object] = {"type": "metaAndAssetCtxs"}
         if dex:
             body["dex"] = dex
@@ -187,24 +190,31 @@ class DefaultMarkProvider:
             return None
         meta, ctxs = data[0], data[1]
         universe = meta.get("universe") or []
-        # Match full coin (xyz:TSLA) or bare name returned by dex-scoped meta.
-        targets = {coin, coin.split(":", 1)[-1], asset.upper()}
+        bare = coin.split(":", 1)[-1]
+        targets = {coin, bare, bare.upper(), asset.upper()}
         for i, entry in enumerate(universe):
+            if i >= len(ctxs):
+                break
             name = str(entry.get("name") or "")
             candidates = {name, name.upper()}
             if ":" not in name and dex:
                 candidates.add(f"{dex}:{name.upper()}")
-            if candidates.isdisjoint(targets) and i < len(ctxs):
+            if candidates.isdisjoint(targets):
                 continue
-            if not candidates.isdisjoint(targets) and i < len(ctxs):
-                raw = ctxs[i].get("markPx")
-                if raw is None:
-                    return None
-                return _parse_decimal(raw, field="hyperliquid.mark")
+            raw = ctxs[i].get("markPx")
+            if raw is None:
+                return None
+            mark = _parse_decimal(raw, field="hyperliquid.mark")
+            return mark / mult if mult != 1 else mark
         return None
 
     async def _lighter_mark(self, asset: str) -> Decimal | None:
         # Public orderBooks list; match by symbol when present.
+        from spread_compare.perp_symbols import resolve_lighter_symbol
+
+        resolved = resolve_lighter_symbol(asset)
+        venue_sym = resolved.venue_symbol
+        mult = resolved.multiplier
         resp = await self._client.get(
             "https://mainnet.zklighter.elliot.ai/api/v1/orderBooks"
         )
@@ -223,36 +233,45 @@ class DefaultMarkProvider:
             if not isinstance(book, dict):
                 continue
             name = str(book.get("symbol") or book.get("market_id") or "")
-            if name.upper() == asset or name.upper().startswith(f"{asset}-"):
+            name_u = name.upper()
+            if name_u in {venue_sym, asset.upper()} or name_u.startswith(
+                f"{asset.upper()}-"
+            ):
                 raw = book.get("mark_price") or book.get("last_trade_price")
                 if raw is None:
                     return None
-                return _parse_decimal(raw, field="lighter.mark")
+                mark = _parse_decimal(raw, field="lighter.mark")
+                return mark / mult if mult != 1 else mark
         return None
 
     async def _apex_mark(self, asset: str) -> Decimal | None:
-        resp = await self._client.get(
-            "https://omni.apex.exchange/api/v3/ticker",
-            params={"symbol": f"{asset}USDT"},
-        )
-        if resp.status_code >= 400:
-            # Try hyphenated contract form.
+        from spread_compare.perp_symbols import resolve_apex_base
+
+        resolved = resolve_apex_base(asset)
+        mult = resolved.multiplier
+        # Prefer 1000× base wire form when present (e.g. 1000PEPEUSDT).
+        candidates = [f"{resolved.venue_symbol}USDT", f"{asset}USDT", f"{asset}-USDT"]
+        payload: object | None = None
+        for symbol in candidates:
             resp = await self._client.get(
                 "https://omni.apex.exchange/api/v3/ticker",
-                params={"symbol": f"{asset}-USDT"},
+                params={"symbol": symbol},
             )
             if resp.status_code >= 400:
-                return None
-        data = resp.json()
-        payload = data.get("data") if isinstance(data, dict) else data
-        if isinstance(payload, list) and payload:
-            payload = payload[0]
+                continue
+            data = resp.json()
+            payload = data.get("data") if isinstance(data, dict) else data
+            if isinstance(payload, list) and payload:
+                payload = payload[0]
+            if isinstance(payload, dict):
+                break
         if not isinstance(payload, dict):
             return None
         raw = payload.get("markPrice") or payload.get("lastPrice") or payload.get("fairPrice")
         if raw is None:
             return None
-        return _parse_decimal(raw, field="apex.mark")
+        mark = _parse_decimal(raw, field="apex.mark")
+        return mark / mult if mult != 1 else mark
 
 
 class MidService:

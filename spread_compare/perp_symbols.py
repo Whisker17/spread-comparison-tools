@@ -64,8 +64,11 @@ HL_PHASE1_ASSETS: Final[tuple[str, ...]] = (
     "BONK",
 )
 
-# HIP-3 sub-dexes allowed for meta / books (WHI-798 §8 Q10: only xyz + main).
-HL_ALLOWED_DEXES: Final[frozenset[str]] = frozenset({"", "xyz"})
+# HIP-3 sub-dex prefixes allowed beyond the main book (WHI-798 §8 Q10).
+# Main book has no prefix; only ``xyz`` is whitelisted among HIP-3 dexes.
+HL_ALLOWED_HIP3_DEXES: Final[frozenset[str]] = frozenset({"xyz"})
+# Back-compat alias used by the HL adapter meta loop.
+HL_ALLOWED_DEXES: Final[frozenset[str]] = HL_ALLOWED_HIP3_DEXES
 
 
 class UnsupportedPerpSymbolError(ValueError):
@@ -81,8 +84,7 @@ def resolve_hl_coin(asset: str) -> PerpVenueSymbol:
     if ":" in key:
         dex, name = key.split(":", 1)
         dex_l = dex.lower()
-        if not name or dex_l not in HL_ALLOWED_DEXES or dex_l == "":
-            # Bare ``:FOO`` or non-whitelisted dex (e.g. flx:) — refuse.
+        if not name or dex_l not in HL_ALLOWED_HIP3_DEXES:
             raise UnsupportedPerpSymbolError(
                 f"hyperliquid dex {dex!r} not allowed (whitelist: xyz + main)"
             )
@@ -93,20 +95,22 @@ def resolve_hl_coin(asset: str) -> PerpVenueSymbol:
     return PerpVenueSymbol(upper)
 
 
-def resolve_lighter_symbol(asset: str) -> PerpVenueSymbol:
-    """Map logical asset → Lighter ``orderBookDetails.symbol`` + multiplier."""
+def resolve_scaled_1000_symbol(asset: str) -> PerpVenueSymbol:
+    """Map logical asset → Lighter/ApeX-style ``1000X`` base when needed."""
     upper = asset.upper()
     if upper in _SCALED_1000_OVERRIDES:
         return _SCALED_1000_OVERRIDES[upper]
     return PerpVenueSymbol(upper)
+
+
+def resolve_lighter_symbol(asset: str) -> PerpVenueSymbol:
+    """Map logical asset → Lighter ``orderBookDetails.symbol`` + multiplier."""
+    return resolve_scaled_1000_symbol(asset)
 
 
 def resolve_apex_base(asset: str) -> PerpVenueSymbol:
     """Map logical asset → ApeX ``baseTokenId`` + multiplier."""
-    upper = asset.upper()
-    if upper in _SCALED_1000_OVERRIDES:
-        return _SCALED_1000_OVERRIDES[upper]
-    return PerpVenueSymbol(upper)
+    return resolve_scaled_1000_symbol(asset)
 
 
 def hl_logical_id(coin: str) -> str:
@@ -114,14 +118,11 @@ def hl_logical_id(coin: str) -> str:
     coin = coin.strip()
     if coin in _HL_COIN_TO_LOGICAL:
         return _HL_COIN_TO_LOGICAL[coin]
-    # Case-insensitive match for override coins (meta may vary casing).
     for venue_coin, logical in _HL_COIN_TO_LOGICAL.items():
         if venue_coin.lower() == coin.lower():
             return logical
     if ":" in coin:
         return coin.split(":", 1)[-1].upper()
-    if coin.upper().startswith("1000") and len(coin) > 4:
-        return coin.upper()[4:]
     return coin.upper()
 
 
@@ -131,3 +132,15 @@ def scaled_1000_logical_id(venue_symbol: str) -> str:
     if sym.startswith("1000") and len(sym) > 4:
         return sym[4:]
     return sym
+
+
+def perp_multiplier_for(asset: str, *, venue: str) -> Decimal:
+    """Contract multiplier for a logical asset on a named perp venue."""
+    if venue == "hyperliquid":
+        try:
+            return resolve_hl_coin(asset).multiplier
+        except UnsupportedPerpSymbolError:
+            return Decimal(1)
+    if venue in ("lighter", "apex"):
+        return resolve_scaled_1000_symbol(asset).multiplier
+    return Decimal(1)

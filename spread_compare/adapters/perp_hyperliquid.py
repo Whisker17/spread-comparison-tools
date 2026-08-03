@@ -263,6 +263,7 @@ class HyperliquidAdapter(BaseAdapter):
                     elif ":" in raw_name:
                         d, n = raw_name.split(":", 1)
                         d_l = d.lower()
+                        # Only whitelisted HIP-3 prefixes (main book has no prefix).
                         if d_l not in HL_ALLOWED_DEXES:
                             continue
                         coin = f"{d_l}:{n.upper()}"
