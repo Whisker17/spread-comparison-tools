@@ -115,21 +115,25 @@ class DefaultMarkProvider:
         """Sample marks from the five §3.3 venues (skip silently when unavailable)."""
         symbol = _USDT_SYMBOL.format(asset=asset.upper())
         asset_key = asset.upper()
-        samples: list[tuple[str, Decimal]] = []
-        for label, coro in (
+        import asyncio
+
+        labeled = (
             ("binance", self._binance_mark(symbol)),
             ("bybit", self._bybit_mark(symbol)),
             ("hyperliquid", self._hyperliquid_mark(asset_key)),
             ("lighter", self._lighter_mark(asset_key)),
             ("apex", self._apex_mark(asset_key)),
-        ):
-            try:
-                price = await coro
-            except Exception as exc:  # noqa: BLE001
-                logger.debug("mark %s failed for %s: %s", label, asset, exc)
+        )
+        results = await asyncio.gather(
+            *(coro for _, coro in labeled), return_exceptions=True
+        )
+        samples: list[tuple[str, Decimal]] = []
+        for (label, _), result in zip(labeled, results, strict=True):
+            if isinstance(result, BaseException):
+                logger.debug("mark %s failed for %s: %s", label, asset, result)
                 continue
-            if price is not None:
-                samples.append((label, price))
+            if result is not None:
+                samples.append((label, result))
         return samples
 
     async def _binance_mark(self, symbol: str) -> Decimal | None:
@@ -200,7 +204,7 @@ class DefaultMarkProvider:
                 continue
             name = str(book.get("symbol") or book.get("market_id") or "")
             if name.upper() == asset or name.upper().startswith(f"{asset}-"):
-                raw = book.get("last_trade_price") or book.get("mark_price")
+                raw = book.get("mark_price") or book.get("last_trade_price")
                 if raw is None:
                     return None
                 return _parse_decimal(raw, field="lighter.mark")
@@ -318,13 +322,22 @@ class MidService:
         # Tokenized without CEX spot → equity underlying ref (WHI-799 §3.3).
         underlying = TOKENIZED_UNDERLYING.get(asset)
         if underlying is not None:
+            result = await self._try_cex_tradfi_index(underlying)
+            if result is not None:
+                return _SourceResult(
+                    result.mid,
+                    "equity_ref_same_as_perp",
+                    result.timestamp,
+                    sources_detail=result.sources_detail,
+                )
             result = await self._try_proxy_mark_median(
                 underlying, mid_source="equity_ref_same_as_perp"
             )
             if result is not None:
                 return result
-            # Fall through to §3.2 chain on the tokenized ticker rather than hard-fail.
-            logger.debug("equity_ref failed for %s (underlying %s)", asset, underlying)
+            raise MidResolutionError(
+                f"equity_ref mid failed for {asset} (underlying {underlying})"
+            )
 
         if asset in EQUITY_PERP_ASSETS:
             # §3.3: prefer CEX TradFi index, else mark median across perps.

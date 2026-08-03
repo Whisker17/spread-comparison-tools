@@ -56,10 +56,10 @@ _BLUE_CHIP_ROWS: Final[tuple[AssetInfo, ...]] = (
             "tessera_solana": "WETH",
             "bisonfi": "WETH",
             "tessera_base": "WETH",
-            "tessera_bsc": "ETH",
             "uniswap_eth": "WETH",
             "aerodrome_base": "WETH",
             "pancakeswap_bsc": "ETH",
+            # tessera_bsc: no ETH main market in WHI-797 v2 matrix — omit (same as SOL).
         },
     ),
     AssetInfo(

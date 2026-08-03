@@ -32,6 +32,11 @@ defines none: `docs/GIT_WORKFLOW.md` § High-risk paths), **Medium**
 
 ## Open
 
+- **`GET /assets` lists blue chips only** (Low, WHI-807).
+  `spread_compare/assets.py::list_assets` — WHI-798 stocks/equity catalogs are
+  mid-routing seeds (`TOKENIZED_*`, `EQUITY_PERP_ASSETS`) but not returned by
+  `/assets`. Expand with WHI-810.
+
 - **SizeQuotePair has no first-class TOB-error field** (Low, WHI-807).
   `spread_compare/aggregator.py::_collect_venue` — WHI-799 §6.3 says orderbook
   TOB fetch failure must not look like AMM `None`, but §6.4's `SizeQuotePair`

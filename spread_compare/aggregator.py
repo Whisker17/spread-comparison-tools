@@ -43,6 +43,31 @@ logger = logging.getLogger(__name__)
 
 _ORDERBOOK_CLASSES: frozenset[VenueClass] = frozenset({"cex", "perp_dex"})
 
+# instrument_type overrides that each venue class can honor (WHI-799 §7).
+_CLASS_INSTRUMENTS: dict[VenueClass, frozenset[InstrumentType]] = {
+    "cex": frozenset({"spot", "perp"}),
+    "perp_dex": frozenset({"perp"}),
+    "amm_dex": frozenset({"amm_pool"}),
+    "prop_amm": frozenset({"prop_amm"}),
+}
+
+
+def _effective_instrument_type(
+    venue_class: VenueClass,
+    requested: InstrumentType | None,
+) -> InstrumentType:
+    """Apply filter only when the venue class can serve that instrument type."""
+    if requested is not None and requested in _CLASS_INSTRUMENTS[venue_class]:
+        return requested
+    return default_instrument_type(venue_class)
+
+
+def _append_raw_ref(existing: str | None, tag: str) -> str:
+    """Append a degradation tag without clobbering an adapter-supplied raw_ref."""
+    if existing:
+        return f"{existing};{tag}"
+    return tag
+
 
 class AggregatorError(Exception):
     """Base aggregator failure."""
@@ -251,7 +276,18 @@ class QuoteAggregator:
                 return hit.package
 
         snap = snapshot_id or str(uuid.uuid4())
-        mid = await self._mids.resolve(asset_key, snapshot_id=snap)
+        # Mid resolution has its own budget (chain of HTTP sources); don't let it
+        # stall past a multiple of the per-venue timeout.
+        mid_timeout = max(self._agg.venue_timeout_sec * 4, 10.0)
+        try:
+            async with asyncio.timeout(mid_timeout):
+                mid = await self._mids.resolve(asset_key, snapshot_id=snap)
+        except TimeoutError as exc:
+            from spread_compare.mids import MidResolutionError
+
+            raise MidResolutionError(
+                f"mid resolution timed out after {mid_timeout}s for {asset_key}"
+            ) from exc
 
         pairs = await asyncio.gather(
             *(
@@ -323,7 +359,7 @@ class QuoteAggregator:
         instrument_type: InstrumentType | None,
     ) -> SizeQuotePair:
         adapter = registry_get(slug)
-        itype = instrument_type or default_instrument_type(adapter.venue_class)
+        itype = _effective_instrument_type(adapter.venue_class, instrument_type)
         timeout = self._agg.venue_timeout_sec
         stale_threshold = self._mid_settings.stale_threshold_sec
 
@@ -372,9 +408,11 @@ class QuoteAggregator:
             err_msg = tob_outcome.error_message or "orderbook spread fetch failed"
             tag = f"tob_error:{err_code}:{err_msg}"
             if buy is not None and buy.status == "ok":
-                buy = buy.model_copy(update={"raw_ref": tag})
+                buy = buy.model_copy(update={"raw_ref": _append_raw_ref(buy.raw_ref, tag)})
             if sell is not None and sell.status == "ok":
-                sell = sell.model_copy(update={"raw_ref": tag})
+                sell = sell.model_copy(
+                    update={"raw_ref": _append_raw_ref(sell.raw_ref, tag)}
+                )
             logger.warning(
                 "venue %s orderbook TOB failed (%s); stamped raw_ref on ok legs",
                 slug,
