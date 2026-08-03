@@ -6,10 +6,12 @@
 | Milestone | M1 调研与口径定义 |
 | Blocks | [WHI-801](https://linear.app/whisker-personal/issue/WHI-801)（FastAPI + adapter 接口）、[WHI-812](https://linear.app/whisker-personal/issue/WHI-812)（费用数据整理） |
 | Downstream | WHI-802…806（各 venue adapter）、WHI-807（`/quotes` + reference mid 服务）、WHI-813…815（fees / simulate） |
-| 规范日期 | 2026-08-03（UTC） |
+| 规范日期 | 2026-08-03（UTC；v2 同日对齐 WHI-797/798 v2 多链与 stocks 结论） |
 | 性质 | **规范（spec）**，非 live 探测；字段名与公式以本文为准，M2 代码不得另立口径 |
 
----
+> **v2 变更**（因 WHI-797/798 重做而来，公式与模型字段**均不变**）：
+> 1. Prop AMM 不再是 Solana 单链 class：Tessera 部署于 Solana + **Base + BSC**（BSC 是其最大链）。venue slug 引入**链维度**：`tessera` 拆为 `tessera_solana` / `tessera_base` / `tessera_bsc`（§6.5）；EVM 侧报价路径为 KyberSwap `includedSources=tessera`（§4.4）。
+> 2. Stocks 新增 **bStocks 三方对比**（Binance spot × PancakeSwap × Tessera BSC，同一 BSC 资产）为 P0-A（WHI-798 v2）——tokenized stock 的 reference mid 策略相应分化（§3.3）：有 CEX 现货盘的 tokenized 资产用**该资产自身**的 spot TOB，不再一律借 underlying equity 参考价。
 
 ## 1. 结论摘要（TL;DR）
 
@@ -40,9 +42,9 @@
 | CEX | Binance, Bybit | Orderbook walk |
 | Perp DEX | Hyperliquid, Lighter, ApeX | Orderbook walk |
 | AMM DEX | Uniswap (ETH), Aerodrome (Base), PancakeSwap (BSC) | Quoter / router |
-| Prop AMM | HumidiFi, **Tessera**（Jupiter label `TesseraV`）, BisonFi（见 [WHI-797](./WHI-797-prop-amm-jupiter-quote-api.md)） | 净输出报价（fee 内嵌） |
+| Prop AMM | HumidiFi（Solana）、BisonFi（Solana）、**Tessera（Solana / Base / BSC 三链，BSC 量最大）**（见 [WHI-797](./WHI-797-prop-amm-jupiter-quote-api.md) v2） | 净输出报价（fee 内嵌）：Solana 经 Jupiter `dexes=<Label>`；Base/BSC 经 KyberSwap `includedSources=tessera` |
 
-Venue **显示名**用 Tessera；**slug** `tessera`；Jupiter `dexes` 参数仍必须精确 `TesseraV`（WHI-797）。
+Venue **显示名**用 Tessera；**slug 带链维度**：`tessera_solana` / `tessera_base` / `tessera_bsc`（§6.5）。venue 过滤参数按链取值：Solana = Jupiter `dexes=TesseraV`（精确大小写），Base/BSC = KyberSwap `includedSources=tessera`（全小写）——两者都**不等于** slug，映射只写在 §6.5 注册表。
 
 ### 2.2 符号约定
 
@@ -113,8 +115,14 @@ Staleness 语义：
 | 资产类 | `mid_source` | mid 策略 |
 | --- | --- | --- |
 | Equity perps | `cex_tradfi_index` 或 `proxy_perp_mark_median` | 优先 CEX TradFi index；否则取 **Binance + Bybit + Hyperliquid + Lighter + ApeX** 中该标的可用 mark 的中位数。偶数个样本：取中间两档的算术平均。弱于 crypto P0，UI 须标注 |
-| Tokenized spot（xStocks） | `equity_ref_same_as_perp` | 与对应 equity 共用上表参考价；**禁止**单池 mid 当跨 venue reference |
+| **Tokenized spot，有 CEX 现货盘**（bStocks `QQQB` 等 → Binance；xStocks `TSLAX` 等 → Bybit）(v2) | `binance_spot_tob` / `bybit_spot_tob` | 用**该 tokenized 资产自身**在其最深 CEX 现货盘的 bookTicker mid（如 `QQQBUSDT`）。跨 venue 比较（Binance spot × Pancake × Tessera BSC，P0-A）衡量的是**同一资产**的执行偏离——借 underlying equity 参考价会把 wrapper 溢价/折价算进 spread |
+| Tokenized spot，无任何 CEX 现货盘 | `equity_ref_same_as_perp` | 回退用对应 equity 的上表参考价；**禁止**单池 mid 当跨 venue reference |
 | Others | 同 §3.2 枚举 | 无 index 时 P1/P2 spot TOB |
+
+**Tokenized 资产的两条补充口径（v2）**：
+
+1. **资产 ID 语义**：`asset` 用 tokenized token 自身 ID（`QQQB` ≠ `QQQ`，`TSLAx` ≠ `TSLA` ≠ `TSLAB`）。不同发行方的同 underlying 是**不同 asset**，各自有 mid；「跨发行方基差」（NVDAB vs NVDAx vs NVDAon）与「tokenized vs underlying 基差」都走 `basis_bps` 一类的展示指标，**不**混进 `spread_bps`。
+2. **Rebase 警示**：bStocks 用 rebase 处理分红/拆股（WHI-798 v2 Q14）。rebase 生效时刻前后 mid 与各 venue 报价可能出现同步跳变；同一 `snapshot_id` 内自洽即可，但**跨快照的历史对比**（WHI-817）须按 rebase 事件分段，公司行动日的异常 spread 不入统计（实现属 WHI-816/817，此处只定口径）。
 
 ### 3.4 Spot vs Perp 可比性
 
@@ -181,11 +189,19 @@ P_star = sum(price_i * qty_i) / sum(qty_i)
 | `buy` | ExactOut base = `q_star`（若支持）；否则 ExactIn quote≈N | `quote_in / base_out` |
 | `sell` | ExactIn base = `q_star` | `quote_out / base_in` |
 
-**Prop AMM / Jupiter**（[WHI-797](./WHI-797-prop-amm-jupiter-quote-api.md)）：
+**Prop AMM — Solana / Jupiter**（[WHI-797](./WHI-797-prop-amm-jupiter-quote-api.md) §3–§6）：
 
 - 用 `outAmount`（已扣 AMM fee；`platformFee` 保持 0）。
 - `embedded_in_price = true`。
-- 无路由：`status=no_quote`（不抛 5xx）。
+- 无路由（400 `NO_ROUTES_FOUND`）：`status=no_quote`（不抛 5xx）。
+
+**Prop AMM — Base / BSC / KyberSwap**（WHI-797 v2 §7；v2 新增）：
+
+- `GET /{base|bsc}/api/v1/routes` + `includedSources=tessera`；用 `routeSummary.amountOut`（净输出）。
+- `embedded_in_price = true`；同 venue 多跳（全 hop `exchange=tessera`）视为该 venue 报价，与 Jupiter 侧口径一致。
+- **gas 与 Solana 侧不同**：响应自带 `gas` / `gasUsd` → `gas_usd` 直接取用，`gas_unknown=false`（Solana prop AMM 约定 `gas_bps=0`，见 §8）。
+- 错误映射（body `code`，HTTP 均 200）：`4008 route not found` → `no_quote`；`4000 bad request` 且 token 不在该 source 注册集 → `unsupported_asset`；`40011 filtered liquidity sources` = source id 写错或该链无此 venue → **配置错误，fail-fast**（等价于 Jupiter 侧 label 拼错，不当业务空结果吞掉）。
+- 生产带 `x-client-id` header；限速语义见 WHI-797 §7.2。
 
 **公共 AMM**：
 
@@ -510,9 +526,13 @@ SizeQuotePair {
 | `uniswap_eth` | Uniswap (Ethereum) | AMM | |
 | `aerodrome_base` | Aerodrome (Base) | AMM | |
 | `pancakeswap_bsc` | PancakeSwap (BSC) | AMM | |
-| `humidifi` | HumidiFi | Prop AMM | Jupiter `dexes=HumidiFi` |
-| `tessera` | Tessera | Prop AMM | Jupiter `dexes=TesseraV`（label ≠ slug） |
-| `bisonfi` | BisonFi | Prop AMM | Jupiter `dexes=BisonFi` |
+| `humidifi` | HumidiFi | Prop AMM | Solana-only；Jupiter `dexes=HumidiFi` |
+| `tessera_solana` | Tessera (Solana) | Prop AMM | Jupiter `dexes=TesseraV`（label ≠ slug） |
+| `tessera_base` | Tessera (Base) | Prop AMM | KyberSwap `includedSources=tessera`，chain slug `base`（v2） |
+| `tessera_bsc` | Tessera (BSC) | Prop AMM | KyberSwap `includedSources=tessera`，chain slug `bsc`（v2）；量最大 |
+| `bisonfi` | BisonFi | Prop AMM | Solana-only；Jupiter `dexes=BisonFi` |
+
+**v2 说明**：Tessera 一家 = 三个 venue 实例（同一 MM、三条链、两套报价源），与 AMM 侧 `uniswap_eth` / `aerodrome_base` 的链后缀风格一致；`humidifi` / `bisonfi` 已确认 Solana-only，不加后缀。本表**取代** WHI-797 §8 示例中的 `tesserav@solana` 一类写法——slug 以此处为准。旧 slug `tessera`（v1）作废，禁止别名并存。
 
 ### 6.6 错误与降级语义
 
@@ -591,7 +611,8 @@ class VenueAdapter(Protocol):
 | CEX | L2 walk `q_star`；`instrument_type` spot\|perp | 成功→`TopOfBook`；失败→raise | 默认 taker（按 instrument）；`embedded_in_price=false`；`gas_bps=0` |
 | Perp DEX | L2 walk；lot/tick；默认 `perp` | 成功→`TopOfBook`；失败→raise | 同上 + `funding_rate_8h`；可选 `venue_mark` |
 | AMM DEX | Quoter + gas | `None` | 价内嵌 LP；gas 可知则填，否则 `gas_unknown=true` |
-| Prop AMM | Jupiter `dexes=<Label>` 净输出 | `None` | `embedded_in_price=true`；platform 0；无路由 → `no_quote` |
+| Prop AMM（Solana：`humidifi` / `tessera_solana` / `bisonfi`） | Jupiter `dexes=<Label>` 净输出 | `None` | `embedded_in_price=true`；platform 0；`gas_bps=0`（Solana 交易费对四档名义均 <0.1 bps，约定忽略）；无路由 → `no_quote` |
+| Prop AMM（EVM：`tessera_base` / `tessera_bsc`，v2） | KyberSwap `includedSources=tessera` 净输出（§4.4） | `None` | `embedded_in_price=true`；platform 0；**gas 用响应 `gasUsd`**（`gas_unknown=false`）；4008→`no_quote`，4000（token 不在集）→`unsupported_asset`，40011→fail-fast |
 
 ---
 
@@ -625,10 +646,12 @@ bps API 保留 4 位小数；展示可再圆整到 2 位。
 
 | ID | 问题 | 临时默认 |
 | --- | --- | --- |
-| Q1 | Stocks 是否强制外部 equity feed | proxy mark 中位数 + 标注 |
+| Q1 | Stocks 是否强制外部 equity feed | proxy mark 中位数 + 标注（equity perps 路径；tokenized 现货已改用自身 CEX TOB，§3.3 v2） |
 | Q2 | 产品主列默认 half-spread 还是 total cost (buy) | 建议 total cost (buy)；UI 可切换 |
 | Q3 | VIP 是否进 Phase 1 主路径 | 仅 `default_taker` |
-| Q4 | Gas 用即时价还是分位 | 即时 + 保守 gas limit（WHI-804/812） |
+| Q4 | Gas 用即时价还是分位 | 即时 + 保守 gas limit（WHI-804/812）；EVM prop AMM 直接用 KyberSwap `gasUsd` |
+| Q5（v2） | bStocks rebase 事件日的历史统计分段与异常剔除的具体实现 | §3.3 已定口径（rebase 日不入窗口统计）；实现细节归 WHI-816/817 |
+| Q6（v2） | KyberSwap 报价对 Tessera BSC「实际成交价」的代表性（~95% 成交经 Binance Wallet 闭环路由，不经 Kyber） | Phase 1 接受 Kyber 报价为该 venue 公开可得价；M2 后可用 `TesseraTrade` 事件对账（WHI-797 §7.1 / WHI-798 Q16） |
 
 ---
 
@@ -636,8 +659,8 @@ bps API 保留 4 位小数；展示可再圆整到 2 位。
 
 ## 12. 参考与复用来源
 
-- [WHI-797 Prop AMM + Jupiter Quote](./WHI-797-prop-amm-jupiter-quote-api.md) — `dexes` label、fee 内嵌、`outAmount` 语义
-- [WHI-798 资产清单](./WHI-798-asset-category-inventory.md) — venue class、包装资产、乘数
+- [WHI-797 Prop AMM 多链报价](./WHI-797-prop-amm-jupiter-quote-api.md) — Solana：`dexes` label、`outAmount` 语义；**v2** Base/BSC：KyberSwap `includedSources`、`routeSummary.amountOut` / `gasUsd`、4008/4000/40011 错误语义（§7）
+- [WHI-798 资产清单](./WHI-798-asset-category-inventory.md) — venue class、包装资产、乘数；**v2** bStocks 三方 P0-A、tokenized 资产多发行方表示
 - Binance USDT-M premium index：`GET /fapi/v1/premiumIndex`
 - Binance spot bookTicker：`GET /api/v3/ticker/bookTicker`
 - Linear [WHI-799](https://linear.app/whisker-personal/issue/WHI-799)、[WHI-801](https://linear.app/whisker-personal/issue/WHI-801)、[WHI-812](https://linear.app/whisker-personal/issue/WHI-812)
@@ -661,3 +684,4 @@ bps API 保留 4 位小数；展示可再圆整到 2 位。
 | 2026-08-03 | Review round 1：统一 total/explicit 公式；`snapshot_id`/`mid_stale`/`gas_unknown`；可调用 mid 端点；Tessera slug；去掉 LaTeX；TOB 仅 `None` 双轨消除；funding 带 side |
 | 2026-08-03 | Review round 2：`instrument_type` 进 adapter；bps 仅 adapter 计算；TOB 失败抛错；修不变量合取；mid 配置键与 stale 语义；增 sell/gas_unknown 向量；修正 § 交叉引用 |
 | 2026-08-03 | Review round 3：修正 sell 测试向量盘口；`SizeQuotePair`/双边 key 含 `instrument_type`；非 ok 时 `explicit_fee_bps=null`；`config/mid.yaml` 标注 unvalidated |
+| 2026-08-03 | **v2 对齐 WHI-797/798 重做**：slug 拆 `tessera_solana/base/bsc`（作废 `tessera`）；§4.4/§8 增 KyberSwap 报价与错误映射（EVM gas 用 `gasUsd`）；§3.3 tokenized 现货 mid 改用自身 CEX TOB + rebase 口径 + 资产 ID 语义；新增 Q5/Q6。公式与模型字段无变化 |
