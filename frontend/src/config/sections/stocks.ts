@@ -228,6 +228,9 @@ export const equityPerpsBoard: SectionConfig = {
   cellMetric: "total_cost_bps",
   showTopOfBook: true,
   pollIntervalMs: STOCKS_POLL_MS,
+  // CEX symbols for these assets are perp-only (WHI-826); without this the
+  // aggregator defaults CEX to spot and every Binance/Bybit cell is "—".
+  instrumentType: "perp",
 };
 
 export type StocksBoardKind = "tokenized" | "equity_perp";
@@ -345,5 +348,9 @@ export function isStocksOrderbookVenue(slug: string): boolean {
 }
 
 /** Persistent P0-A footnote (WHI-798 §8 Q14). */
-export const BSTOKS_REBASE_FOOTNOTE =
+export const BSTOCKS_REBASE_FOOTNOTE =
   "bStocks handle dividends and splits by rebasing balances. Around rebase days, CEX spot and on-chain pool prices can jump relative to each other — treat large one-day basis moves with care.";
+
+/** Tooltip for emphasized mid-source badge on stock boards (WHI-799 §3.3). */
+export const STOCKS_MID_SOURCE_HINT =
+  "Stock mid sources (cex_tradfi_index / proxy_perp_mark_median / CEX spot TOB) are weaker than crypto P0 index mids (WHI-799 §3.3).";

@@ -6,12 +6,13 @@ import { useMemo } from "react";
 import { AssetSpreadBlock } from "@/components/AssetSpreadBlock";
 import { UsMarketHoursIndicator } from "@/components/UsMarketHoursIndicator";
 import {
-  BSTOKS_REBASE_FOOTNOTE,
+  BSTOCKS_REBASE_FOOTNOTE,
   buildStocksVenueLabels,
   equityPerpsBoard,
   isStocksOrderbookVenue,
   STOCK_ASSET_SUBTITLES,
   STOCK_ASSET_TITLES,
+  STOCKS_MID_SOURCE_HINT,
   stocksSection,
   stocksVenueSummaryLabel,
   tokenizedStocksBoard,
@@ -66,7 +67,7 @@ export function StocksSection() {
         board={tokenizedStocksBoard}
         kind="tokenized"
         repsByAsset={repsByAsset}
-        footnote={BSTOKS_REBASE_FOOTNOTE}
+        footnote={BSTOCKS_REBASE_FOOTNOTE}
       />
 
       <Board
@@ -211,6 +212,7 @@ function StocksAssetBlock({
       summaryVenueLabels={summaryVenueLabels}
       orderbookVenues={orderbookVenues}
       emphasizeMidSource
+      midSourceHint={STOCKS_MID_SOURCE_HINT}
     />
   );
 }

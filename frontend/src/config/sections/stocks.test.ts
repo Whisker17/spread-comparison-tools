@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  BSTOKS_REBASE_FOOTNOTE,
+  BSTOCKS_REBASE_FOOTNOTE,
   buildStocksVenueLabels,
   EQUITY_PERP_ASSETS,
   EQUITY_PERP_REPRESENTATIONS,
@@ -156,12 +156,19 @@ describe("stocks section config (WHI-810)", () => {
   });
 
   it("ships a persistent bStocks rebase footnote for P0-A", () => {
-    expect(BSTOKS_REBASE_FOOTNOTE.toLowerCase()).toMatch(/rebase/);
+    expect(BSTOCKS_REBASE_FOOTNOTE.toLowerCase()).toMatch(/rebase/);
   });
 
   it("defaults poll interval to 30s on both boards", () => {
     expect(tokenizedStocksBoard.pollIntervalMs).toBe(30_000);
     expect(equityPerpsBoard.pollIntervalMs).toBe(30_000);
+  });
+
+  it("requests instrument_type=perp on equity-perp board so CEX resolves TradFi", () => {
+    // Without this, aggregator defaults CEX to spot and TSLA/NVDA/… are
+    // unsupported_asset on Binance/Bybit (WHI-826 _perp_only).
+    expect(equityPerpsBoard.instrumentType).toBe("perp");
+    expect(tokenizedStocksBoard.instrumentType).toBeUndefined();
   });
 });
 

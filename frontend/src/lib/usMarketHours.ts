@@ -15,7 +15,12 @@ export const US_EQUITY_CLOSE_MINUTES = 16 * 60;
 /**
  * Major NYSE full-session holidays 2025–2027 (YYYY-MM-DD in Eastern date).
  * Half-days are treated as open for Phase 1 simplicity.
+ *
+ * Phase-1 static table — dates after 2027-12-31 are treated as ordinary
+ * weekdays (no holiday). Refresh before 2028 if this util is still in use.
  */
+export const US_EQUITY_HOLIDAYS_THROUGH = "2027-12-31";
+
 export const US_EQUITY_HOLIDAYS: ReadonlySet<string> = new Set([
   // 2025
   "2025-01-01",

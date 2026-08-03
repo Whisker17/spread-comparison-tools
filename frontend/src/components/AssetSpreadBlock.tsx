@@ -45,10 +45,13 @@ export type AssetSpreadBlockProps = {
   /** Optional secondary line under the title. */
   assetSubtitle?: string;
   /**
-   * When true, mid-source is rendered as a prominent warning-style badge
-   * (stocks mid chain is weaker than crypto P0 — WHI-799 §3.3 / WHI-810).
+   * When true, mid-source is rendered as a prominent warning-style badge.
+   * Pair with `midSourceHint` for section-specific tooltip copy — the shared
+   * component must not hardcode product domain text (WHI-810 concurrent-PR rule).
    */
   emphasizeMidSource?: boolean;
+  /** Tooltip / title text for the emphasized mid-source badge. */
+  midSourceHint?: string;
 };
 
 export function AssetSpreadBlock({
@@ -61,6 +64,7 @@ export function AssetSpreadBlock({
   assetTitle,
   assetSubtitle,
   emphasizeMidSource = false,
+  midSourceHint,
 }: AssetSpreadBlockProps) {
   const [sideView, setSideView] = useState<SideView>(section.defaultSideView);
 
@@ -69,6 +73,7 @@ export function AssetSpreadBlock({
     notionals: section.notionals,
     // Pin to the section venue set so we don't surface mock/other adapters.
     venues: venues.length > 0 ? venues : undefined,
+    instrument_type: section.instrumentType,
     refetchInterval: section.pollIntervalMs,
   });
 
@@ -197,7 +202,7 @@ export function AssetSpreadBlock({
             <span
               className="inline-flex items-center gap-1.5 rounded-md border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-900 dark:border-amber-800 dark:bg-amber-950/50 dark:text-amber-100"
               data-testid={`mid-source-badge-${asset}`}
-              title="Stock mid sources (cex_tradfi_index / proxy_perp_mark_median / CEX spot TOB) are weaker than crypto P0 index mids (WHI-799 §3.3)."
+              title={midSourceHint}
             >
               <span className="uppercase tracking-wide opacity-80">
                 Mid source
