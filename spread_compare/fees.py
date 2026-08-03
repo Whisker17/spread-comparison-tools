@@ -13,7 +13,14 @@ from pathlib import Path
 from typing import Any, Final
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    ValidationInfo,
+    field_validator,
+)
 
 from spread_compare.models import FeeSchedule, InstrumentType, VenueClass
 from spread_compare.venues import VENUES
@@ -40,7 +47,7 @@ class _VenueFeeFile(BaseModel):
 
     @field_validator("schedules", mode="before")
     @classmethod
-    def _inject_venue(cls, value: object, info: Any) -> object:
+    def _inject_venue(cls, value: object, info: ValidationInfo) -> object:
         """Allow schedule rows to omit ``venue``; fill from the file-level field."""
         if not isinstance(value, list):
             return value
@@ -101,10 +108,6 @@ class FeeCatalog:
             key=lambda s: (s.venue, s.instrument_type),
         )
 
-    def venues(self) -> frozenset[str]:
-        return frozenset(v for v, _ in self._by_key)
-
-
 def required_instruments(venue_class: VenueClass) -> frozenset[InstrumentType]:
     """Instrument types a venue of ``venue_class`` must publish schedules for."""
     return _INSTRUMENTS_BY_CLASS[venue_class]
@@ -154,7 +157,11 @@ def load_fee_catalog(*, fees_dir: Path | None = None) -> FeeCatalog:
         raise FileNotFoundError(f"fee config directory missing: {directory}")
 
     schedules: list[FeeSchedule] = []
-    paths = sorted(directory.glob("*.yaml"))
+    # Skip per-deployment overrides (*.local.yaml); fee schedules are
+    # checked-in data, not tunables that need local overlays.
+    paths = sorted(
+        p for p in directory.glob("*.yaml") if not p.name.endswith(".local.yaml")
+    )
     if not paths:
         raise FileNotFoundError(f"no fee YAML files under {directory}")
 

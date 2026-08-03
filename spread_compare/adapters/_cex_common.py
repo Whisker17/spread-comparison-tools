@@ -47,7 +47,6 @@ DEFAULT_FEE_TIER: str = "default_taker"
 CexBookSide = Literal["spot", "perp"]
 OrderbookLevels = list[tuple[Decimal, Decimal]]
 
-
 class AsyncRateLimiter:
     """Simple min-interval throttle (one request slot at a time per instance)."""
 
@@ -64,7 +63,6 @@ class AsyncRateLimiter:
                 await asyncio.sleep(wait)
             self._last_mono = time.monotonic()
 
-
 def parse_levels(raw: Sequence[Sequence[object]]) -> OrderbookLevels:
     """Parse ``[[price, size], ...]`` string/number rows into Decimal levels."""
     levels: OrderbookLevels = []
@@ -78,7 +76,6 @@ def parse_levels(raw: Sequence[Sequence[object]]) -> OrderbookLevels:
         levels.append((price, size))
     return levels
 
-
 def non_ok_fees(*, fee_tier: str) -> FeeBreakdown:
     """FeeBreakdown for non-ok quotes; CEX gas is explicit zero (WHI-799 §5)."""
     return FeeBreakdown(
@@ -91,13 +88,11 @@ def non_ok_fees(*, fee_tier: str) -> FeeBreakdown:
         explicit_fee_bps=None,
     )
 
-
 def resolve_cex_instrument(instrument_type: InstrumentType) -> CexBookSide | None:
     """Map a resolved instrument_type to spot|perp; ``None`` if not a CEX book."""
     if instrument_type in ("spot", "perp"):
         return instrument_type
     return None
-
 
 def build_quote_from_book(
     *,
@@ -182,7 +177,6 @@ def build_quote_from_book(
         qty_method="base_from_mid",
     )
 
-
 def build_error_quote(
     *,
     venue: str,
@@ -216,7 +210,6 @@ def build_error_quote(
         error_message=message,
     )
 
-
 def build_top_of_book(
     *,
     venue: str,
@@ -249,7 +242,6 @@ def build_top_of_book(
         spread_bps_local=top_of_book_spread_bps(best_bid, best_ask, mid_local),
         timestamp=now,
     )
-
 
 class CexBaseAdapter(BaseAdapter, ABC):
     """Shared get_quote / TOB / fees / HTTP retry for orderbook CEX venues.

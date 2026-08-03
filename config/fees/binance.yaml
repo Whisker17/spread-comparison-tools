@@ -12,7 +12,7 @@ schedules:
     funding_model: none
     fee_embedded_in_quote: false
     tiers:
-      - name: regular
+      - name: default_taker
         maker_bps: "10"
         taker_bps: "10"
         volume_requirement: "< 1,000,000 USD 30d trade volume (or 0 BNB)"
@@ -34,7 +34,7 @@ schedules:
     funding_model: perp_8h
     fee_embedded_in_quote: false
     tiers:
-      - name: regular
+      - name: default_taker
         maker_bps: "2"
         taker_bps: "5"
         volume_requirement: "< 5,000,000 USD 30d trade volume (or 0 BNB)"

@@ -48,7 +48,6 @@ _TAKER_BPS = Decimal("10")
 _SUPPORTED = ("BTC",)
 _DEFAULT_FEE_TIER = "default_taker"
 
-
 def _non_ok_fees(*, fee_tier: str) -> FeeBreakdown:
     """FeeBreakdown for non-ok quotes (no explicit fee components filled)."""
     return FeeBreakdown(
@@ -59,7 +58,6 @@ def _non_ok_fees(*, fee_tier: str) -> FeeBreakdown:
         gas_unknown=False,
         explicit_fee_bps=None,
     )
-
 
 def _quote_shell(
     *,
@@ -102,7 +100,6 @@ def _quote_shell(
         error_code=error_code,
         error_message=error_message,
     )
-
 
 @register_adapter
 class MockAdapter(BaseAdapter):

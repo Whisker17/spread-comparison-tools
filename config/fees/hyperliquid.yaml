@@ -10,7 +10,7 @@ schedules:
     funding_model: perp_continuous
     fee_embedded_in_quote: false
     tiers:
-      - name: tier0
+      - name: default_taker
         maker_bps: "1.5"
         taker_bps: "4.5"
         volume_requirement: "14d weighted volume base (Tier 0)"

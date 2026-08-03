@@ -46,13 +46,11 @@ __all__ = [
     "exact_in_prop_quote",
 ]
 
-
 def optional_env(name: str) -> str | None:
     """Return a non-empty env var, or None if unset/blank."""
     load_dotenv_once()
     value = os.environ.get(name, "").strip()
     return value or None
-
 
 def require_mid_match(mid: ReferenceMid, asset: str) -> None:
     """Raise when mid asset does not match the requested asset or mid is non-positive."""
@@ -60,7 +58,6 @@ def require_mid_match(mid: ReferenceMid, asset: str) -> None:
         raise AdapterError(f"mid.asset={mid.asset!r} does not match asset={asset!r}")
     if mid.mid <= 0:
         raise AdapterError(f"mid must be positive, got {mid.mid}")
-
 
 @dataclass(frozen=True, slots=True)
 class PropFill:
@@ -70,7 +67,6 @@ class PropFill:
     amount_out: int
     gas_usd: Decimal | None = None
 
-
 class PropNoQuoteError(Exception):
     """Business empty state from a prop quote provider (no route / no liquidity)."""
 
@@ -78,9 +74,7 @@ class PropNoQuoteError(Exception):
         super().__init__(message)
         self.code = code
 
-
 PropFetch = Callable[[str, str, int], Awaitable[PropFill]]
-
 
 async def exact_in_prop_quote(
     *,
@@ -230,7 +224,6 @@ async def exact_in_prop_quote(
         gas_unknown=gas_unknown,
         venue_symbol=venue_symbol,
     )
-
 
 # Solana mint table (WHI-797 §6.2) — initial asset surface only.
 SOL_MINTS: Final[dict[str, TokenInfo]] = {

@@ -11,7 +11,7 @@ schedules:
     funding_model: perp_continuous
     fee_embedded_in_quote: false
     tiers:
-      - name: standard
+      - name: default_taker
         maker_bps: "0"
         taker_bps: "0"
         volume_requirement: "Standard Account (default)"

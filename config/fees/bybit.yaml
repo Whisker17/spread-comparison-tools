@@ -10,7 +10,7 @@ schedules:
     funding_model: none
     fee_embedded_in_quote: false
     tiers:
-      - name: non_vip
+      - name: default_taker
         maker_bps: "10"
         taker_bps: "10"
         volume_requirement: "Non-VIP / VIP 0"
@@ -46,7 +46,7 @@ schedules:
     funding_model: perp_8h
     fee_embedded_in_quote: false
     tiers:
-      - name: non_vip
+      - name: default_taker
         maker_bps: "2"
         taker_bps: "5.5"
         volume_requirement: "Non-VIP / VIP 0 (USDT perpetual)"

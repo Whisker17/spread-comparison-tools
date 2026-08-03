@@ -22,4 +22,7 @@ Loaders:
 Checked-in files:
 - `mid.yaml`, `aggregator.yaml` (defaults flagged unvalidated pending DESIGN.md §2)
 - `fees/<venue>.yaml` — verified venue fee schedules (WHI-812); every number cites
-  `source_urls` and carries `updated_at`
+  `source_urls` and carries `updated_at`. Filename stem must equal `venue:`.
+  Adding a slug to `venues.py` requires a matching fee file (fail-fast at startup).
+  `*.local.yaml` files under `fees/` are ignored by the loader (fee data is
+  checked-in, not a per-deploy overlay).

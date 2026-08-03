@@ -52,7 +52,6 @@ _BLUE_CHIPS: tuple[str, ...] = ("BTC", "ETH", "SOL")
 # HL ``funding`` field is hourly; store 8h-equivalent for FeeBreakdown (WHI-799 §5.3).
 _HOURS_PER_FUNDING_PERIOD = Decimal("8")
 
-
 @register_adapter
 class HyperliquidAdapter(BaseAdapter):
     """Hyperliquid perpetual L2 walker (info ``l2Book``)."""
@@ -151,7 +150,6 @@ class HyperliquidAdapter(BaseAdapter):
             instrument_type="perp",
         )
 
-
     def supported_assets(
         self,
         *,
@@ -248,7 +246,6 @@ class HyperliquidAdapter(BaseAdapter):
             json_body=body,
             max_retries=4,
         )
-
 
 def _normalize_hl_coin(asset: str) -> str:
     """Uppercase blue-chip coins; preserve HIP-3 ``dex:COIN`` form after strip."""

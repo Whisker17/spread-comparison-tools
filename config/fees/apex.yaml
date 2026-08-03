@@ -10,7 +10,7 @@ schedules:
     funding_model: perp_continuous
     fee_embedded_in_quote: false
     tiers:
-      - name: level1
+      - name: default_taker
         maker_bps: "2"
         taker_bps: "5"
         volume_requirement: "< $5M 14d volume (or <= 25,000 APEX/esAPEX)"

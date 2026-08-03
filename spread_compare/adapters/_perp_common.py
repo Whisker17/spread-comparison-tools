@@ -44,7 +44,6 @@ DEFAULT_FEE_TIER: str = "default_taker"
 
 OrderbookLevels = list[tuple[Decimal, Decimal]]
 
-
 class AsyncRateLimiter:
     """Simple min-interval throttle (one request slot at a time per instance).
 
@@ -72,7 +71,6 @@ class AsyncRateLimiter:
             if wait > 0:
                 await asyncio.sleep(wait)
             self._last_mono = time.monotonic()
-
 
 class RollingWindowRateLimiter:
     """Cap requests in a rolling wall-clock window (e.g. 60 req / 60s)."""
@@ -120,7 +118,6 @@ class RollingWindowRateLimiter:
                 if wait > 0:
                     await asyncio.sleep(wait)
 
-
 def parse_levels(raw: Sequence[Sequence[object]]) -> OrderbookLevels:
     """Parse ``[[price, size], ...]`` string/number rows into Decimal levels."""
     levels: OrderbookLevels = []
@@ -137,12 +134,10 @@ def parse_levels(raw: Sequence[Sequence[object]]) -> OrderbookLevels:
         levels.append((price, size))
     return levels
 
-
 def require_mid_asset(mid: ReferenceMid, asset: str) -> None:
     """Raise AdapterError when ``mid.asset`` does not match the requested asset."""
     if mid.asset.upper() != asset.upper():
         raise AdapterError(f"mid.asset={mid.asset!r} does not match asset={asset!r}")
-
 
 def aggregate_orders_by_price(
     orders: Sequence[dict[str, object]],
@@ -172,7 +167,6 @@ def aggregate_orders_by_price(
     prices = sorted(buckets.keys(), reverse=descending)
     return [(px, buckets[px]) for px in prices]
 
-
 def non_ok_fees(*, fee_tier: str) -> FeeBreakdown:
     return FeeBreakdown(
         embedded_in_price=False,
@@ -182,7 +176,6 @@ def non_ok_fees(*, fee_tier: str) -> FeeBreakdown:
         gas_unknown=False,
         explicit_fee_bps=None,
     )
-
 
 def build_quote_from_book(
     *,
@@ -280,7 +273,6 @@ def build_quote_from_book(
         basis_bps=basis,
     )
 
-
 def build_unsupported_quote(
     *,
     venue: str,
@@ -309,7 +301,6 @@ def build_unsupported_quote(
         error_code="unsupported_asset",
         error_message=message,
     )
-
 
 def build_top_of_book(
     *,
@@ -344,7 +335,6 @@ def build_top_of_book(
         timestamp=now,
     )
 
-
 def resolve_perp_instrument(
     instrument_type: InstrumentType | None,
     *,
@@ -357,7 +347,6 @@ def resolve_perp_instrument(
             f"perp DEX adapters only support instrument_type=perp, got {itype!r}"
         )
     return itype
-
 
 async def request_json(
     client: httpx.AsyncClient,

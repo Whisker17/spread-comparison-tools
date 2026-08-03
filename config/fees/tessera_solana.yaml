@@ -9,7 +9,7 @@ schedules:
     default_tier: embedded
     funding_model: none
     fee_embedded_in_quote: true
-    # unvalidated engineering estimate (display fallback only; live quotes use quoter/route gas)
+    # unvalidated engineering estimate (display fallback only; Solana fees are embedded in quote)
     gas_estimate_usd: "0.01"
     source_urls:
       - https://station.jup.ag/docs/apis/swap-api
