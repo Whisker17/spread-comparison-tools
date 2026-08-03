@@ -235,3 +235,42 @@ class SizeQuotePair(BaseModel):
     half_spread_bps: Decimal | None = None
     round_trip_total_cost_bps: Decimal | None = None
     top_of_book: TopOfBook | None = None
+
+    @model_validator(mode="after")
+    def _enforce_pair_identity(self) -> SizeQuotePair:
+        """Legs and TOB must share the pair's identity key (WHI-799 §4.6 / §6.4)."""
+        for leg_name, leg in (("buy", self.buy), ("sell", self.sell)):
+            if leg is None:
+                continue
+            if leg.side != leg_name:
+                raise ValueError(f"{leg_name} leg has side={leg.side!r}")
+            mismatches = [
+                field
+                for field in (
+                    "snapshot_id",
+                    "venue",
+                    "asset",
+                    "instrument_type",
+                    "notional_usd",
+                )
+                if getattr(leg, field) != getattr(self, field)
+            ]
+            if mismatches:
+                raise ValueError(
+                    f"{leg_name} leg mismatches pair on {', '.join(mismatches)} "
+                    "(WHI-799 §4.6)"
+                )
+        if self.top_of_book is not None:
+            tob = self.top_of_book
+            if tob.instrument_type != self.instrument_type:
+                raise ValueError(
+                    "top_of_book.instrument_type must match pair "
+                    f"(got {tob.instrument_type!r}, pair {self.instrument_type!r}; "
+                    "WHI-799 §6.4)"
+                )
+            for field in ("snapshot_id", "venue", "asset"):
+                if getattr(tob, field) != getattr(self, field):
+                    raise ValueError(
+                        f"top_of_book.{field} must match pair (WHI-799 §6.4)"
+                    )
+        return self

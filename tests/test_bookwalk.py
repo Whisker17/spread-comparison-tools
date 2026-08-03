@@ -2,6 +2,8 @@
 
 from decimal import Decimal
 
+import pytest
+
 from spread_compare.bookwalk import walk_book
 
 # mid = 100_000, N = 10_000 → q_star = 0.1 BTC
@@ -35,7 +37,5 @@ def test_walk_book_insufficient_depth_returns_none() -> None:
 
 
 def test_walk_book_negative_size_raises() -> None:
-    import pytest
-
     with pytest.raises(ValueError, match="non-negative"):
         walk_book([(Decimal("100010"), Decimal("-0.01"))], Q_STAR)

@@ -59,3 +59,28 @@ def test_total_cost_gas_unknown_is_none() -> None:
     assert result.total_cost_bps is None
     assert result.explicit_fee_bps is None
     assert result.gas_bps is None
+
+
+def test_top_of_book_spread_bps() -> None:
+    from spread_compare.costs import top_of_book_spread_bps
+
+    # fixture best bid/ask around mid 100000 → width 20 → 2.0 bps vs mid_ref
+    assert top_of_book_spread_bps(
+        Decimal("99990"), Decimal("100010"), Decimal("100000")
+    ) == Decimal("2.0000")
+
+
+def test_round_trip_helpers() -> None:
+    from spread_compare.costs import (
+        half_spread_bps,
+        round_trip_spread_bps,
+        round_trip_total_cost_bps,
+    )
+
+    assert round_trip_spread_bps(Decimal("4.4"), Decimal("4.4")) == Decimal("8.8000")
+    assert half_spread_bps(Decimal("4.4"), Decimal("4.4")) == Decimal("4.4000")
+    assert round_trip_total_cost_bps(Decimal("14.4"), Decimal("14.4")) == Decimal(
+        "28.8000"
+    )
+    assert round_trip_spread_bps(Decimal("4.4"), None) is None
+    assert round_trip_total_cost_bps(None, Decimal("14.4")) is None

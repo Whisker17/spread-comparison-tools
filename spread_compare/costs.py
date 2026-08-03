@@ -1,4 +1,4 @@
-"""Authoritative bps formulas (WHI-799 §4.5 / §5.2 / §6.3).
+"""Authoritative bps formulas (WHI-799 §4.5 / §5.2 / §6.3 / §4.6).
 
 Adapters call these; the aggregator must never recompute spread or total cost.
 """
@@ -35,23 +35,16 @@ def spread_bps(side: Side, effective_price: Decimal, mid: Decimal) -> Decimal:
 def top_of_book_spread_bps(
     best_bid: Decimal,
     best_ask: Decimal,
-    mid_ref: Decimal,
+    mid: Decimal,
 ) -> Decimal:
-    """TOB width vs reference mid (WHI-799 §6.3): ``(ask - bid) / mid_ref * 10_000``."""
-    if mid_ref == 0:
-        raise ValueError("mid_ref must be non-zero")
-    return _quantize_bps((best_ask - best_bid) / mid_ref * _BPS)
+    """TOB width in bps: ``(ask - bid) / mid * 10_000`` (WHI-799 §6.3).
 
-
-def top_of_book_spread_bps_local(
-    best_bid: Decimal,
-    best_ask: Decimal,
-    mid_local: Decimal,
-) -> Decimal:
-    """TOB width vs local mid (WHI-799 §6.3): ``(ask - bid) / mid_local * 10_000``."""
-    if mid_local == 0:
-        raise ValueError("mid_local must be non-zero")
-    return _quantize_bps((best_ask - best_bid) / mid_local * _BPS)
+    Pass ``mid_ref`` for the main comparison field, or ``mid_local`` for the
+    local-mid variant — same formula, different denominator.
+    """
+    if mid == 0:
+        raise ValueError("mid must be non-zero")
+    return _quantize_bps((best_ask - best_bid) / mid * _BPS)
 
 
 @dataclass(frozen=True, slots=True)
@@ -61,7 +54,6 @@ class TotalCostResult:
     total_cost_bps: Decimal | None
     explicit_fee_bps: Decimal | None
     gas_bps: Decimal | None
-    trading_component_bps: Decimal
 
 
 def total_cost_bps(
@@ -96,7 +88,6 @@ def total_cost_bps(
             total_cost_bps=None,
             explicit_fee_bps=None,
             gas_bps=None,
-            trading_component_bps=trading_component,
         )
 
     if gas_usd is None:
@@ -110,5 +101,35 @@ def total_cost_bps(
         total_cost_bps=total,
         explicit_fee_bps=explicit,
         gas_bps=gas,
-        trading_component_bps=trading_component,
     )
+
+
+def round_trip_spread_bps(
+    buy_spread_bps: Decimal | None,
+    sell_spread_bps: Decimal | None,
+) -> Decimal | None:
+    """Sum of both sides; ``None`` if either side is missing (WHI-799 §4.6)."""
+    if buy_spread_bps is None or sell_spread_bps is None:
+        return None
+    return _quantize_bps(buy_spread_bps + sell_spread_bps)
+
+
+def half_spread_bps(
+    buy_spread_bps: Decimal | None,
+    sell_spread_bps: Decimal | None,
+) -> Decimal | None:
+    """Half of round-trip spread (WHI-799 §4.6)."""
+    rt = round_trip_spread_bps(buy_spread_bps, sell_spread_bps)
+    if rt is None:
+        return None
+    return _quantize_bps(rt / Decimal("2"))
+
+
+def round_trip_total_cost_bps(
+    buy_total_cost_bps: Decimal | None,
+    sell_total_cost_bps: Decimal | None,
+) -> Decimal | None:
+    """Sum of both sides' total cost; ``None`` if either is missing (WHI-799 §4.6)."""
+    if buy_total_cost_bps is None or sell_total_cost_bps is None:
+        return None
+    return _quantize_bps(buy_total_cost_bps + sell_total_cost_bps)

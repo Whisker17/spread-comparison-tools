@@ -10,17 +10,13 @@ from decimal import Decimal
 from typing import Literal
 
 from spread_compare.adapters.base import (
+    AdapterError,
     UnsupportedAssetError,
     default_instrument_type,
 )
 from spread_compare.adapters.registry import register_adapter
 from spread_compare.bookwalk import walk_book
-from spread_compare.costs import (
-    spread_bps,
-    top_of_book_spread_bps,
-    top_of_book_spread_bps_local,
-    total_cost_bps,
-)
+from spread_compare.costs import spread_bps, top_of_book_spread_bps, total_cost_bps
 from spread_compare.models import (
     FeeBreakdown,
     FeeSchedule,
@@ -48,12 +44,14 @@ _BIDS: list[tuple[Decimal, Decimal]] = [
 
 _TAKER_BPS = Decimal("10")
 _SUPPORTED = ("BTC",)
+_DEFAULT_FEE_TIER = "default_taker"
 
 
-def _empty_fees(*, fee_tier: str | None = None) -> FeeBreakdown:
+def _non_ok_fees(*, fee_tier: str) -> FeeBreakdown:
+    """FeeBreakdown for non-ok quotes (no explicit fee components filled)."""
     return FeeBreakdown(
         embedded_in_price=False,
-        fee_tier=fee_tier or "default_taker",
+        fee_tier=fee_tier,
         trading_fee_bps=None,
         platform_fee_bps=Decimal("0"),
         gas_unknown=False,
@@ -73,8 +71,8 @@ def _quote_shell(
     timestamp: datetime,
     venue_symbol: str | None = None,
     effective_price: Decimal | None = None,
-    spread: Decimal | None = None,
-    total_cost: Decimal | None = None,
+    spread_bps: Decimal | None = None,
+    total_cost_bps: Decimal | None = None,
     qty_base: Decimal | None = None,
     qty_method: QtyMethod | None = None,
     error_code: str | None = None,
@@ -92,9 +90,9 @@ def _quote_shell(
         mid_source=mid.mid_source,
         mid_timestamp=mid.timestamp,
         effective_price=effective_price,
-        spread_bps=spread,
+        spread_bps=spread_bps,
         fee_breakdown=fee_breakdown,
-        total_cost_bps=total_cost,
+        total_cost_bps=total_cost_bps,
         timestamp=timestamp,
         status=status,
         qty_base=qty_base,
@@ -124,7 +122,8 @@ class MockAdapter:
         itype = instrument_type or default_instrument_type(self.venue_class)
         now = datetime.now(tz=UTC)
         asset_key = asset.upper()
-        fees = _empty_fees(fee_tier=fee_tier)
+        tier = fee_tier or _DEFAULT_FEE_TIER
+        fees = _non_ok_fees(fee_tier=tier)
 
         if asset_key not in _SUPPORTED:
             return _quote_shell(
@@ -141,17 +140,8 @@ class MockAdapter:
             )
 
         if mid.asset.upper() != asset_key:
-            return _quote_shell(
-                mid=mid,
-                asset=asset_key,
-                side=side,
-                notional_usd=notional_usd,
-                instrument_type=itype,
-                status="error",
-                fee_breakdown=fees,
-                timestamp=now,
-                error_code="mid_asset_mismatch",
-                error_message=f"mid.asset={mid.asset!r} does not match asset={asset!r}",
+            raise AdapterError(
+                f"mid.asset={mid.asset!r} does not match asset={asset!r}"
             )
 
         q_star = notional_usd / mid.mid
@@ -185,7 +175,7 @@ class MockAdapter:
         )
         ok_fees = FeeBreakdown(
             embedded_in_price=False,
-            fee_tier=fee_tier or "default_taker",
+            fee_tier=tier,
             trading_fee_bps=_TAKER_BPS,
             platform_fee_bps=Decimal("0"),
             gas_usd=None,
@@ -204,8 +194,8 @@ class MockAdapter:
             timestamp=now,
             venue_symbol=f"{asset_key}USDT",
             effective_price=p_star,
-            spread=sp,
-            total_cost=cost.total_cost_bps,
+            spread_bps=sp,
+            total_cost_bps=cost.total_cost_bps,
             qty_base=q_star,
             qty_method="base_from_mid",
         )
@@ -237,7 +227,7 @@ class MockAdapter:
             mid_ref=mid.mid,
             mid_timestamp=mid.timestamp,
             spread_bps=top_of_book_spread_bps(best_bid, best_ask, mid.mid),
-            spread_bps_local=top_of_book_spread_bps_local(best_bid, best_ask, mid_local),
+            spread_bps_local=top_of_book_spread_bps(best_bid, best_ask, mid_local),
             timestamp=now,
         )
 
@@ -248,14 +238,15 @@ class MockAdapter:
         instrument_type: InstrumentType | None = None,
     ) -> FeeSchedule:
         itype = instrument_type or default_instrument_type(self.venue_class)
+        funding: Literal["none", "perp_8h"] = "perp_8h" if itype == "perp" else "none"
         return FeeSchedule(
             venue=self.venue,
             asset=asset,
             instrument_type=itype,
             maker_bps=Decimal("0"),
             taker_bps=_TAKER_BPS,
-            default_tier="default_taker",
-            funding_model="none" if itype == "spot" else "perp_8h",
+            default_tier=_DEFAULT_FEE_TIER,
+            funding_model=funding,
             fee_embedded_in_quote=False,
             source_urls=[],
             updated_at=datetime.now(tz=UTC),
