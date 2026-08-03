@@ -1,9 +1,15 @@
 import { NOTIONAL_TIERS_USD } from "@/config/notionals";
+import {
+  ON_CHAIN_VENUE_CLASSES,
+  ORDERBOOK_VENUE_CLASSES,
+} from "@/config/sections/helpers";
 import type {
   SectionConfig,
   VenueClass,
   VenueMeta,
 } from "@/config/sections/types";
+
+export { ON_CHAIN_VENUE_CLASSES, ORDERBOOK_VENUE_CLASSES };
 
 /**
  * Crypto blue chips section (WHI-809).
@@ -174,18 +180,6 @@ export const REPRESENTATIONS: Readonly<
     bisonfi: "wSOL",
   },
 };
-
-/** Orderbook venue classes that can produce TopOfBook (WHI-799 §6.3). */
-export const ORDERBOOK_VENUE_CLASSES: ReadonlySet<VenueClass> = new Set([
-  "cex",
-  "perp_dex",
-]);
-
-/** On-chain venue classes that need wrapper representation labels. */
-export const ON_CHAIN_VENUE_CLASSES: ReadonlySet<VenueClass> = new Set([
-  "amm_dex",
-  "prop_amm",
-]);
 
 export const BLUE_CHIP_POLL_MS = 30_000;
 

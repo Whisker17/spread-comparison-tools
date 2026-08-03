@@ -13,7 +13,7 @@ import {
   STOCK_ASSET_SUBTITLES,
   STOCK_ASSET_TITLES,
   STOCKS_MID_SOURCE_HINT,
-  stocksSection,
+  stocksPageHeader,
   stocksVenueSummaryLabel,
   tokenizedStocksBoard,
   type StocksBoardKind,
@@ -47,10 +47,10 @@ export function StocksSection() {
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h1 className="text-2xl font-semibold tracking-tight">
-              {stocksSection.title}
+              {stocksPageHeader.title}
             </h1>
             <p className="mt-1 max-w-3xl text-sm text-zinc-600 dark:text-zinc-400">
-              {stocksSection.description}
+              {stocksPageHeader.description}
             </p>
           </div>
           <UsMarketHoursIndicator />

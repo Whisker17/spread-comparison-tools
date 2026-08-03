@@ -9,8 +9,6 @@ import type {
   VenueMeta,
 } from "@/config/sections/types";
 
-export { ON_CHAIN_VENUE_CLASSES, ORDERBOOK_VENUE_CLASSES };
-
 /**
  * Stocks section (WHI-810): two sub-boards.
  *
@@ -176,16 +174,18 @@ export const EQUITY_PERP_REPRESENTATIONS: Readonly<
 };
 
 /**
- * Page-level header only (not a quote matrix config).
- * Live matrices use `tokenizedStocksBoard` / `equityPerpsBoard` — never pass
- * this object into AssetSpreadBlock (empty venues would drop the filter).
+ * Page-level header only (not a quote matrix config / not a SectionConfig).
+ * Live matrices use `tokenizedStocksBoard` / `equityPerpsBoard`.
  */
-export const stocksSection = {
+export const stocksPageHeader = {
   id: "stocks",
   title: "Stocks",
   description:
     "bStocks BSC three-way (CEX spot × AMM × prop AMM) plus equity perps across five orderbook venues. Where is it cheapest to buy the same exposure at your size?",
 } as const;
+
+/** @deprecated Prefer `stocksPageHeader` — kept for any external import of the old name. */
+export const stocksSection = stocksPageHeader;
 
 /**
  * P0-A: tokenized three-way on BSC.
