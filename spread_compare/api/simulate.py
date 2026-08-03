@@ -1,4 +1,4 @@
-"""HTTP route: ``POST /simulate`` (WHI-814)."""
+"""HTTP routes: ``POST /simulate`` (WHI-814), ``GET /simulate/pairs`` (WHI-833)."""
 
 from __future__ import annotations
 
@@ -12,6 +12,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator
 
 from spread_compare.aggregator import UnknownVenueError
+from spread_compare.assets import list_simulate_pair_assets, list_tradeable_usd_stables
 from spread_compare.mids import MidResolutionError
 from spread_compare.models import (
     FeeBreakdown,
@@ -106,6 +107,24 @@ class SimulatePairErrorDetail(BaseModel):
     reason: Literal["unknown_asset", "cross_pair"]
 
 
+class SimulatePairsResponse(BaseModel):
+    """``GET /simulate/pairs`` — valid legs for building a simulate pair (WHI-833).
+
+    Contract for WHI-815: clients form pairs as (one of ``stables``) ×
+    (one of ``assets``), either direction. Exactly one leg must be a tradeable
+    stable; ``USD`` is never listed (peg-only, not tradeable).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    stables: list[str] = Field(
+        description="Tradeable USD stablecoin symbols accepted as a pair leg (no USD).",
+    )
+    assets: list[str] = Field(
+        description="Catalogued non-stable logical assets for the other leg.",
+    )
+
+
 def _row_to_response(row: SimulateRow) -> SimulateRowResponse:
     return SimulateRowResponse(
         venue=row.venue,
@@ -190,6 +209,23 @@ def _get_rate_guard(request: Request) -> ClientRateGuard:
     if guard is None:
         raise HTTPException(status_code=503, detail="simulate rate guard not initialized")
     return guard  # type: ignore[no-any-return]
+
+
+@router.get(
+    "/simulate/pairs",
+    response_model=SimulatePairsResponse,
+    summary="List valid simulate pair legs",
+)
+def get_simulate_pairs() -> SimulatePairsResponse:
+    """Return tradeable stables and catalogued assets for pair construction.
+
+    Discovery only — does not change ``POST /simulate`` validation. Clients
+    should not hardcode USDC/USDT; this list is the SSOT (WHI-833).
+    """
+    return SimulatePairsResponse(
+        stables=list_tradeable_usd_stables(),
+        assets=list_simulate_pair_assets(),
+    )
 
 
 @router.post(

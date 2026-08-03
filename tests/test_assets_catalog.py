@@ -8,8 +8,13 @@ from spread_compare.assets import (
     EQUITY_PERP_ASSETS,
     TOKENIZED_CEX_SPOT,
     TOKENIZED_UNDERLYING,
+    TRADEABLE_USD_STABLES,
+    USD_STABLES,
     get_asset,
+    is_usd_stable,
     list_assets,
+    list_simulate_pair_assets,
+    list_tradeable_usd_stables,
 )
 
 
@@ -60,3 +65,19 @@ def test_mid_routing_seeds_cover_catalog_stocks() -> None:
     assert TOKENIZED_UNDERLYING["NVDAON"] == "NVDA"
     for asset in ("TSLA", "NVDA", "AAPL", "MSFT"):
         assert asset in EQUITY_PERP_ASSETS
+
+
+def test_tradeable_stables_subset_of_peg_set() -> None:
+    """Peg recognition keeps USD; tradeable list is USDC/USDT only (WHI-833)."""
+    assert USD_STABLES == frozenset({"USDC", "USDT", "USD"})
+    assert TRADEABLE_USD_STABLES == ("USDC", "USDT")
+    assert set(TRADEABLE_USD_STABLES) < USD_STABLES
+    assert "USD" not in TRADEABLE_USD_STABLES
+    assert list_tradeable_usd_stables() == ["USDC", "USDT"]
+    assert is_usd_stable("USD")
+    assert is_usd_stable("usdc")
+    assert not is_usd_stable("BTC")
+    # Stables are not catalog rows; pair assets == full catalog ids.
+    for stable in USD_STABLES:
+        assert get_asset(stable) is None
+    assert list_simulate_pair_assets() == [a.id for a in list_assets()]

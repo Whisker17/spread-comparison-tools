@@ -63,7 +63,9 @@ table + live cost-composition stacked bars (`costComposition` / `feesTable` pure
 fixture tests). M5 simulate API (WHI-814): `POST /simulate` pair+amount fan-out
 (`TradeSimulator` + `api/simulate.py`), USD-stable pair scope, free-form notional,
 expected-output ranking with WHI-799 §5.2 `best` eligibility, per-client rate guard,
-`not_supported` rows listed not omitted.
+`not_supported` rows listed not omitted. M5 simulate pair discovery (WHI-833):
+`TRADEABLE_USD_STABLES` (USDC/USDT, no USD) + `GET /simulate/pairs`
+`{stables, assets}` for WHI-815 pair selectors; peg set `USD_STABLES` unchanged.
 
 **Not implemented:** remaining venue adapters (WHI-805), collector, simulate UI (WHI-815).
 Do not assume a module exists until its issue lands.
@@ -110,7 +112,7 @@ load-bearing interfaces other modules may depend on.
 
 - **`spread_compare/models.py`** — WHI-799 pydantic models + Quote §6.2 invariants.
 - **`spread_compare/venues.py`** — static venue slug registry (WHI-799 §6.5) + chain for FE.
-- **`spread_compare/assets.py`** — logical asset catalog + representation labels (WHI-798 §3.3).
+- **`spread_compare/assets.py`** — logical asset catalog + representation labels (WHI-798 §3.3); `USD_STABLES` / `is_usd_stable` peg predicate + `TRADEABLE_USD_STABLES` for simulate pair pickers (WHI-833).
 - **`spread_compare/cex_symbols.py`** — logical asset → CEX spot/perp USDT symbols + multipliers (WHI-798 §3.3 / WHI-826).
 - **`spread_compare/perp_symbols.py`** — perp-DEX logical → venue coin/base + multipliers (HL HIP-3, k-prefix, 1000×).
 - **`spread_compare/bookwalk.py`** — sole walk-the-book VWAP; CEX/perp adapters import only this.
@@ -121,7 +123,7 @@ load-bearing interfaces other modules may depend on.
 - **`spread_compare/aggregator.py`** — concurrent adapter fan-out, per-venue timeout, SizeQuotePair assembly, response cache; also hosts shared fan-out helpers (`quote_with_timeout`, `resolve_mid_with_budget`, `effective_instrument_type`) used by the simulator; never recomputes bps.
 - **`spread_compare/simulator.py`** — `POST /simulate` fan-out (WHI-814): pair validation, free-form notional, expected_output derivation, §5.2 best ranking; no response cache; never recomputes bps.
 - **`spread_compare/adapters/`** — async `VenueAdapter` + `BaseAdapter`, auto-discovery, `@register_adapter` registry with `startup_all`/`aclose_all`, `mock` + CEX (`binance`/`bybit`) + perp DEX (`perp_hyperliquid`/`perp_lighter`/`perp_apex`) + AMM DEX (`amm_uniswap`/`amm_aerodrome`/`amm_pancakeswap`) + prop AMM (`prop_jupiter`/`prop_kyberswap`), shared `_cex_common` / `_perp_common` / `_amm_common` / `_prop_common`; one module per real venue (no hand-import list).
-- **`spread_compare/api/`** — FastAPI app factory with lifespan; `/health`, `/quotes`, `/venues`, `/assets`, `/fees`, `POST /simulate`; CORS for local FE.
+- **`spread_compare/api/`** — FastAPI app factory with lifespan; `/health`, `/quotes`, `/venues`, `/assets`, `/fees`, `POST /simulate`, `GET /simulate/pairs`; CORS for local FE.
 - **`frontend/`** — Next.js dashboard (WHI-808): typed API client, SpreadMatrix, section config modules, route shell.
 - **`main.py`** — CLI: `--dry-run` validates; live serves uvicorn.
 

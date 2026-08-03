@@ -1,4 +1,4 @@
-"""HTTP API tests for POST /simulate (WHI-814)."""
+"""HTTP API tests for POST /simulate (WHI-814) and GET /simulate/pairs (WHI-833)."""
 
 from __future__ import annotations
 
@@ -12,8 +12,10 @@ from fastapi.testclient import TestClient
 
 from spread_compare.api.app import create_app
 from spread_compare.api.simulate import ClientRateGuard
+from spread_compare.assets import list_assets
 from spread_compare.mids import MidResolutionError
 from spread_compare.models import ReferenceMid
+from spread_compare.simulator import InvalidSimulatePairError, resolve_simulate_pair
 
 
 @pytest.fixture
@@ -197,11 +199,16 @@ def test_simulate_openapi_documents_schema(client: TestClient) -> None:
     post = paths["/simulate"]["post"]
     assert "requestBody" in post
     assert "422" in post["responses"]
+    assert "/simulate/pairs" in paths
+    assert "get" in paths["/simulate/pairs"]
     components = schema["components"]["schemas"]
     assert "SimulateRequest" in components
     assert "SimulateResponse" in components
     assert "SimulateRowResponse" in components
     assert "SimulatePairErrorDetail" in components
+    assert "SimulatePairsResponse" in components
+    pairs_props = components["SimulatePairsResponse"]["properties"]
+    assert set(pairs_props) >= {"stables", "assets"}
     pair_err = components["SimulatePairErrorDetail"]["properties"]
     assert "message" in pair_err and "reason" in pair_err
     req_props = components["SimulateRequest"]["properties"]
@@ -217,6 +224,107 @@ def test_simulate_openapi_documents_schema(client: TestClient) -> None:
         "best",
     ):
         assert key in row_props
+
+
+def test_simulate_pairs_shape_excludes_usd(client: TestClient) -> None:
+    """GET /simulate/pairs lists tradeable stables only — USD is peg, not pickable."""
+    resp = client.get("/simulate/pairs")
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["stables"] == ["USDC", "USDT"]
+    assert "USD" not in body["stables"]
+    assert "USDC" not in body["assets"]
+    assert "USDT" not in body["assets"]
+    assert "USD" not in body["assets"]
+    # Non-stable legs are the catalogued comparison assets (stable order).
+    assert body["assets"] == [a.id for a in list_assets()]
+    assert "BTC" in body["assets"] and "SOL" in body["assets"]
+
+
+def test_simulate_pairs_round_trip_matches_validation(client: TestClient) -> None:
+    """Every advertised pair is accepted; stable×stable still 422 (WHI-833).
+
+    Advertised ⊆ accepted. Peg-only ``USD`` remains valid on POST /simulate
+    (byte-identical validation) but is never listed for pickers.
+    """
+    body = client.get("/simulate/pairs").json()
+    stables: list[str] = body["stables"]
+    assets: list[str] = body["assets"]
+    assert stables and assets
+    assert "USD" not in stables
+
+    for stable in stables:
+        for asset in assets:
+            sell_non_stable = resolve_simulate_pair(asset, stable)
+            assert sell_non_stable.asset == asset
+            assert sell_non_stable.side == "sell"
+            assert sell_non_stable.stable_leg == stable
+
+            sell_stable = resolve_simulate_pair(stable, asset)
+            assert sell_stable.asset == asset
+            assert sell_stable.side == "buy"
+            assert sell_stable.stable_leg == stable
+
+    # Intentional gap: peg token validates but is not advertised.
+    peg = resolve_simulate_pair("USD", "BTC")
+    assert peg.stable_leg == "USD" and peg.asset == "BTC" and peg.side == "buy"
+
+    # Stable × stable still rejected (HTTP 422 cross_pair).
+    assert len(stables) >= 2
+    with pytest.raises(InvalidSimulatePairError) as ei:
+        resolve_simulate_pair(stables[0], stables[1])
+    assert ei.value.reason == "cross_pair"
+
+    resolve = AsyncMock()
+    client.app.state.simulator.mid_service.resolve = resolve  # type: ignore[method-assign]
+    resp = client.post(
+        "/simulate",
+        json={
+            "sell_asset": stables[0],
+            "buy_asset": stables[1],
+            "amount": "1",
+        },
+    )
+    assert resp.status_code == 422
+    detail = resp.json()["detail"]
+    assert isinstance(detail, dict)
+    assert detail["reason"] == "cross_pair"
+    resolve.assert_not_called()
+
+
+def test_simulate_pairs_stables_not_in_asset_catalog(client: TestClient) -> None:
+    """Tradeable stables stay out of GET /assets (no comparison-catalog leak)."""
+    pairs = client.get("/simulate/pairs").json()
+    catalog = client.get("/assets").json()
+    catalog_ids = {row["id"] for row in catalog}
+    for stable in pairs["stables"]:
+        assert stable not in catalog_ids
+    assert "USD" not in catalog_ids
+
+
+def test_quotes_usdc_still_free_form_not_catalog_gated(client: TestClient) -> None:
+    """GET /quotes?asset=USDC stays free-form (stables did not enter comparison catalog)."""
+    assert "USDC" not in {row["id"] for row in client.get("/assets").json()}
+
+    async def fake_resolve(asset: str, *, snapshot_id: str) -> ReferenceMid:
+        return ReferenceMid(
+            snapshot_id=snapshot_id,
+            asset=asset.upper(),
+            mid=Decimal("1"),
+            mid_source="binance_usdm_index",
+            timestamp=datetime(2026, 8, 3, tzinfo=UTC),
+        )
+
+    client.app.state.aggregator.mid_service.resolve = fake_resolve  # type: ignore[method-assign]
+    resp = client.get(
+        "/quotes",
+        params={"asset": "USDC", "notional": "10000", "venues": "mock"},
+    )
+    # Unchanged free-form path: no catalog 422; mock may mark unsupported.
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["asset"] == "USDC"
+    assert body["pairs"]
 
 
 def test_simulate_rate_guard_429() -> None:
