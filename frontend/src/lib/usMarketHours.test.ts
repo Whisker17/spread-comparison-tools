@@ -5,6 +5,7 @@ import {
   nyCivilParts,
   usMarketHoursStatus,
   US_EQUITY_HOLIDAYS,
+  US_EQUITY_HOLIDAYS_THROUGH,
 } from "@/lib/usMarketHours";
 
 describe("usMarketHours (WHI-810)", () => {
@@ -37,5 +38,12 @@ describe("usMarketHours (WHI-810)", () => {
     expect(usMarketHoursStatus(new Date("2026-11-26T15:00:00Z")).label).toBe(
       "US market closed",
     );
+  });
+
+  it("keeps the static holiday table within the documented expiry", () => {
+    expect(US_EQUITY_HOLIDAYS_THROUGH).toBe("2027-12-31");
+    for (const day of US_EQUITY_HOLIDAYS) {
+      expect(day <= US_EQUITY_HOLIDAYS_THROUGH).toBe(true);
+    }
   });
 });

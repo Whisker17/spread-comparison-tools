@@ -1,10 +1,22 @@
-import type { SectionConfig } from "@/config/sections/types";
+import type { SectionConfig, VenueClass } from "@/config/sections/types";
 
 /**
  * Shared section helpers for WHI-809/810/811.
  * Lives outside any one section module so concurrent section PRs can share
  * filtering without importing a sibling section's config.
  */
+
+/** Orderbook venue classes that can produce TopOfBook (WHI-799 §6.3). */
+export const ORDERBOOK_VENUE_CLASSES: ReadonlySet<VenueClass> = new Set([
+  "cex",
+  "perp_dex",
+]);
+
+/** On-chain venue classes that need wrapper / token representation labels. */
+export const ON_CHAIN_VENUE_CLASSES: ReadonlySet<VenueClass> = new Set([
+  "amm_dex",
+  "prop_amm",
+]);
 
 /** Merge section-level + per-asset hidden venues for one asset. */
 export function hiddenVenuesForAsset(

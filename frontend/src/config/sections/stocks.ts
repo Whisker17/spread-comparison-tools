@@ -1,9 +1,15 @@
 import { NOTIONAL_TIERS_USD } from "@/config/notionals";
+import {
+  ON_CHAIN_VENUE_CLASSES,
+  ORDERBOOK_VENUE_CLASSES,
+} from "@/config/sections/helpers";
 import type {
   SectionConfig,
   VenueClass,
   VenueMeta,
 } from "@/config/sections/types";
+
+export { ON_CHAIN_VENUE_CLASSES, ORDERBOOK_VENUE_CLASSES };
 
 /**
  * Stocks section (WHI-810): two sub-boards.
@@ -169,30 +175,17 @@ export const EQUITY_PERP_REPRESENTATIONS: Readonly<
   },
 };
 
-export const ORDERBOOK_VENUE_CLASSES: ReadonlySet<VenueClass> = new Set([
-  "cex",
-  "perp_dex",
-]);
-
-export const ON_CHAIN_VENUE_CLASSES: ReadonlySet<VenueClass> = new Set([
-  "amm_dex",
-  "prop_amm",
-]);
-
-/** Page-level shell (nav / header). Board configs hold the live matrices. */
-export const stocksSection: SectionConfig = {
+/**
+ * Page-level header only (not a quote matrix config).
+ * Live matrices use `tokenizedStocksBoard` / `equityPerpsBoard` — never pass
+ * this object into AssetSpreadBlock (empty venues would drop the filter).
+ */
+export const stocksSection = {
   id: "stocks",
   title: "Stocks",
   description:
     "bStocks BSC three-way (CEX spot × AMM × prop AMM) plus equity perps across five orderbook venues. Where is it cheapest to buy the same exposure at your size?",
-  assets: [...TOKENIZED_STOCK_ASSETS, ...EQUITY_PERP_ASSETS],
-  venues: [],
-  notionals: [...NOTIONAL_TIERS_USD],
-  defaultSideView: "buy",
-  cellMetric: "total_cost_bps",
-  showTopOfBook: true,
-  pollIntervalMs: STOCKS_POLL_MS,
-};
+} as const;
 
 /**
  * P0-A: tokenized three-way on BSC.
@@ -235,20 +228,30 @@ export const equityPerpsBoard: SectionConfig = {
 
 export type StocksBoardKind = "tokenized" | "equity_perp";
 
+/**
+ * CEX/perp instrument label for matrix rows. Prefer `section.instrumentType`
+ * (same field that drives GET /quotes) so labels cannot disagree with the
+ * request shape.
+ */
 function instrumentTypeFor(
   venueClass: VenueClass | undefined,
-  board: StocksBoardKind,
+  sectionInstrument: SectionConfig["instrumentType"] | undefined,
 ): string | undefined {
   if (venueClass === "perp_dex") return "perp";
   if (venueClass === "cex") {
-    // P0-A is spot bStocks; P0-B is TradFi / equity perps on CEX.
-    return board === "equity_perp" ? "perp" : "spot";
+    if (sectionInstrument === "perp" || sectionInstrument === "spot") {
+      return sectionInstrument;
+    }
+    // Default CEX books are spot when the board does not pin instrumentType.
+    return "spot";
   }
   return undefined;
 }
 
 export type BuildStocksVenueLabelsOptions = {
   board: StocksBoardKind;
+  /** Forward `section.instrumentType` so CEX labels match the quotes request. */
+  instrumentType?: SectionConfig["instrumentType"];
   representationOverrides?: Readonly<Record<string, string>>;
 };
 
@@ -289,7 +292,7 @@ export function buildStocksVenueLabels(
     const quote = meta?.quoteCurrency;
     const venueClass = meta?.venueClass;
     const rep = reps[slug];
-    const instrument = instrumentTypeFor(venueClass, options.board);
+    const instrument = instrumentTypeFor(venueClass, options.instrumentType);
 
     const parts: string[] = [display];
 
@@ -297,10 +300,8 @@ export function buildStocksVenueLabels(
       if (rep) parts.push(rep);
     } else if (venueClass === "cex" || venueClass === "perp_dex") {
       if (instrument) parts.push(instrument);
-      // Surface HL xyz: form so HIP-3 wiring is visible in the matrix.
-      if (slug === "hyperliquid" && rep) {
-        parts.push(rep);
-      }
+      // Venue symbol / HIP-3 coin so representation is not dropped from the row.
+      if (rep) parts.push(rep);
     }
 
     if (quote) parts.push(quote);
@@ -315,6 +316,7 @@ export function stocksVenueSummaryLabel(
   options: {
     board: StocksBoardKind;
     asset?: string;
+    instrumentType?: SectionConfig["instrumentType"];
     representationOverrides?: Readonly<Record<string, string>>;
   },
 ): string {
@@ -323,11 +325,16 @@ export function stocksVenueSummaryLabel(
   if (!meta) return name;
 
   if (meta.venueClass === "cex") {
-    const inst = instrumentTypeFor("cex", options.board) ?? "spot";
+    const inst = instrumentTypeFor("cex", options.instrumentType) ?? "spot";
+    if (options.asset) {
+      const staticRep = staticRepsFor(options.asset, options.board)[slug];
+      const rep = options.representationOverrides?.[slug] ?? staticRep;
+      if (rep) return `${name} ${inst} (${rep})`;
+    }
     return `${name} ${inst}`;
   }
   if (meta.venueClass === "perp_dex") {
-    if (slug === "hyperliquid" && options.asset) {
+    if (options.asset) {
       const staticRep = staticRepsFor(options.asset, options.board)[slug];
       const rep = options.representationOverrides?.[slug] ?? staticRep;
       if (rep) return `${name} perp (${rep})`;

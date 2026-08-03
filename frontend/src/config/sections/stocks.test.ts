@@ -108,19 +108,22 @@ describe("stocks section config (WHI-810)", () => {
   it("surfaces Hyperliquid xyz: representation on equity-perp labels", () => {
     const labels = buildStocksVenueLabels("TSLA", [...EQUITY_PERP_VENUES], {
       board: "equity_perp",
+      instrumentType: equityPerpsBoard.instrumentType,
     });
     expect(labels.hyperliquid).toContain("xyz:TSLA");
     expect(labels.hyperliquid).toMatch(/perp/i);
     expect(labels.binance).toMatch(/perp/i);
+    expect(labels.binance).toContain("TSLAUSDT");
     expect(labels.hyperliquid).toMatch(/USDC/);
     expect(EQUITY_PERP_REPRESENTATIONS.TSLA.hyperliquid).toBe("xyz:TSLA");
   });
 
-  it("labels tokenized CEX as spot and on-chain with token symbols", () => {
+  it("labels tokenized CEX as spot with venue symbol and on-chain tokens", () => {
     const labels = buildStocksVenueLabels("NVDAB", [...TOKENIZED_STOCK_VENUES], {
       board: "tokenized",
     });
     expect(labels.binance).toMatch(/spot/i);
+    expect(labels.binance).toContain("NVDABUSDT");
     expect(labels.binance).toMatch(/USDT/);
     expect(labels.pancakeswap_bsc).toContain("NVDAB");
     expect(labels.tessera_bsc).toContain("NVDAB");
@@ -134,7 +137,7 @@ describe("stocks section config (WHI-810)", () => {
     expect(isStocksOrderbookVenue("tessera_bsc")).toBe(false);
   });
 
-  it("includes wrapper/symbol in on-chain summary labels", () => {
+  it("includes wrapper/symbol in on-chain and CEX summary labels", () => {
     expect(
       stocksVenueSummaryLabel("tessera_bsc", {
         board: "tokenized",
@@ -142,11 +145,18 @@ describe("stocks section config (WHI-810)", () => {
       }),
     ).toBe("Tessera (BSC) (QQQB)");
     expect(
-      stocksVenueSummaryLabel("binance", { board: "tokenized" }),
-    ).toBe("Binance spot");
+      stocksVenueSummaryLabel("binance", {
+        board: "tokenized",
+        asset: "QQQB",
+      }),
+    ).toBe("Binance spot (QQQBUSDT)");
     expect(
-      stocksVenueSummaryLabel("binance", { board: "equity_perp" }),
-    ).toBe("Binance perp");
+      stocksVenueSummaryLabel("binance", {
+        board: "equity_perp",
+        asset: "TSLA",
+        instrumentType: "perp",
+      }),
+    ).toBe("Binance perp (TSLAUSDT)");
     expect(
       stocksVenueSummaryLabel("hyperliquid", {
         board: "equity_perp",

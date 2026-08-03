@@ -179,9 +179,10 @@ function StocksAssetBlock({
     () =>
       buildStocksVenueLabels(asset, venues, {
         board: kind,
+        instrumentType: board.instrumentType,
         representationOverrides,
       }),
-    [asset, venues, kind, representationOverrides],
+    [asset, venues, kind, board.instrumentType, representationOverrides],
   );
 
   const summaryVenueLabels = useMemo(() => {
@@ -190,11 +191,12 @@ function StocksAssetBlock({
       out[slug] = stocksVenueSummaryLabel(slug, {
         board: kind,
         asset,
+        instrumentType: board.instrumentType,
         representationOverrides,
       });
     }
     return out;
-  }, [venues, kind, asset, representationOverrides]);
+  }, [venues, kind, asset, board.instrumentType, representationOverrides]);
 
   const orderbookVenues = useMemo(
     () => venues.filter((v) => isStocksOrderbookVenue(v)),
