@@ -6,6 +6,7 @@ One mid per ``(snapshot_id, asset)``. Adapters receive the resolved
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 from collections.abc import Awaitable, Callable, Sequence
@@ -115,8 +116,6 @@ class DefaultMarkProvider:
         """Sample marks from the five §3.3 venues (skip silently when unavailable)."""
         symbol = _USDT_SYMBOL.format(asset=asset.upper())
         asset_key = asset.upper()
-        import asyncio
-
         labeled = (
             ("binance", self._binance_mark(symbol)),
             ("bybit", self._bybit_mark(symbol)),
