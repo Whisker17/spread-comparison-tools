@@ -1,0 +1,22 @@
+{
+  "data": [
+    {
+      "fundingRate": "0.0000125",
+      "highPrice24h": "63779.7",
+      "indexPrice": "62841.18",
+      "lastPrice": "62817.4",
+      "lowPrice24h": "62756.5",
+      "nextFundingTime": "2026-08-03T06:00:00Z",
+      "openInterest": "1577.268",
+      "oraclePrice": "",
+      "markPrice": "62822.3",
+      "predictedFundingRate": "0.0000125",
+      "price24hPcnt": "-0.0110735381166484",
+      "symbol": "BTCUSDT",
+      "tradeCount": "",
+      "turnover24h": "949931304.8787",
+      "volume24h": "15016.002"
+    }
+  ],
+  "timeCost": 672
+}
