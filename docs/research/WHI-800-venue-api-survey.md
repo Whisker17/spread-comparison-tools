@@ -59,7 +59,8 @@
 ### 2.1 范围内
 
 - Phase 1 对比 venue 的 **只读报价 / depth** 路径：endpoint、认证、rate limit、深度粒度、延迟量级、SDK/ccxt。
-- 每个 venue 至少一份 live 请求/响应样本（AMM 以合约地址 + 调用形状为主，见 §5；orderbook JSON 见 `samples/venue-api/`）。
+- **Orderbook venue**（Binance / Bybit / HL / Lighter / ApeX）各至少一份 **live** 请求/响应 JSON（`samples/venue-api/`）。
+- **AMM venue**（Uniswap / Aerodrome / Pancake）：合约地址 + 可运行调用形状（§5）；**live quoter 响应 JSON 缺口**见 §8.3（无生产 RPC key）。
 
 ### 2.2 非目标
 
@@ -104,14 +105,24 @@ Spot：
 | --- | --- | --- |
 | `REQUEST_WEIGHT` | 1 MINUTE | **6000** |
 | `RAW_REQUESTS` | 5 MINUTE | 300000 |
-| `ORDERS` | … | （交易用，本调研可忽略） |
+| `ORDERS` | 10 SECOND / 1 DAY | 100 / 200000（**交易**限流；只读 depth **不**消耗 ORDERS） |
 
 USDT-M（live `fapi/v1/exchangeInfo`）：
 
 | type | interval | limit |
 | --- | --- | --- |
 | `REQUEST_WEIGHT` | 1 MINUTE | **2400** |
-| `ORDERS` | 1 MINUTE / 10 SECOND | 1200 / 300 |
+| `ORDERS` | 1 MINUTE | 1200 |
+| `ORDERS` | 10 SECOND | 300 |
+
+**FAPI depth 权重**（live 2026-08-03：连续调用 `limit` 读 `x-mbx-used-weight-1m` 差分；与官方常见表一致）：
+
+| `limit` | weight（估） |
+| --- | --- |
+| 5 / 10 / 20 / 50 | **2** |
+| 100 | **5** |
+| 500 | **10** |
+| 1000 | **20** |
 
 响应头：`x-mbx-used-weight-1m`（spot 还有 `x-mbx-used-weight`）。超限 → 429 / IP ban；文档建议行情用 **WebSocket** 减负。
 
@@ -508,21 +519,33 @@ cast call 0x61fFE014bA17989E743c5F6cB21bF9697530B21e \
 | SDK 线索 | Velodrome/Aerodrome sugar-sdk（Base MCP 插件亦用其做 quote） |
 | Rate limit / 延迟 | Base RPC 供应商；`eth_call` RTT 未本调研采样 |
 
-示例（MixedQuoter / Quoter 具体函数名以 [contracts](https://github.com/aerodrome-finance/contracts) ABI 为准；常见为 `quoteExactInputSingle` 族）：
+示例 A — **基础池**走 Router `getAmountsOut`（vAMM/sAMM；与 Velodrome 同族）：
 
 ```bash
-# 伪代码：Base RPC + MixedQuoter eth_call
-# tokenIn=USDC (Base) 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913
-# tokenOut=WETH (Base) 0x4200000000000000000000000000000000000006
-cast call 0x0A5aA5D3a4d28014f967Bf0f29EAA3FF9807D5c6 \
-  '<quote_method_from_abi>' \
+# Route = (from, to, stable)
+# USDC→WETH 波动池: stable=false
+cast call 0xcF77a3Ba9A5CA399B7c97c74d54e5b1Beb874E43 \
+  "getAmountsOut(uint256,(address,address,bool)[])(uint256[])" \
+  1000000 \
+  "[(0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913,0x4200000000000000000000000000000000000006,false)]" \
+  --rpc-url "$BASE_RPC_URL"
+```
+
+示例 B — **CL / 混合路径**用 Quoter 或 MixedQuoter（ABI 以 [slipstream / contracts](https://github.com/aerodrome-finance/contracts) 部署为准；CL 侧常见 `quoteExactInputSingle` 结构体参数，与 Uniswap V3 periphery 同族）：
+
+```bash
+# Quoter (CL): 0x254cF9E1E6e233aa1AC962CB9B05b2cfeAaE15b0
+# 上线前用 cast sigs / etherscan ABI 核对函数选择器
+cast call 0x254cF9E1E6e233aa1AC962CB9B05b2cfeAaE15b0 \
+  "quoteExactInputSingle((address,address,uint256,int24,uint160))(uint256,uint160,uint32,uint256)" \
+  "(0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913,0x4200000000000000000000000000000000000006,1000000,100,0)" \
   --rpc-url "$BASE_RPC_URL"
 ```
 
 QuickNode addon 示意：
 
 ```http
-GET https://<QN_ENDPOINT>/addon/<id>/v1/quote?target=base&from_token=0x...&to_token=0x...&amount=1
+GET https://<QN_ENDPOINT>/addon/<id>/v1/quote?target=base&from_token=0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913&to_token=0x4200000000000000000000000000000000000006&amount=1
 ```
 
 #### Phase 1 推荐
@@ -558,10 +581,22 @@ cast call 0xB048Bbc1Ee6b733FFfCFb9e9CeF7375518e25997 \
 
 ### 5.4 聚合器替代（0x / 1inch）— **仅 fallback**
 
-| 聚合器 | Endpoint（现行） | Auth | Rate limit（公开档） | 是否适合当 venue 报价 |
-| --- | --- | --- | --- | --- |
-| **0x** | `GET https://api.0x.org/swap/allowance-holder/price`（指示性）/ `.../quote`（可执行） | `0x-api-key` + `0x-version: v2` | Free ≈ **5 RPS**（[docs](https://docs.0x.org/docs/developer-resources/rate-limits)） | ❌ 默认否：多源聚合 |
-| **1inch** | Classic Swap quote API（portal） | API key | Free ≈ **1 RPS / 100k calls/mo**；Startup 10 RPS 等（[pricing](https://business.1inch.com/pricing)） | ❌ 默认否 |
+| 聚合器 | Endpoint（现行） | Auth | Rate limit（公开档） | 延迟 | 是否适合当 venue 报价 |
+| --- | --- | --- | --- | --- | --- |
+| **0x** | `GET https://api.0x.org/swap/allowance-holder/price`（指示性）/ `.../quote`（可执行） | `0x-api-key` + `0x-version: v2` | Free ≈ **5 RPS**（[docs](https://docs.0x.org/docs/developer-resources/rate-limits)） | 未采样（需 key） | ❌ 默认否：多源聚合 |
+| **1inch** | Classic Swap quote：`GET https://api.1inch.dev/swap/v6.0/{chainId}/quote`（portal 文档为准） | `Authorization: Bearer <key>` | Free ≈ **1 RPS / 100k calls/mo**；Startup 10 RPS 等（[pricing](https://business.1inch.com/pricing)） | 未采样（需 key） | ❌ 默认否 |
+
+示意请求（**需 key**；本调研未 live 抓响应）：
+
+```bash
+# 0x — indicative price (Ethereum WETH→USDC)
+curl -sS "https://api.0x.org/swap/allowance-holder/price?chainId=1&sellToken=0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2&buyToken=0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48&sellAmount=1000000000000000000" \
+  -H '0x-api-key: <KEY>' -H '0x-version: v2'
+
+# 1inch — quote (chainId=1)
+curl -sS "https://api.1inch.dev/swap/v6.0/1/quote?src=0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2&dst=0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48&amount=1000000000000000000" \
+  -H 'Authorization: Bearer <KEY>'
+```
 
 **允许用法**：
 
@@ -570,24 +605,26 @@ cast call 0xB048Bbc1Ee6b733FFfCFb9e9CeF7375518e25997 \
 
 **禁止用法**：
 
-- 把 0x/1inch 输出标成 `venue=uniswap` / `aerodrome` / `pancakeswap`。
+- 把 0x/1inch 输出标成 `venue=uniswap_eth` / `aerodrome_base` / `pancakeswap_bsc`。
 
 ---
 
 ## 6. 跨 venue 对照表（实现 checklist）
 
-| Venue | Method | Path / 调用 | Auth | 深度 / 报价形态 | Rate limit（只读） | SDK / ccxt | 样本 |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| Binance spot | GET | `https://api.binance.com/api/v3/depth` | 无 | 聚合簿 ≤5000 | 6000 weight/min | ccxt ✅ / 原生 | ✅ JSON |
-| Binance USDM | GET | `https://fapi.binance.com/fapi/v1/depth` | 无 | 聚合簿（常用 ≤1000） | 2400 weight/min | ccxt ✅ | ✅ JSON |
-| Bybit | GET | `https://api.bybit.com/v5/market/orderbook` | 无 | 聚合簿 ≤1000/侧（live 确认） | IP 600/5s | ccxt ✅ | ✅ JSON |
-| Hyperliquid | POST | `https://api.hyperliquid.xyz/info` `l2Book` | 无 | ≤20/侧 | 1200 weight/min；l2=2 | 官方 SDK + ccxt ✅ | ✅ JSON |
-| Lighter | GET | `https://mainnet.zklighter.elliot.ai/api/v1/orderBookOrders` | 无 | 逐单 + limit | Standard 60/min | 官方 SDK + ccxt ✅ | ✅ JSON |
-| ApeX | GET | `https://omni.apex.exchange/api/v3/depth` | 无 | 聚合簿 live `limit`≤200 | IP 600/min | 官方 SDK + ccxt ✅ | ✅ JSON |
-| Uniswap | eth_call / HTTP | QuoterV2 / Trading API | RPC / API key | 净输出 | RPC 或 portal 配额 | 合约 ABI | 调用形状 §5.1 |
-| Aerodrome | eth_call | Quoter/MixedQuoter | RPC | 净输出 | RPC | sugar / ABI | 调用形状 §5.2 |
-| Pancake | eth_call | QuoterV2 | RPC | 净输出 | RPC | ABI / smart-router | 调用形状 §5.3 |
-| Prop AMM | GET | Jupiter `/quote?dexes=` | 可选 key | 净输出 | 见 WHI-797 | — | WHI-797 |
+> **slug** 与 [WHI-799 §6.5](./WHI-799-spread-fee-data-model.md) 对齐：`binance` / `bybit` 用 `instrument_type` 区分 spot/perp，**不**拆成两个 slug。
+
+| slug（WHI-799） | instrument_type | Method | Path / 调用 | Auth | 深度 / 报价形态 | Rate limit（只读） | SDK / ccxt | 样本 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `binance` | `spot` | GET | `https://api.binance.com/api/v3/depth` | 无 | 聚合簿 ≤5000 | 6000 weight/min | ccxt ✅ | ✅ JSON |
+| `binance` | `perp` | GET | `https://fapi.binance.com/fapi/v1/depth` | 无 | 聚合簿（常用 ≤1000；weight 见 §3.1） | 2400 weight/min | ccxt ✅ | ✅ JSON |
+| `bybit` | `spot` / `perp` | GET | `https://api.bybit.com/v5/market/orderbook`（`category`） | 无 | 聚合簿 ≤1000/侧 | IP 600/5s | ccxt ✅ | ✅ JSON |
+| `hyperliquid` | `perp`（+ spot 另名） | POST | `https://api.hyperliquid.xyz/info` `l2Book` | 无 | ≤20/侧 | 1200 weight/min；l2=2 | 官方 SDK + ccxt ✅ | ✅ JSON |
+| `lighter` | `perp` | GET | `https://mainnet.zklighter.elliot.ai/api/v1/orderBookOrders` | 无 | 逐单 + limit | Standard 60/min | 官方 SDK + ccxt ✅ | ✅ JSON |
+| `apex` | `perp` | GET | `https://omni.apex.exchange/api/v3/depth` | 无 | 聚合簿 live `limit`≤200 | IP 600/min | 官方 SDK + ccxt ✅ | ✅ JSON |
+| `uniswap_eth` | — | eth_call / HTTP | QuoterV2 / Trading API | RPC / API key | 净输出 | RPC 或 portal 配额 | 合约 ABI | 调用形状 §5.1 |
+| `aerodrome_base` | — | eth_call | Router / Quoter / MixedQuoter | RPC | 净输出 | RPC | sugar / ABI | 调用形状 §5.2 |
+| `pancakeswap_bsc` | — | eth_call | QuoterV2 | RPC | 净输出 | RPC | ABI / smart-router | 调用形状 §5.3 |
+| `humidifi` / `tessera` / `bisonfi` | — | GET | Jupiter `/quote?dexes=` | 可选 key | 净输出 | 见 WHI-797 | — | WHI-797 |
 
 ---
 
@@ -651,10 +688,13 @@ curl -sS 'https://omni.apex.exchange/api/v3/depth?symbol=BTCUSDT&limit=5'
 
 | 缺口 | 说明 |
 | --- | --- |
-| AMM live quoter 响应 JSON | 无稳定公共 ETH/Base/BSC RPC 密钥；落地 WHI-80x 时用 CI 密钥补样本 + 延迟表 |
-| Uniswap Trading API RPS 与 protocol filter | 需持 key 实测 portal 配额与响应 `route` |
+| AMM live quoter 响应 JSON + 延迟表 | 无稳定公共 ETH/Base/BSC RPC 密钥；落地 WHI-80x 时用 CI 密钥补 |
+| AMM / Uniswap Trading API 精确 RPS 档位 | 记为「RPC 供应商」或 portal 配额；未持 key 量化 |
+| 0x / 1inch live 响应 JSON + 延迟 | 需 key；§5.4 仅 doc-sourced 请求骨架 |
+| Uniswap Trading API protocol filter | 需持 key 实测响应 `route` 是否可锁 Uniswap-only |
 | Lighter Builder 申请 | 多市场轮询生产路径前置 |
 | HL >20 档 | 协议无官方更深 REST；大 notional 策略未决 |
+| `samples/venue-api/README.md` | 可选：映射 file → 精确请求 + capture UTC（JSON 无法内嵌注释） |
 
 ---
 
@@ -676,3 +716,4 @@ curl -sS 'https://omni.apex.exchange/api/v3/depth?symbol=BTCUSDT&limit=5'
 | --- | --- |
 | 2026-08-03 | 初版：CEX / Perp DEX live 样本 + AMM 合约路径 + 聚合器边界；对齐 WHI-798/799 |
 | 2026-08-03 | Review round 1：`insufficient_liquidity` 词汇对齐；README/产出物清单；ApeX 全路径统一；AMM 调用形状与延迟口径；Bybit limit live 复核；§7 降级为非规范提示 |
+| 2026-08-03 | Review round 2：§6 slug 对齐 WHI-799；FAPI depth weight live 表；Aerodrome 可运行 cast；0x/1inch 请求骨架；§8.3 缺口补全 |
