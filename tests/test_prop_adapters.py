@@ -370,8 +370,8 @@ async def test_kyber_40011_raises_config_error() -> None:
 
 
 @pytest.mark.asyncio
-async def test_kyber_4000_is_no_quote() -> None:
-    """WHI-806: code=4000 (token not registered) → no_quote, not config error."""
+async def test_kyber_4000_is_unsupported_asset() -> None:
+    """WHI-799 §4.4: code=4000 (token not registered) → unsupported_asset."""
     body = {
         "code": 4000,
         "message": "bad request",
@@ -386,8 +386,54 @@ async def test_kyber_4000_is_no_quote() -> None:
     )
     try:
         quote = await adapter.get_quote("ETH", "sell", Decimal("1000"), mid=_mid("ETH", "3000"))
-        assert quote.status == "no_quote"
+        assert quote.status == "unsupported_asset"
         assert quote.error_code == "4000"
+    finally:
+        await adapter.aclose()
+
+
+@pytest.mark.asyncio
+async def test_jupiter_route_label_isolation() -> None:
+    """Wrong hop label after dexes filter must surface as error, not ok quote."""
+    body = _load("quote-humidifi-sol-usdc.json")
+    body = {
+        **body,
+        "routePlan": [
+            {
+                "swapInfo": {
+                    **body["routePlan"][0]["swapInfo"],
+                    "label": "Raydium",  # not HumidiFi
+                },
+                "percent": 100,
+            }
+        ],
+    }
+    adapter = await _ready_jupiter(transport=_jupiter_transport(quote_body=body))
+    try:
+        quote = await adapter.get_quote(
+            "SOL", "sell", Decimal("72.886151"), mid=_mid("SOL", "72.886151")
+        )
+        assert quote.status == "error"
+        assert "label" in (quote.error_message or "").lower()
+    finally:
+        await adapter.aclose()
+
+
+@pytest.mark.asyncio
+async def test_kyber_route_exchange_isolation() -> None:
+    """Non-tessera hop after includedSources must surface as error."""
+    body = _load("ks-route-tessera-base-weth-usdc.json")
+    body["data"]["routeSummary"]["route"][0][0]["exchange"] = "uniswap"
+    adapter = await _ready_kyber_base(
+        transport=_kyber_scripted_transport(
+            smoke_body=_load("ks-route-tessera-base-weth-usdc.json"),
+            quote_body=body,
+        )
+    )
+    try:
+        quote = await adapter.get_quote("ETH", "sell", Decimal("1000"), mid=_mid("ETH", "1855"))
+        assert quote.status == "error"
+        assert "exchange" in (quote.error_message or "").lower()
     finally:
         await adapter.aclose()
 

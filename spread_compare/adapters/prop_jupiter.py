@@ -19,6 +19,7 @@ from spread_compare.adapters._perp_common import AsyncRateLimiter
 from spread_compare.adapters._prop_common import (
     SOL_MINTS,
     PropFill,
+    PropNoQuoteError,
     build_non_ok_quote,
     exact_in_prop_quote,
     optional_env,
@@ -237,8 +238,7 @@ class JupiterPropAdapter(BaseAdapter):
             fee_tier=self.jupiter_label,
             fetch=fetch,
             provider_label="Jupiter",
-            gas_unknown=False,
-            no_quote_exc=_NoRoutesError,
+            gas_unknown_when_missing=False,
         )
 
     def _assert_route_labels(self, body: dict[str, Any]) -> None:
@@ -402,9 +402,10 @@ class JupiterPropAdapter(BaseAdapter):
             )
 
         if error_code == "NO_ROUTES_FOUND" or "No routes found" in error_text:
-            raise _NoRoutesError(
+            raise PropNoQuoteError(
                 f"{self.venue}: no routes for {self.jupiter_label} "
-                f"({error_code or error_text})"
+                f"({error_code or error_text})",
+                code="NO_ROUTES_FOUND",
             )
 
         raise AdapterFetchError(
@@ -417,12 +418,6 @@ class JupiterPropAdapter(BaseAdapter):
         if key:
             headers["x-api-key"] = key
         return headers
-
-
-class _NoRoutesError(Exception):
-    """Internal: Jupiter returned NO_ROUTES_FOUND (business empty state)."""
-
-    code = "NO_ROUTES_FOUND"
 
 
 def _retry_after_seconds(resp: httpx.Response, attempt: int) -> float:

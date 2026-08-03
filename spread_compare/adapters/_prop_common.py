@@ -14,6 +14,8 @@ from typing import Final
 
 from spread_compare.adapters._amm_common import (
     TokenInfo,
+    build_non_ok_quote,
+    build_ok_quote,
     from_raw,
     load_dotenv_once,
     to_raw,
@@ -23,10 +25,7 @@ from spread_compare.adapters.base import (
     AdapterError,
     default_instrument_type,
 )
-from spread_compare.costs import spread_bps as calc_spread_bps
-from spread_compare.costs import total_cost_bps
 from spread_compare.models import (
-    FeeBreakdown,
     FeeSchedule,
     InstrumentType,
     QtyMethod,
@@ -37,17 +36,18 @@ from spread_compare.models import (
     VenueClass,
 )
 
-# Re-export token helpers for prop modules.
+# Re-export shared builders/helpers so prop modules have one import site.
 __all__ = [
     "TokenInfo",
     "from_raw",
     "to_raw",
     "optional_env",
     "build_non_ok_quote",
-    "build_ok_prop_quote",
+    "build_ok_quote",
     "prop_fee_schedule",
     "require_mid_match",
     "PropFill",
+    "PropNoQuoteError",
     "exact_in_prop_quote",
 ]
 
@@ -90,110 +90,6 @@ def prop_fee_schedule(
     )
 
 
-def build_non_ok_quote(
-    *,
-    venue: str,
-    mid: ReferenceMid,
-    asset: str,
-    side: Side,
-    notional_usd: Decimal,
-    instrument_type: InstrumentType,
-    status: QuoteStatus,
-    error_code: str,
-    error_message: str,
-    venue_symbol: str | None = None,
-    qty_method: QtyMethod | None = None,
-) -> Quote:
-    """Construct a non-ok Quote with WHI-799 §6.2 null invariants."""
-    return Quote(
-        snapshot_id=mid.snapshot_id,
-        venue=venue,
-        asset=asset,
-        venue_symbol=venue_symbol,
-        instrument_type=instrument_type,
-        side=side,
-        notional_usd=notional_usd,
-        mid=mid.mid,
-        mid_source=mid.mid_source,
-        mid_timestamp=mid.timestamp,
-        effective_price=None,
-        spread_bps=None,
-        fee_breakdown=FeeBreakdown(
-            embedded_in_price=True,
-            fee_tier=None,
-            trading_fee_bps=None,
-            platform_fee_bps=Decimal("0"),
-            gas_unknown=False,
-            explicit_fee_bps=None,
-        ),
-        total_cost_bps=None,
-        timestamp=datetime.now(tz=UTC),
-        status=status,
-        qty_base=None,
-        qty_method=qty_method,
-        error_code=error_code,
-        error_message=error_message,
-    )
-
-
-def build_ok_prop_quote(
-    *,
-    venue: str,
-    mid: ReferenceMid,
-    asset: str,
-    side: Side,
-    notional_usd: Decimal,
-    instrument_type: InstrumentType,
-    effective_price: Decimal,
-    qty_base: Decimal,
-    qty_method: QtyMethod,
-    fee_tier: str,
-    gas_usd: Decimal | None,
-    gas_unknown: bool,
-    venue_symbol: str | None,
-) -> Quote:
-    """Build an ok prop-AMM Quote (fees embedded; costs via shared formulas)."""
-    sp = calc_spread_bps(side, effective_price, mid.mid)
-    cost = total_cost_bps(
-        sp,
-        embedded_in_price=True,
-        trading_fee_bps=None,
-        platform_fee_bps=Decimal("0"),
-        gas_unknown=gas_unknown,
-        gas_usd=gas_usd,
-        notional_usd=notional_usd,
-    )
-    return Quote(
-        snapshot_id=mid.snapshot_id,
-        venue=venue,
-        asset=asset,
-        venue_symbol=venue_symbol,
-        instrument_type=instrument_type,
-        side=side,
-        notional_usd=notional_usd,
-        mid=mid.mid,
-        mid_source=mid.mid_source,
-        mid_timestamp=mid.timestamp,
-        effective_price=effective_price,
-        spread_bps=sp,
-        fee_breakdown=FeeBreakdown(
-            embedded_in_price=True,
-            fee_tier=fee_tier,
-            trading_fee_bps=None,
-            platform_fee_bps=Decimal("0"),
-            gas_usd=gas_usd,
-            gas_bps=cost.gas_bps,
-            gas_unknown=gas_unknown,
-            explicit_fee_bps=cost.explicit_fee_bps,
-        ),
-        total_cost_bps=cost.total_cost_bps,
-        timestamp=datetime.now(tz=UTC),
-        status="ok",
-        qty_base=qty_base,
-        qty_method=qty_method,
-    )
-
-
 @dataclass(frozen=True, slots=True)
 class PropFill:
     """Raw ExactIn fill amounts from a prop quote provider."""
@@ -203,9 +99,14 @@ class PropFill:
     gas_usd: Decimal | None = None
 
 
-# Fetch callback: (token_in, token_out, amount_in) → PropFill.
-# Raise AdapterConfigError for config misuse; raise a mapped business empty via
-# returning through ``no_quote_exc`` type handled by the caller adapter.
+class PropNoQuoteError(Exception):
+    """Business empty state from a prop quote provider (no route / no liquidity)."""
+
+    def __init__(self, message: str, *, code: str = "no_quote") -> None:
+        super().__init__(message)
+        self.code = code
+
+
 PropFetch = Callable[[str, str, int], Awaitable[PropFill]]
 
 
@@ -222,13 +123,15 @@ async def exact_in_prop_quote(
     fee_tier: str,
     fetch: PropFetch,
     provider_label: str,
-    gas_unknown: bool,
-    no_quote_exc: type[BaseException],
+    gas_unknown_when_missing: bool,
 ) -> Quote:
     """Shared ExactIn buy/sell quote shell for Jupiter and KyberSwap prop adapters.
 
     Sell: ExactIn base → quote. Buy: ExactIn quote → base
     (``qty_method=quote_exact_in_approx``; ExactOut is unverified on prop AMMs).
+
+    ``fetch`` raises :class:`PropNoQuoteError` for business-empty states and
+    :class:`AdapterConfigError` for config misuse (must not become empty quotes).
     """
     venue_symbol = f"{base.symbol}/{quote_tok.symbol}"
 
@@ -259,8 +162,11 @@ async def exact_in_prop_quote(
 
     try:
         fill = await fetch(token_in, token_out, amount_in)
-    except no_quote_exc as exc:
-        code = getattr(exc, "code", "no_quote")
+    except PropNoQuoteError as exc:
+        # WHI-799 §4.4: 4000 (token not in source set) → unsupported_asset.
+        status: QuoteStatus = (
+            "unsupported_asset" if exc.code == "4000" else "no_quote"
+        )
         return build_non_ok_quote(
             venue=venue,
             mid=mid,
@@ -268,8 +174,8 @@ async def exact_in_prop_quote(
             side=side,
             notional_usd=notional_usd,
             instrument_type=instrument_type,
-            status="no_quote",
-            error_code=str(code),
+            status=status,
+            error_code=exc.code,
             error_message=str(exc),
             venue_symbol=venue_symbol,
             qty_method=qty_method,
@@ -328,7 +234,15 @@ async def exact_in_prop_quote(
             qty_method=qty_method,
         )
 
-    return build_ok_prop_quote(
+    gas_usd = fill.gas_usd
+    if gas_unknown_when_missing:
+        gas_unknown = gas_usd is None
+    else:
+        # Jupiter path: Solana fees fixed at 0 (WHI-799 §8) — never unknown.
+        gas_unknown = False
+        gas_usd = gas_usd  # may stay None → total_cost treats as 0 bps
+
+    return build_ok_quote(
         venue=venue,
         mid=mid,
         asset=asset,
@@ -338,8 +252,9 @@ async def exact_in_prop_quote(
         effective_price=quote_amt / base_amt,
         qty_base=base_amt,
         qty_method=qty_method,
-        fee_tier=fee_tier,
-        gas_usd=fill.gas_usd,
+        fee_label=fee_tier,
+        lp_fee_tier_bps=None,
+        gas_usd=gas_usd,
         gas_unknown=gas_unknown,
         venue_symbol=venue_symbol,
     )
@@ -361,8 +276,8 @@ SOL_MINTS: Final[dict[str, TokenInfo]] = {
     ),
 }
 
-# Base tokens (WHI-797 §7.4 / samples matrix footer).
-# Addresses shared with Aerodrome adapter for the same chain assets.
+# Base / BSC token tables (WHI-797 §7.4). Addresses match amm_aerodrome / amm_pancakeswap
+# for shared blue chips; prop-only assets (AERO, stocks, …) live only here.
 BASE_TOKENS: Final[dict[str, TokenInfo]] = {
     "ETH": TokenInfo(
         "0x4200000000000000000000000000000000000006", 18, "WETH"
@@ -384,7 +299,6 @@ BASE_TOKENS: Final[dict[str, TokenInfo]] = {
     ),
 }
 
-# BSC tokens (WHI-797 §7.4 / WHI-798 matrix).
 BSC_TOKENS: Final[dict[str, TokenInfo]] = {
     "BTC": TokenInfo(
         "0x7130d2A12B9BCbFAe4f2634d864A1Ee1Ce3Ead9c", 18, "BTCB"

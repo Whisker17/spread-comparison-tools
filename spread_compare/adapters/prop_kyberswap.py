@@ -18,6 +18,7 @@ from spread_compare.adapters._prop_common import (
     BASE_TOKENS,
     BSC_TOKENS,
     PropFill,
+    PropNoQuoteError,
     TokenInfo,
     build_non_ok_quote,
     exact_in_prop_quote,
@@ -159,12 +160,11 @@ class KyberSwapPropAdapter(BaseAdapter):
                     f"{self.venue}: invalid KyberSwap routeSummary: {exc}"
                 ) from exc
             self._assert_route_exchange(summary)
-            gas_usd = _parse_gas_usd(summary)
-            # WHI-806: gas comes from the response; missing → treat as 0 known (not unknown).
+            # Missing gasUsd → gas_unknown (WHI-799 §5.2); never silent zero.
             return PropFill(
                 amount_in=in_raw,
                 amount_out=out_raw,
-                gas_usd=gas_usd if gas_usd is not None else Decimal("0"),
+                gas_usd=_parse_gas_usd(summary),
             )
 
         return await exact_in_prop_quote(
@@ -179,8 +179,7 @@ class KyberSwapPropAdapter(BaseAdapter):
             fee_tier=_SOURCE_ID,
             fetch=fetch,
             provider_label="KyberSwap",
-            gas_unknown=False,
-            no_quote_exc=_NoRouteError,
+            gas_unknown_when_missing=True,
         )
 
     def _assert_route_exchange(self, summary: dict[str, Any]) -> None:
@@ -217,7 +216,7 @@ class KyberSwapPropAdapter(BaseAdapter):
             )
         try:
             await self._fetch_route(token_in, token_out, amount)
-        except _NoRouteError as exc:
+        except PropNoQuoteError as exc:
             raise AdapterError(
                 f"{self.venue}: KyberSwap startup smoke failed for known-good pair "
                 f"on chain={self.chain_slug!r}: {exc}. Source id may have drifted "
@@ -298,7 +297,7 @@ class KyberSwapPropAdapter(BaseAdapter):
                 return summary
 
             if code == 4008:
-                raise _NoRouteError(
+                raise PropNoQuoteError(
                     f"{self.venue}: route not found (code=4008)", code="4008"
                 )
 
@@ -310,8 +309,8 @@ class KyberSwapPropAdapter(BaseAdapter):
                 )
 
             if code == 4000:
-                # WHI-806: token-not-registered / bad request → no_quote (not fatal).
-                raise _NoRouteError(
+                # WHI-799 §4.4: token not in source registry → unsupported_asset.
+                raise PropNoQuoteError(
                     f"{self.venue}: bad request / token not registered (code=4000): "
                     f"{message}",
                     code="4000",
@@ -336,14 +335,6 @@ class KyberSwapPropAdapter(BaseAdapter):
             )
 
         raise last_err or AdapterFetchError(f"{self.venue}: KyberSwap route failed")
-
-
-class _NoRouteError(Exception):
-    """Internal: KyberSwap business empty state (4008 / 4000)."""
-
-    def __init__(self, message: str, *, code: str) -> None:
-        super().__init__(message)
-        self.code = code
 
 
 def _parse_gas_usd(summary: dict[str, Any]) -> Decimal | None:
