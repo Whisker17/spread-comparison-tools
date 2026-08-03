@@ -18,13 +18,12 @@ import httpx
 from spread_compare.adapters._perp_common import AsyncRateLimiter
 from spread_compare.adapters._prop_common import (
     SOL_MINTS,
+    PropFill,
     build_non_ok_quote,
-    build_ok_prop_quote,
-    from_raw,
+    exact_in_prop_quote,
     optional_env,
     prop_fee_schedule,
     require_mid_match,
-    to_raw,
 )
 from spread_compare.adapters.base import (
     AdapterConfigError,
@@ -38,7 +37,6 @@ from spread_compare.adapters.registry import register_adapter
 from spread_compare.models import (
     FeeSchedule,
     InstrumentType,
-    QtyMethod,
     Quote,
     ReferenceMid,
     Side,
@@ -49,10 +47,11 @@ from spread_compare.models import (
 logger = logging.getLogger(__name__)
 
 # Abstracted base URL — Metis v1 is in maintenance; Swap V2 migration expected.
-DEFAULT_JUPITER_BASE_URL: Final[str] = "https://api.jup.ag/swap/v1"
+# Non-secret: override via env only for staging/migration; not a secret (AGENTS.md).
+JUPITER_BASE_URL: Final[str] = "https://api.jup.ag/swap/v1"
 # Keyless plan is 0.5 RPS (burst ~5); safe default ≥2s spacing (WHI-797 §3.3).
 _KEYLESS_MIN_INTERVAL_S: Final[float] = 2.0
-# With an API key, Free plan is 1 RPS; still keep a small floor.
+# With an API key, Free plan is 1 RPS.
 _KEYED_MIN_INTERVAL_S: Final[float] = 1.0
 _MAX_RETRIES: Final[int] = 4
 _DEFAULT_SLIPPAGE_BPS: Final[int] = 50
@@ -68,28 +67,57 @@ _SOLANA_ASSETS: Final[tuple[str, ...]] = ("SOL", "BTC", "ETH")
 
 # Module-level limiter shared by all three Solana prop adapters (one upstream).
 _jupiter_limiter: AsyncRateLimiter | None = None
-_jupiter_limiter_lock = asyncio.Lock()
+_jupiter_limiter_keyed: bool | None = None
+# One program-id-to-label fetch serves all three Solana prop adapters.
+_label_map_cache: dict[str, str] | None = None
+# Loop-local locks (asyncio.Lock cannot cross event loops / TestClient).
+_meta_lock: asyncio.Lock | None = None
+_meta_loop: asyncio.AbstractEventLoop | None = None
 
 
 def _reset_jupiter_limiter_for_tests() -> None:
-    """Test helper: drop the shared limiter so spacing tests start clean."""
-    global _jupiter_limiter
+    """Test helper: drop the shared limiter + label cache so tests start clean."""
+    global _jupiter_limiter, _jupiter_limiter_keyed, _label_map_cache
+    global _meta_lock, _meta_loop
     _jupiter_limiter = None
+    _jupiter_limiter_keyed = None
+    _label_map_cache = None
+    _meta_lock = None
+    _meta_loop = None
+
+
+def _get_meta_lock() -> asyncio.Lock:
+    """Return an asyncio.Lock bound to the current event loop."""
+    global _meta_lock, _meta_loop
+    loop = asyncio.get_running_loop()
+    if _meta_lock is None or _meta_loop is not loop:
+        _meta_lock = asyncio.Lock()
+        _meta_loop = loop
+    return _meta_lock
 
 
 async def _get_jupiter_limiter(*, has_api_key: bool) -> AsyncRateLimiter:
-    """Return the process-wide Jupiter rate limiter (created on first use)."""
-    global _jupiter_limiter
-    async with _jupiter_limiter_lock:
+    """Return the process-wide Jupiter rate limiter (created on first use).
+
+    Interval is chosen from the strictest mode seen: once any keyless caller
+    has been observed, keep the 2s floor even if a later caller has a key.
+    """
+    global _jupiter_limiter, _jupiter_limiter_keyed
+    async with _get_meta_lock():
         if _jupiter_limiter is None:
             interval = _KEYED_MIN_INTERVAL_S if has_api_key else _KEYLESS_MIN_INTERVAL_S
             _jupiter_limiter = AsyncRateLimiter(interval)
+            _jupiter_limiter_keyed = has_api_key
+        elif not has_api_key and _jupiter_limiter_keyed:
+            # Upgrade to stricter keyless spacing if a keyless path appears later.
+            _jupiter_limiter = AsyncRateLimiter(_KEYLESS_MIN_INTERVAL_S)
+            _jupiter_limiter_keyed = False
         return _jupiter_limiter
 
 
 def jupiter_base_url() -> str:
-    """Configurable base URL (env ``JUPITER_BASE_URL``; default Metis v1)."""
-    return optional_env("JUPITER_BASE_URL") or DEFAULT_JUPITER_BASE_URL
+    """Jupiter Metis v1 base; optional env override for migration only."""
+    return optional_env("JUPITER_BASE_URL") or JUPITER_BASE_URL
 
 
 class JupiterPropAdapter(BaseAdapter):
@@ -104,10 +132,7 @@ class JupiterPropAdapter(BaseAdapter):
     supported: ClassVar[tuple[str, ...]] = _SOLANA_ASSETS
 
     def __init__(self, *, timeout: float | None = None) -> None:
-        if timeout is None:
-            super().__init__()
-        else:
-            super().__init__(timeout=timeout)
+        super().__init__(**({} if timeout is None else {"timeout": timeout}))
         self._labels_validated = False
         self._api_key: str | None = None
 
@@ -187,185 +212,103 @@ class JupiterPropAdapter(BaseAdapter):
         if notional_usd <= 0:
             raise AdapterError(f"notional_usd must be positive, got {notional_usd}")
 
-        base = SOL_MINTS[asset_key]
-        quote_tok = SOL_MINTS["USDC"]
-        venue_symbol = f"{base.symbol}/{quote_tok.symbol}"
+        async def fetch(token_in: str, token_out: str, amount: int) -> PropFill:
+            body = await self._fetch_quote(token_in, token_out, amount)
+            try:
+                in_raw = int(body["inAmount"])
+                out_raw = int(body["outAmount"])
+            except (KeyError, TypeError, ValueError) as exc:
+                raise AdapterFetchError(
+                    f"{self.venue}: invalid Jupiter quote body: {exc}"
+                ) from exc
+            self._assert_route_labels(body)
+            # Solana tx fees fixed at 0 (WHI-799 §8) — gas_usd left None with gas_unknown=False.
+            return PropFill(amount_in=in_raw, amount_out=out_raw, gas_usd=None)
 
-        if side == "sell":
-            # ExactIn base → USDC.
-            qty_base = notional_usd / mid.mid
-            amount_in = to_raw(qty_base, base.decimals)
-            input_mint, output_mint = base.address, quote_tok.address
-            qty_method: QtyMethod = "base_from_mid"
-        else:
-            # Buy: ExactIn on quote leg (USDC → base); ExactOut unverified on prop AMMs.
-            amount_in = to_raw(notional_usd, quote_tok.decimals)
-            input_mint, output_mint = quote_tok.address, base.address
-            qty_method = "quote_exact_in_approx"
-            qty_base = Decimal("0")  # filled from response
-
-        if amount_in <= 0:
-            return build_non_ok_quote(
-                venue=self.venue,
-                mid=mid,
-                asset=asset_key,
-                side=side,
-                notional_usd=notional_usd,
-                instrument_type=itype,
-                status="no_quote",
-                error_code="no_quote",
-                error_message="computed input amount is zero",
-                venue_symbol=venue_symbol,
-                qty_method=qty_method,
-            )
-
-        try:
-            body = await self._fetch_quote(input_mint, output_mint, amount_in)
-        except _NoRoutesError as exc:
-            return build_non_ok_quote(
-                venue=self.venue,
-                mid=mid,
-                asset=asset_key,
-                side=side,
-                notional_usd=notional_usd,
-                instrument_type=itype,
-                status="no_quote",
-                error_code="NO_ROUTES_FOUND",
-                error_message=str(exc),
-                venue_symbol=venue_symbol,
-                qty_method=qty_method,
-            )
-        except AdapterConfigError:
-            raise
-        except AdapterError as exc:
-            return build_non_ok_quote(
-                venue=self.venue,
-                mid=mid,
-                asset=asset_key,
-                side=side,
-                notional_usd=notional_usd,
-                instrument_type=itype,
-                status="error",
-                error_code="adapter_error",
-                error_message=str(exc),
-                venue_symbol=venue_symbol,
-                qty_method=qty_method,
-            )
-
-        try:
-            in_raw = int(body["inAmount"])
-            out_raw = int(body["outAmount"])
-        except (KeyError, TypeError, ValueError) as exc:
-            return build_non_ok_quote(
-                venue=self.venue,
-                mid=mid,
-                asset=asset_key,
-                side=side,
-                notional_usd=notional_usd,
-                instrument_type=itype,
-                status="error",
-                error_code="parse_error",
-                error_message=f"invalid Jupiter quote body: {exc}",
-                venue_symbol=venue_symbol,
-                qty_method=qty_method,
-            )
-
-        if in_raw <= 0 or out_raw <= 0:
-            return build_non_ok_quote(
-                venue=self.venue,
-                mid=mid,
-                asset=asset_key,
-                side=side,
-                notional_usd=notional_usd,
-                instrument_type=itype,
-                status="no_quote",
-                error_code="no_quote",
-                error_message="Jupiter returned zero amounts",
-                venue_symbol=venue_symbol,
-                qty_method=qty_method,
-            )
-
-        if side == "sell":
-            base_amt = from_raw(in_raw, base.decimals)
-            quote_amt = from_raw(out_raw, quote_tok.decimals)
-            qty_base = base_amt
-        else:
-            quote_amt = from_raw(in_raw, quote_tok.decimals)
-            base_amt = from_raw(out_raw, base.decimals)
-            qty_base = base_amt
-
-        if base_amt <= 0 or quote_amt <= 0:
-            return build_non_ok_quote(
-                venue=self.venue,
-                mid=mid,
-                asset=asset_key,
-                side=side,
-                notional_usd=notional_usd,
-                instrument_type=itype,
-                status="no_quote",
-                error_code="no_quote",
-                error_message="zero base/quote after scaling",
-                venue_symbol=venue_symbol,
-                qty_method=qty_method,
-            )
-
-        effective_price = quote_amt / base_amt
-        # Solana tx fees are fixed at 0 bps (WHI-799 §8 / WHI-806) — not unknown.
-        return build_ok_prop_quote(
+        return await exact_in_prop_quote(
             venue=self.venue,
             mid=mid,
             asset=asset_key,
             side=side,
             notional_usd=notional_usd,
             instrument_type=itype,
-            effective_price=effective_price,
-            qty_base=qty_base,
-            qty_method=qty_method,
+            base=SOL_MINTS[asset_key],
+            quote_tok=SOL_MINTS["USDC"],
             fee_tier=self.jupiter_label,
-            gas_usd=None,
+            fetch=fetch,
+            provider_label="Jupiter",
             gas_unknown=False,
-            venue_symbol=venue_symbol,
+            no_quote_exc=_NoRoutesError,
         )
+
+    def _assert_route_labels(self, body: dict[str, Any]) -> None:
+        """Every hop must carry the requested dex label (WHI-797 §4.3 isolation)."""
+        plan = body.get("routePlan")
+        if not isinstance(plan, list) or not plan:
+            raise AdapterFetchError(f"{self.venue}: Jupiter quote missing routePlan")
+        for hop in plan:
+            if not isinstance(hop, dict):
+                continue
+            info = hop.get("swapInfo") or {}
+            label = info.get("label") if isinstance(info, dict) else None
+            if label != self.jupiter_label:
+                raise AdapterFetchError(
+                    f"{self.venue}: route hop label {label!r} != requested "
+                    f"{self.jupiter_label!r} (dexes filter not isolated)"
+                )
 
     async def _validate_label(self) -> None:
         """Fail fast if Jupiter no longer maps our program_id to jupiter_label."""
-        url = f"{jupiter_base_url().rstrip('/')}/program-id-to-label"
-        headers = self._headers()
-        try:
-            resp = await self.http.get(url, headers=headers)
-            resp.raise_for_status()
-            mapping: dict[str, Any] = resp.json()
-        except (httpx.HTTPError, ValueError, TypeError) as exc:
-            raise AdapterFetchError(
-                f"{self.venue}: failed to fetch Jupiter program-id-to-label: {exc}"
-            ) from exc
-
-        if not isinstance(mapping, dict):
-            raise AdapterFetchError(
-                f"{self.venue}: program-id-to-label returned non-object"
-            )
-
-        # Map is program_id → label.
+        mapping = await self._load_label_map()
         actual = mapping.get(self.program_id)
         if actual != self.jupiter_label:
-            # Also accept reverse map (label → program) if shape ever flips.
-            reverse = {v: k for k, v in mapping.items() if isinstance(v, str)}
-            prog_for_label = reverse.get(self.jupiter_label)
-            if prog_for_label == self.program_id:
-                return
             raise AdapterError(
                 f"{self.venue}: Jupiter label validation failed — expected "
                 f"program_id={self.program_id!r} → label={self.jupiter_label!r}, "
                 f"got label={actual!r}. Wrong labels are indistinguishable from "
                 f"empty markets at quote time (NO_ROUTES_FOUND)."
             )
-        expected = _EXPECTED_PROGRAM_IDS.get(self.jupiter_label)
-        if expected is not None and expected != self.program_id:
-            raise AdapterError(
-                f"{self.venue}: program_id {self.program_id!r} does not match "
-                f"canonical {_EXPECTED_PROGRAM_IDS[self.jupiter_label]!r} for "
-                f"label {self.jupiter_label!r}"
-            )
+
+    async def _load_label_map(self) -> dict[str, str]:
+        """Fetch /program-id-to-label once; share across Solana prop adapters."""
+        global _label_map_cache
+        if _label_map_cache is not None:
+            return _label_map_cache
+
+        # Resolve limiter outside the meta lock (asyncio.Lock is not reentrant).
+        limiter = await _get_jupiter_limiter(has_api_key=bool(self._api_key))
+        async with _get_meta_lock():
+            if _label_map_cache is not None:
+                return _label_map_cache
+
+            url = f"{jupiter_base_url().rstrip('/')}/program-id-to-label"
+            headers = self._headers()
+            await limiter.acquire()
+            try:
+                resp = await self.http.get(url, headers=headers)
+                if resp.status_code == 429:
+                    wait = _retry_after_seconds(resp, 0)
+                    logger.warning(
+                        "%s label-map rate limited; sleeping %.2fs", self.venue, wait
+                    )
+                    await asyncio.sleep(wait)
+                    await limiter.acquire()
+                    resp = await self.http.get(url, headers=headers)
+                resp.raise_for_status()
+                raw: Any = resp.json()
+            except (httpx.HTTPError, ValueError, TypeError) as exc:
+                raise AdapterFetchError(
+                    f"{self.venue}: failed to fetch Jupiter program-id-to-label: {exc}"
+                ) from exc
+
+            if not isinstance(raw, dict):
+                raise AdapterFetchError(
+                    f"{self.venue}: program-id-to-label returned non-object"
+                )
+            # Coerce values to str for stable lookup.
+            mapping = {str(k): str(v) for k, v in raw.items()}
+            _label_map_cache = mapping
+            return mapping
 
     async def _fetch_quote(
         self,
@@ -374,7 +317,7 @@ class JupiterPropAdapter(BaseAdapter):
         amount: int,
     ) -> dict[str, Any]:
         """GET /quote with rate limit + 429 backoff. Raises on config errors."""
-        params: dict[str, str | int | bool] = {
+        params: dict[str, str | int] = {
             "inputMint": input_mint,
             "outputMint": output_mint,
             "amount": amount,
@@ -414,7 +357,7 @@ class JupiterPropAdapter(BaseAdapter):
                 return self._handle_400(resp)
 
             if resp.status_code >= 500:
-                wait = min(2**attempt, 8.0)
+                wait = min(2.0 * (2**attempt), 8.0)
                 logger.warning(
                     "%s Jupiter 5xx=%s attempt=%s sleep=%.1fs",
                     self.venue,
@@ -453,7 +396,6 @@ class JupiterPropAdapter(BaseAdapter):
         error_code = str(body.get("errorCode") or "")
 
         if "Cannot set dexes and exclude dexes at the same time" in error_text:
-            # Programmer/config error — never swallow as empty quote.
             raise AdapterConfigError(
                 f"{self.venue}: Jupiter config error — {error_text} "
                 f"(do not set dexes and excludeDexes together)"
@@ -461,7 +403,8 @@ class JupiterPropAdapter(BaseAdapter):
 
         if error_code == "NO_ROUTES_FOUND" or "No routes found" in error_text:
             raise _NoRoutesError(
-                f"{self.venue}: no routes for {self.jupiter_label} ({error_code or error_text})"
+                f"{self.venue}: no routes for {self.jupiter_label} "
+                f"({error_code or error_text})"
             )
 
         raise AdapterFetchError(
@@ -479,6 +422,8 @@ class JupiterPropAdapter(BaseAdapter):
 class _NoRoutesError(Exception):
     """Internal: Jupiter returned NO_ROUTES_FOUND (business empty state)."""
 
+    code = "NO_ROUTES_FOUND"
+
 
 def _retry_after_seconds(resp: httpx.Response, attempt: int) -> float:
     """Backoff for 429; prefer ``x-ratelimit-reset`` / Retry-After when present."""
@@ -491,19 +436,12 @@ def _retry_after_seconds(resp: httpx.Response, attempt: int) -> float:
     reset = resp.headers.get("x-ratelimit-reset")
     if reset:
         try:
-            # Jupiter returns a unix timestamp for the window reset.
             delta = float(reset) - time.time()
             if 0 < delta < 120:
                 return float(delta)
         except ValueError:
             pass
-    # Exponential backoff floor: 2s, 4s, 8s, ...
     return float(min(2.0 * (2**attempt), 30.0))
-
-
-# ---------------------------------------------------------------------------
-# Registered venue instances
-# ---------------------------------------------------------------------------
 
 
 @register_adapter

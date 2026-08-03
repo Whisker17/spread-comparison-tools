@@ -6,12 +6,23 @@ Underscore-prefixed so adapter auto-discovery skips this module.
 from __future__ import annotations
 
 import os
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Final
 
-from spread_compare.adapters._amm_common import TokenInfo, from_raw, to_raw
-from spread_compare.adapters.base import AdapterError, default_instrument_type
+from spread_compare.adapters._amm_common import (
+    TokenInfo,
+    from_raw,
+    load_dotenv_once,
+    to_raw,
+)
+from spread_compare.adapters.base import (
+    AdapterConfigError,
+    AdapterError,
+    default_instrument_type,
+)
 from spread_compare.costs import spread_bps as calc_spread_bps
 from spread_compare.costs import total_cost_bps
 from spread_compare.models import (
@@ -31,26 +42,14 @@ __all__ = [
     "TokenInfo",
     "from_raw",
     "to_raw",
-    "load_dotenv_once",
     "optional_env",
     "build_non_ok_quote",
     "build_ok_prop_quote",
     "prop_fee_schedule",
     "require_mid_match",
+    "PropFill",
+    "exact_in_prop_quote",
 ]
-
-_DOTENV_LOADED = False
-
-
-def load_dotenv_once() -> None:
-    """Load repo-root ``.env`` into ``os.environ`` (idempotent)."""
-    global _DOTENV_LOADED
-    if _DOTENV_LOADED:
-        return
-    from dotenv import load_dotenv
-
-    load_dotenv()
-    _DOTENV_LOADED = True
 
 
 def optional_env(name: str) -> str | None:
@@ -61,7 +60,7 @@ def optional_env(name: str) -> str | None:
 
 
 def require_mid_match(mid: ReferenceMid, asset: str) -> None:
-    """Raise when mid asset does not match the requested asset."""
+    """Raise when mid asset does not match the requested asset or mid is non-positive."""
     if mid.asset.upper() != asset.upper():
         raise AdapterError(f"mid.asset={mid.asset!r} does not match asset={asset!r}")
     if mid.mid <= 0:
@@ -195,6 +194,157 @@ def build_ok_prop_quote(
     )
 
 
+@dataclass(frozen=True, slots=True)
+class PropFill:
+    """Raw ExactIn fill amounts from a prop quote provider."""
+
+    amount_in: int
+    amount_out: int
+    gas_usd: Decimal | None = None
+
+
+# Fetch callback: (token_in, token_out, amount_in) → PropFill.
+# Raise AdapterConfigError for config misuse; raise a mapped business empty via
+# returning through ``no_quote_exc`` type handled by the caller adapter.
+PropFetch = Callable[[str, str, int], Awaitable[PropFill]]
+
+
+async def exact_in_prop_quote(
+    *,
+    venue: str,
+    mid: ReferenceMid,
+    asset: str,
+    side: Side,
+    notional_usd: Decimal,
+    instrument_type: InstrumentType,
+    base: TokenInfo,
+    quote_tok: TokenInfo,
+    fee_tier: str,
+    fetch: PropFetch,
+    provider_label: str,
+    gas_unknown: bool,
+    no_quote_exc: type[BaseException],
+) -> Quote:
+    """Shared ExactIn buy/sell quote shell for Jupiter and KyberSwap prop adapters.
+
+    Sell: ExactIn base → quote. Buy: ExactIn quote → base
+    (``qty_method=quote_exact_in_approx``; ExactOut is unverified on prop AMMs).
+    """
+    venue_symbol = f"{base.symbol}/{quote_tok.symbol}"
+
+    if side == "sell":
+        qty_base = notional_usd / mid.mid
+        amount_in = to_raw(qty_base, base.decimals)
+        token_in, token_out = base.address, quote_tok.address
+        qty_method: QtyMethod = "base_from_mid"
+    else:
+        amount_in = to_raw(notional_usd, quote_tok.decimals)
+        token_in, token_out = quote_tok.address, base.address
+        qty_method = "quote_exact_in_approx"
+
+    if amount_in <= 0:
+        return build_non_ok_quote(
+            venue=venue,
+            mid=mid,
+            asset=asset,
+            side=side,
+            notional_usd=notional_usd,
+            instrument_type=instrument_type,
+            status="no_quote",
+            error_code="no_quote",
+            error_message="computed input amount is zero",
+            venue_symbol=venue_symbol,
+            qty_method=qty_method,
+        )
+
+    try:
+        fill = await fetch(token_in, token_out, amount_in)
+    except no_quote_exc as exc:
+        code = getattr(exc, "code", "no_quote")
+        return build_non_ok_quote(
+            venue=venue,
+            mid=mid,
+            asset=asset,
+            side=side,
+            notional_usd=notional_usd,
+            instrument_type=instrument_type,
+            status="no_quote",
+            error_code=str(code),
+            error_message=str(exc),
+            venue_symbol=venue_symbol,
+            qty_method=qty_method,
+        )
+    except AdapterConfigError:
+        raise
+    except AdapterError as exc:
+        return build_non_ok_quote(
+            venue=venue,
+            mid=mid,
+            asset=asset,
+            side=side,
+            notional_usd=notional_usd,
+            instrument_type=instrument_type,
+            status="error",
+            error_code="adapter_error",
+            error_message=str(exc),
+            venue_symbol=venue_symbol,
+            qty_method=qty_method,
+        )
+
+    if fill.amount_in <= 0 or fill.amount_out <= 0:
+        return build_non_ok_quote(
+            venue=venue,
+            mid=mid,
+            asset=asset,
+            side=side,
+            notional_usd=notional_usd,
+            instrument_type=instrument_type,
+            status="no_quote",
+            error_code="no_quote",
+            error_message=f"{provider_label} returned zero amounts",
+            venue_symbol=venue_symbol,
+            qty_method=qty_method,
+        )
+
+    if side == "sell":
+        base_amt = from_raw(fill.amount_in, base.decimals)
+        quote_amt = from_raw(fill.amount_out, quote_tok.decimals)
+    else:
+        quote_amt = from_raw(fill.amount_in, quote_tok.decimals)
+        base_amt = from_raw(fill.amount_out, base.decimals)
+
+    if base_amt <= 0 or quote_amt <= 0:
+        return build_non_ok_quote(
+            venue=venue,
+            mid=mid,
+            asset=asset,
+            side=side,
+            notional_usd=notional_usd,
+            instrument_type=instrument_type,
+            status="no_quote",
+            error_code="no_quote",
+            error_message="zero base/quote after scaling",
+            venue_symbol=venue_symbol,
+            qty_method=qty_method,
+        )
+
+    return build_ok_prop_quote(
+        venue=venue,
+        mid=mid,
+        asset=asset,
+        side=side,
+        notional_usd=notional_usd,
+        instrument_type=instrument_type,
+        effective_price=quote_amt / base_amt,
+        qty_base=base_amt,
+        qty_method=qty_method,
+        fee_tier=fee_tier,
+        gas_usd=fill.gas_usd,
+        gas_unknown=gas_unknown,
+        venue_symbol=venue_symbol,
+    )
+
+
 # Solana mint table (WHI-797 §6.2) — initial asset surface only.
 SOL_MINTS: Final[dict[str, TokenInfo]] = {
     "SOL": TokenInfo(
@@ -212,6 +362,7 @@ SOL_MINTS: Final[dict[str, TokenInfo]] = {
 }
 
 # Base tokens (WHI-797 §7.4 / samples matrix footer).
+# Addresses shared with Aerodrome adapter for the same chain assets.
 BASE_TOKENS: Final[dict[str, TokenInfo]] = {
     "ETH": TokenInfo(
         "0x4200000000000000000000000000000000000006", 18, "WETH"

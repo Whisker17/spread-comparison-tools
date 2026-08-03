@@ -6,22 +6,23 @@ route response (``gasUsd``) — no separate gas-price call.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from decimal import Decimal
 from typing import Any, ClassVar, Final, Literal
 
 import httpx
 
+from spread_compare.adapters._perp_common import AsyncRateLimiter
 from spread_compare.adapters._prop_common import (
     BASE_TOKENS,
     BSC_TOKENS,
+    PropFill,
     TokenInfo,
     build_non_ok_quote,
-    build_ok_prop_quote,
-    from_raw,
+    exact_in_prop_quote,
     prop_fee_schedule,
     require_mid_match,
-    to_raw,
 )
 from spread_compare.adapters.base import (
     AdapterConfigError,
@@ -35,7 +36,6 @@ from spread_compare.adapters.registry import register_adapter
 from spread_compare.models import (
     FeeSchedule,
     InstrumentType,
-    QtyMethod,
     Quote,
     ReferenceMid,
     Side,
@@ -45,17 +45,21 @@ from spread_compare.models import (
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_KYBER_BASE_URL: Final[str] = "https://aggregator-api.kyberswap.com"
+KYBER_BASE_URL: Final[str] = "https://aggregator-api.kyberswap.com"
 _SOURCE_ID: Final[str] = "tessera"
 _CLIENT_ID: Final[str] = "spread-comparison-tools"
+# WHI-797 §7.2: far looser than Jupiter; keep a polite client floor.
+_MIN_INTERVAL_S: Final[float] = 0.1
+_MAX_RETRIES: Final[int] = 3
 
-# Startup smoke pairs (known-good; WHI-797 §7.4 / acceptance criteria).
 _SMOKE_BASE_IN = BASE_TOKENS["ETH"]
 _SMOKE_BASE_OUT = BASE_TOKENS["USDC"]
-_SMOKE_BASE_AMOUNT = 10**15  # 0.001 WETH — small, cheap smoke
+_SMOKE_BASE_AMOUNT = 10**15  # 0.001 WETH
 _SMOKE_BSC_IN = BSC_TOKENS["BTC"]
 _SMOKE_BSC_OUT = BSC_TOKENS["USDT"]
 _SMOKE_BSC_AMOUNT = 10**15  # 0.001 BTCB
+
+_kyber_limiter = AsyncRateLimiter(_MIN_INTERVAL_S)
 
 
 class KyberSwapPropAdapter(BaseAdapter):
@@ -69,10 +73,7 @@ class KyberSwapPropAdapter(BaseAdapter):
     supported: ClassVar[tuple[str, ...]]
 
     def __init__(self, *, timeout: float | None = None) -> None:
-        if timeout is None:
-            super().__init__()
-        else:
-            super().__init__(timeout=timeout)
+        super().__init__(**({} if timeout is None else {"timeout": timeout}))
         self._smoke_ok = False
 
     async def startup(self) -> None:
@@ -148,144 +149,57 @@ class KyberSwapPropAdapter(BaseAdapter):
         if notional_usd <= 0:
             raise AdapterError(f"notional_usd must be positive, got {notional_usd}")
 
-        base = self.tokens[asset_key]
-        quote_tok = self.tokens[self.quote_asset]
-        venue_symbol = f"{base.symbol}/{quote_tok.symbol}"
-
-        if side == "sell":
-            qty_base = notional_usd / mid.mid
-            amount_in = to_raw(qty_base, base.decimals)
-            token_in, token_out = base.address, quote_tok.address
-            qty_method: QtyMethod = "base_from_mid"
-        else:
-            # ExactIn on quote leg (USDC/USDT → base).
-            amount_in = to_raw(notional_usd, quote_tok.decimals)
-            token_in, token_out = quote_tok.address, base.address
-            qty_method = "quote_exact_in_approx"
-            qty_base = Decimal("0")
-
-        if amount_in <= 0:
-            return build_non_ok_quote(
-                venue=self.venue,
-                mid=mid,
-                asset=asset_key,
-                side=side,
-                notional_usd=notional_usd,
-                instrument_type=itype,
-                status="no_quote",
-                error_code="no_quote",
-                error_message="computed input amount is zero",
-                venue_symbol=venue_symbol,
-                qty_method=qty_method,
+        async def fetch(token_in: str, token_out: str, amount: int) -> PropFill:
+            summary = await self._fetch_route(token_in, token_out, amount)
+            try:
+                in_raw = int(summary["amountIn"])
+                out_raw = int(summary["amountOut"])
+            except (KeyError, TypeError, ValueError) as exc:
+                raise AdapterFetchError(
+                    f"{self.venue}: invalid KyberSwap routeSummary: {exc}"
+                ) from exc
+            self._assert_route_exchange(summary)
+            gas_usd = _parse_gas_usd(summary)
+            # WHI-806: gas comes from the response; missing → treat as 0 known (not unknown).
+            return PropFill(
+                amount_in=in_raw,
+                amount_out=out_raw,
+                gas_usd=gas_usd if gas_usd is not None else Decimal("0"),
             )
 
-        try:
-            summary = await self._fetch_route(token_in, token_out, amount_in)
-        except _NoRouteError as exc:
-            return build_non_ok_quote(
-                venue=self.venue,
-                mid=mid,
-                asset=asset_key,
-                side=side,
-                notional_usd=notional_usd,
-                instrument_type=itype,
-                status="no_quote",
-                error_code=exc.code,
-                error_message=str(exc),
-                venue_symbol=venue_symbol,
-                qty_method=qty_method,
-            )
-        except AdapterConfigError:
-            raise
-        except AdapterError as exc:
-            return build_non_ok_quote(
-                venue=self.venue,
-                mid=mid,
-                asset=asset_key,
-                side=side,
-                notional_usd=notional_usd,
-                instrument_type=itype,
-                status="error",
-                error_code="adapter_error",
-                error_message=str(exc),
-                venue_symbol=venue_symbol,
-                qty_method=qty_method,
-            )
-
-        try:
-            in_raw = int(summary["amountIn"])
-            out_raw = int(summary["amountOut"])
-        except (KeyError, TypeError, ValueError) as exc:
-            return build_non_ok_quote(
-                venue=self.venue,
-                mid=mid,
-                asset=asset_key,
-                side=side,
-                notional_usd=notional_usd,
-                instrument_type=itype,
-                status="error",
-                error_code="parse_error",
-                error_message=f"invalid KyberSwap routeSummary: {exc}",
-                venue_symbol=venue_symbol,
-                qty_method=qty_method,
-            )
-
-        if in_raw <= 0 or out_raw <= 0:
-            return build_non_ok_quote(
-                venue=self.venue,
-                mid=mid,
-                asset=asset_key,
-                side=side,
-                notional_usd=notional_usd,
-                instrument_type=itype,
-                status="no_quote",
-                error_code="no_quote",
-                error_message="KyberSwap returned zero amounts",
-                venue_symbol=venue_symbol,
-                qty_method=qty_method,
-            )
-
-        if side == "sell":
-            base_amt = from_raw(in_raw, base.decimals)
-            quote_amt = from_raw(out_raw, quote_tok.decimals)
-            qty_base = base_amt
-        else:
-            quote_amt = from_raw(in_raw, quote_tok.decimals)
-            base_amt = from_raw(out_raw, base.decimals)
-            qty_base = base_amt
-
-        if base_amt <= 0 or quote_amt <= 0:
-            return build_non_ok_quote(
-                venue=self.venue,
-                mid=mid,
-                asset=asset_key,
-                side=side,
-                notional_usd=notional_usd,
-                instrument_type=itype,
-                status="no_quote",
-                error_code="no_quote",
-                error_message="zero base/quote after scaling",
-                venue_symbol=venue_symbol,
-                qty_method=qty_method,
-            )
-
-        effective_price = quote_amt / base_amt
-        gas_usd = _parse_gas_usd(summary)
-        return build_ok_prop_quote(
+        return await exact_in_prop_quote(
             venue=self.venue,
             mid=mid,
             asset=asset_key,
             side=side,
             notional_usd=notional_usd,
             instrument_type=itype,
-            effective_price=effective_price,
-            qty_base=qty_base,
-            qty_method=qty_method,
+            base=self.tokens[asset_key],
+            quote_tok=self.tokens[self.quote_asset],
             fee_tier=_SOURCE_ID,
-            gas_usd=gas_usd,
-            gas_unknown=gas_usd is None,
-            venue_symbol=venue_symbol,
+            fetch=fetch,
+            provider_label="KyberSwap",
+            gas_unknown=False,
+            no_quote_exc=_NoRouteError,
         )
+
+    def _assert_route_exchange(self, summary: dict[str, Any]) -> None:
+        """Every hop must be tessera (WHI-797 §7.2 isolation)."""
+        route = summary.get("route")
+        if not isinstance(route, list) or not route:
+            raise AdapterFetchError(f"{self.venue}: KyberSwap route missing")
+        for path in route:
+            if not isinstance(path, list):
+                continue
+            for hop in path:
+                if not isinstance(hop, dict):
+                    continue
+                exchange = str(hop.get("exchange") or "").lower()
+                if exchange != _SOURCE_ID:
+                    raise AdapterFetchError(
+                        f"{self.venue}: hop exchange {exchange!r} != {_SOURCE_ID!r} "
+                        f"(includedSources filter not isolated)"
+                    )
 
     async def _startup_smoke(self) -> None:
         """One known-good pair per chain to catch source-id drift (WHI-797 §7.3)."""
@@ -309,8 +223,6 @@ class KyberSwapPropAdapter(BaseAdapter):
                 f"on chain={self.chain_slug!r}: {exc}. Source id may have drifted "
                 f"(expected includedSources={_SOURCE_ID!r})."
             ) from exc
-        except AdapterError:
-            raise
 
     async def _fetch_route(
         self,
@@ -320,15 +232,13 @@ class KyberSwapPropAdapter(BaseAdapter):
     ) -> dict[str, Any]:
         """GET /{chain}/api/v1/routes with includedSources=tessera."""
         # Prefer all-lowercase addresses (accepted by Kyber; mixed-case needs EIP-55).
-        token_in_q = token_in.lower()
-        token_out_q = token_out.lower()
         url = (
-            f"{DEFAULT_KYBER_BASE_URL.rstrip('/')}/"
+            f"{KYBER_BASE_URL.rstrip('/')}/"
             f"{self.chain_slug}/api/v1/routes"
         )
         params = {
-            "tokenIn": token_in_q,
-            "tokenOut": token_out_q,
+            "tokenIn": token_in.lower(),
+            "tokenOut": token_out.lower(),
             "amountIn": str(amount_in),
             "includedSources": _SOURCE_ID,
         }
@@ -336,74 +246,96 @@ class KyberSwapPropAdapter(BaseAdapter):
             "Accept": "application/json",
             "x-client-id": _CLIENT_ID,
         }
-        try:
-            resp = await self.http.get(url, params=params, headers=headers)
-        except httpx.TimeoutException as exc:
-            raise AdapterTimeoutError(
-                f"{self.venue}: KyberSwap route timed out"
-            ) from exc
-        except httpx.HTTPError as exc:
-            raise AdapterFetchError(
-                f"{self.venue}: KyberSwap transport error: {exc}"
-            ) from exc
 
-        try:
-            body = resp.json()
-        except ValueError as exc:
-            raise AdapterFetchError(
-                f"{self.venue}: KyberSwap non-JSON response HTTP {resp.status_code}"
-            ) from exc
-
-        if not isinstance(body, dict):
-            raise AdapterFetchError(f"{self.venue}: KyberSwap body not an object")
-
-        code = body.get("code")
-        message = str(body.get("message") or "")
-
-        # HTTP layer: Kyber often returns 200 with business code in body.
-        if resp.status_code == 429:
-            raise AdapterFetchError(f"{self.venue}: KyberSwap rate limited (HTTP 429)")
-
-        if code == 0:
-            data = body.get("data") or {}
-            if not isinstance(data, dict):
-                raise AdapterFetchError(f"{self.venue}: KyberSwap data not an object")
-            summary = data.get("routeSummary")
-            if not isinstance(summary, dict):
+        last_err: Exception | None = None
+        for attempt in range(_MAX_RETRIES):
+            await _kyber_limiter.acquire()
+            try:
+                resp = await self.http.get(url, params=params, headers=headers)
+            except httpx.TimeoutException as exc:
+                raise AdapterTimeoutError(
+                    f"{self.venue}: KyberSwap route timed out"
+                ) from exc
+            except httpx.HTTPError as exc:
                 raise AdapterFetchError(
-                    f"{self.venue}: KyberSwap missing routeSummary"
+                    f"{self.venue}: KyberSwap transport error: {exc}"
+                ) from exc
+
+            if resp.status_code == 429:
+                wait = min(2.0 * (2**attempt), 8.0)
+                logger.warning(
+                    "%s KyberSwap 429 attempt=%s sleep=%.1fs",
+                    self.venue,
+                    attempt + 1,
+                    wait,
                 )
-            return summary
+                await asyncio.sleep(wait)
+                last_err = AdapterFetchError(f"{self.venue}: KyberSwap rate limited")
+                continue
 
-        if code == 4008:
-            raise _NoRouteError(
-                f"{self.venue}: route not found (code=4008)", code="4008"
-            )
+            try:
+                body = resp.json()
+            except ValueError as exc:
+                raise AdapterFetchError(
+                    f"{self.venue}: KyberSwap non-JSON response HTTP {resp.status_code}"
+                ) from exc
 
-        if code == 40011:
-            raise AdapterConfigError(
-                f"{self.venue}: KyberSwap filtered liquidity sources (code=40011) — "
-                f"bad source id or venue absent on chain={self.chain_slug!r} "
-                f"(message={message!r})"
-            )
+            if not isinstance(body, dict):
+                raise AdapterFetchError(f"{self.venue}: KyberSwap body not an object")
 
-        if code == 4000:
-            # Token not registered / bad address → treat as no_quote (business).
-            raise _NoRouteError(
-                f"{self.venue}: bad request / token not registered (code=4000): "
-                f"{message}",
-                code="4000",
-            )
+            code = body.get("code")
+            message = str(body.get("message") or "")
 
-        if resp.status_code >= 400:
+            if code == 0:
+                data = body.get("data") or {}
+                if not isinstance(data, dict):
+                    raise AdapterFetchError(f"{self.venue}: KyberSwap data not an object")
+                summary = data.get("routeSummary")
+                if not isinstance(summary, dict):
+                    raise AdapterFetchError(
+                        f"{self.venue}: KyberSwap missing routeSummary"
+                    )
+                return summary
+
+            if code == 4008:
+                raise _NoRouteError(
+                    f"{self.venue}: route not found (code=4008)", code="4008"
+                )
+
+            if code == 40011:
+                raise AdapterConfigError(
+                    f"{self.venue}: KyberSwap filtered liquidity sources (code=40011) — "
+                    f"bad source id or venue absent on chain={self.chain_slug!r} "
+                    f"(message={message!r})"
+                )
+
+            if code == 4000:
+                # WHI-806: token-not-registered / bad request → no_quote (not fatal).
+                raise _NoRouteError(
+                    f"{self.venue}: bad request / token not registered (code=4000): "
+                    f"{message}",
+                    code="4000",
+                )
+
+            if resp.status_code >= 500:
+                wait = min(2.0 * (2**attempt), 8.0)
+                await asyncio.sleep(wait)
+                last_err = AdapterFetchError(
+                    f"{self.venue}: KyberSwap HTTP {resp.status_code}"
+                )
+                continue
+
+            if resp.status_code >= 400:
+                raise AdapterFetchError(
+                    f"{self.venue}: KyberSwap HTTP {resp.status_code} code={code} "
+                    f"message={message!r}"
+                )
+
             raise AdapterFetchError(
-                f"{self.venue}: KyberSwap HTTP {resp.status_code} code={code} "
-                f"message={message!r}"
+                f"{self.venue}: KyberSwap unexpected code={code} message={message!r}"
             )
 
-        raise AdapterFetchError(
-            f"{self.venue}: KyberSwap unexpected code={code} message={message!r}"
-        )
+        raise last_err or AdapterFetchError(f"{self.venue}: KyberSwap route failed")
 
 
 class _NoRouteError(Exception):

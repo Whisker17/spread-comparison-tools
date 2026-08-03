@@ -125,6 +125,7 @@ async def _ready_jupiter(
 @pytest.mark.asyncio
 async def test_jupiter_label_validation_fails_on_wrong_label() -> None:
     """Startup must fail fast when program_id no longer maps to the expected label."""
+    _reset_jupiter_limiter_for_tests()  # clear shared label-map cache
     bad_map = {
         "9H6tua7jkLhdm3w8BvgpTn5LZNU7g4ZynDmCiNN3q6Rp": "Tessera",  # wrong label
     }
@@ -135,6 +136,7 @@ async def test_jupiter_label_validation_fails_on_wrong_label() -> None:
     with pytest.raises(AdapterError, match="label validation failed"):
         await adapter.startup()
     await adapter.aclose()
+    _reset_jupiter_limiter_for_tests()
 
 
 @pytest.mark.asyncio
@@ -363,6 +365,29 @@ async def test_kyber_40011_raises_config_error() -> None:
     try:
         with pytest.raises(AdapterConfigError, match="40011"):
             await adapter.get_quote("ETH", "sell", Decimal("1000"), mid=_mid("ETH", "3000"))
+    finally:
+        await adapter.aclose()
+
+
+@pytest.mark.asyncio
+async def test_kyber_4000_is_no_quote() -> None:
+    """WHI-806: code=4000 (token not registered) → no_quote, not config error."""
+    body = {
+        "code": 4000,
+        "message": "bad request",
+        "details": None,
+        "requestId": "test-4000",
+    }
+    adapter = await _ready_kyber_base(
+        transport=_kyber_scripted_transport(
+            smoke_body=_load("ks-route-tessera-base-weth-usdc.json"),
+            quote_body=body,
+        )
+    )
+    try:
+        quote = await adapter.get_quote("ETH", "sell", Decimal("1000"), mid=_mid("ETH", "3000"))
+        assert quote.status == "no_quote"
+        assert quote.error_code == "4000"
     finally:
         await adapter.aclose()
 
