@@ -1,0 +1,1034 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "spread-comparison-tools",
+    "description": "Cross-venue execution quality / spread comparison API",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "summary": "Health",
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/quotes": {
+      "get": {
+        "tags": [
+          "quotes"
+        ],
+        "summary": "Get Quotes",
+        "description": "Fan out to adapters and return SizeQuotePair rows for one asset/notional.",
+        "operationId": "get_quotes_quotes_get",
+        "parameters": [
+          {
+            "name": "asset",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Logical asset id, e.g. BTC",
+              "title": "Asset"
+            },
+            "description": "Logical asset id, e.g. BTC"
+          },
+          {
+            "name": "notional",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "USD notional; one of 1000 / 10000 / 100000 / 1000000 (WHI-799 \u00a74.1)",
+              "title": "Notional"
+            },
+            "description": "USD notional; one of 1000 / 10000 / 100000 / 1000000 (WHI-799 \u00a74.1)"
+          },
+          {
+            "name": "venues",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Comma-separated venue slugs; default = all registered adapters",
+              "title": "Venues"
+            },
+            "description": "Comma-separated venue slugs; default = all registered adapters"
+          },
+          {
+            "name": "side",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "buy",
+                    "sell"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "If set, only that leg is fetched",
+              "title": "Side"
+            },
+            "description": "If set, only that leg is fetched"
+          },
+          {
+            "name": "instrument_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "spot",
+                    "perp",
+                    "amm_pool",
+                    "prop_amm"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Override adapter default instrument type",
+              "title": "Instrument Type"
+            },
+            "description": "Override adapter default instrument type"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuotesResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/venues": {
+      "get": {
+        "tags": [
+          "quotes"
+        ],
+        "summary": "Get Venues",
+        "description": "Static venue registry + whether an adapter is currently registered.",
+        "operationId": "get_venues_venues_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/VenueResponse"
+                  },
+                  "type": "array",
+                  "title": "Response Get Venues Venues Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/assets": {
+      "get": {
+        "tags": [
+          "quotes"
+        ],
+        "summary": "Get Assets",
+        "description": "Logical assets + per-venue representation labels (WHI-798 \u00a73.3).",
+        "operationId": "get_assets_assets_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AssetResponse"
+                  },
+                  "type": "array",
+                  "title": "Response Get Assets Assets Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AssetResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "category": {
+            "type": "string",
+            "title": "Category"
+          },
+          "representations": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Representations",
+            "description": "Venue slug \u2192 representation label (WHI-798 \u00a73.3)."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "category",
+          "representations"
+        ],
+        "title": "AssetResponse",
+        "description": "One row of ``GET /assets``."
+      },
+      "FeeBreakdown": {
+        "properties": {
+          "embedded_in_price": {
+            "type": "boolean",
+            "title": "Embedded In Price"
+          },
+          "fee_tier": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fee Tier"
+          },
+          "trading_fee_bps": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trading Fee Bps"
+          },
+          "trading_fee_usd": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trading Fee Usd"
+          },
+          "platform_fee_bps": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Platform Fee Bps",
+            "default": "0"
+          },
+          "lp_fee_tier_bps": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lp Fee Tier Bps"
+          },
+          "gas_usd": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gas Usd"
+          },
+          "gas_bps": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gas Bps"
+          },
+          "gas_unknown": {
+            "type": "boolean",
+            "title": "Gas Unknown",
+            "default": false
+          },
+          "funding_rate_8h": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Funding Rate 8H"
+          },
+          "explicit_fee_bps": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Explicit Fee Bps"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "embedded_in_price"
+        ],
+        "title": "FeeBreakdown",
+        "description": "Per-quote fee components (WHI-799 \u00a75.4). bps fields are authoritative."
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "HealthResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "description": "Always 'ok' when the process is serving."
+          },
+          "adapters_initialized": {
+            "type": "integer",
+            "title": "Adapters Initialized",
+            "description": "Adapters whose startup() completed successfully."
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "adapters_initialized"
+        ],
+        "title": "HealthResponse",
+        "description": "Liveness payload for ``GET /health``."
+      },
+      "Quote": {
+        "properties": {
+          "snapshot_id": {
+            "type": "string",
+            "title": "Snapshot Id"
+          },
+          "venue": {
+            "type": "string",
+            "title": "Venue"
+          },
+          "asset": {
+            "type": "string",
+            "title": "Asset"
+          },
+          "venue_symbol": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Venue Symbol"
+          },
+          "instrument_type": {
+            "type": "string",
+            "enum": [
+              "spot",
+              "perp",
+              "amm_pool",
+              "prop_amm"
+            ],
+            "title": "Instrument Type"
+          },
+          "side": {
+            "type": "string",
+            "enum": [
+              "buy",
+              "sell"
+            ],
+            "title": "Side"
+          },
+          "notional_usd": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Notional Usd"
+          },
+          "mid": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Mid"
+          },
+          "mid_source": {
+            "type": "string",
+            "enum": [
+              "binance_usdm_index",
+              "binance_spot_tob",
+              "bybit_spot_tob",
+              "pyth",
+              "cex_tradfi_index",
+              "proxy_perp_mark_median",
+              "equity_ref_same_as_perp"
+            ],
+            "title": "Mid Source"
+          },
+          "mid_timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Mid Timestamp"
+          },
+          "mid_stale": {
+            "type": "boolean",
+            "title": "Mid Stale",
+            "default": false
+          },
+          "effective_price": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective Price"
+          },
+          "spread_bps": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Spread Bps"
+          },
+          "fee_breakdown": {
+            "$ref": "#/components/schemas/FeeBreakdown"
+          },
+          "total_cost_bps": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Cost Bps"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Timestamp"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "no_quote",
+              "insufficient_liquidity",
+              "unsupported_asset",
+              "error"
+            ],
+            "title": "Status"
+          },
+          "qty_base": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Qty Base"
+          },
+          "qty_method": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "base_from_mid",
+                  "quote_exact_in_approx"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Qty Method"
+          },
+          "venue_mark": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Venue Mark"
+          },
+          "basis_bps": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Basis Bps"
+          },
+          "raw_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Raw Ref"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "snapshot_id",
+          "venue",
+          "asset",
+          "instrument_type",
+          "side",
+          "notional_usd",
+          "mid",
+          "mid_source",
+          "mid_timestamp",
+          "fee_breakdown",
+          "timestamp",
+          "status"
+        ],
+        "title": "Quote",
+        "description": "Single venue quote at a notional size (WHI-799 \u00a76.2)."
+      },
+      "QuotesResponse": {
+        "properties": {
+          "snapshot_id": {
+            "type": "string",
+            "title": "Snapshot Id"
+          },
+          "asset": {
+            "type": "string",
+            "title": "Asset"
+          },
+          "notional_usd": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Notional Usd"
+          },
+          "mid": {
+            "$ref": "#/components/schemas/ReferenceMid"
+          },
+          "pairs": {
+            "items": {
+              "$ref": "#/components/schemas/SizeQuotePair"
+            },
+            "type": "array",
+            "title": "Pairs"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "snapshot_id",
+          "asset",
+          "notional_usd",
+          "mid",
+          "pairs"
+        ],
+        "title": "QuotesResponse",
+        "description": "``GET /quotes`` payload."
+      },
+      "ReferenceMid": {
+        "properties": {
+          "snapshot_id": {
+            "type": "string",
+            "title": "Snapshot Id"
+          },
+          "asset": {
+            "type": "string",
+            "title": "Asset"
+          },
+          "mid": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Mid"
+          },
+          "mid_source": {
+            "type": "string",
+            "enum": [
+              "binance_usdm_index",
+              "binance_spot_tob",
+              "bybit_spot_tob",
+              "pyth",
+              "cex_tradfi_index",
+              "proxy_perp_mark_median",
+              "equity_ref_same_as_perp"
+            ],
+            "title": "Mid Source"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Timestamp"
+          },
+          "sources_detail": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sources Detail"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "snapshot_id",
+          "asset",
+          "mid",
+          "mid_source",
+          "timestamp"
+        ],
+        "title": "ReferenceMid",
+        "description": "Snapshot-scoped reference mid shared by all venues (WHI-799 \u00a73.5)."
+      },
+      "SizeQuotePair": {
+        "properties": {
+          "snapshot_id": {
+            "type": "string",
+            "title": "Snapshot Id"
+          },
+          "venue": {
+            "type": "string",
+            "title": "Venue"
+          },
+          "asset": {
+            "type": "string",
+            "title": "Asset"
+          },
+          "instrument_type": {
+            "type": "string",
+            "enum": [
+              "spot",
+              "perp",
+              "amm_pool",
+              "prop_amm"
+            ],
+            "title": "Instrument Type"
+          },
+          "notional_usd": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Notional Usd"
+          },
+          "buy": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Quote"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sell": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Quote"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "round_trip_spread_bps": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Round Trip Spread Bps"
+          },
+          "half_spread_bps": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Half Spread Bps"
+          },
+          "round_trip_total_cost_bps": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Round Trip Total Cost Bps"
+          },
+          "top_of_book": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TopOfBook"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "snapshot_id",
+          "venue",
+          "asset",
+          "instrument_type",
+          "notional_usd"
+        ],
+        "title": "SizeQuotePair",
+        "description": "Buy+sell pair at one size for one venue (WHI-799 \u00a76.4; aggregator synthesizes)."
+      },
+      "TopOfBook": {
+        "properties": {
+          "snapshot_id": {
+            "type": "string",
+            "title": "Snapshot Id"
+          },
+          "venue": {
+            "type": "string",
+            "title": "Venue"
+          },
+          "asset": {
+            "type": "string",
+            "title": "Asset"
+          },
+          "instrument_type": {
+            "type": "string",
+            "enum": [
+              "spot",
+              "perp"
+            ],
+            "title": "Instrument Type"
+          },
+          "best_bid": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Best Bid"
+          },
+          "best_ask": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Best Ask"
+          },
+          "bid_size": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bid Size"
+          },
+          "ask_size": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ask Size"
+          },
+          "mid_local": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Mid Local"
+          },
+          "mid_ref": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Mid Ref"
+          },
+          "mid_timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Mid Timestamp"
+          },
+          "spread_bps": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Spread Bps"
+          },
+          "spread_bps_local": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Spread Bps Local"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Timestamp"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "snapshot_id",
+          "venue",
+          "asset",
+          "instrument_type",
+          "best_bid",
+          "best_ask",
+          "mid_local",
+          "mid_ref",
+          "mid_timestamp",
+          "spread_bps",
+          "spread_bps_local",
+          "timestamp"
+        ],
+        "title": "TopOfBook",
+        "description": "Orderbook top-of-book snapshot (WHI-799 \u00a76.3). AMM/Prop never produce this."
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      },
+      "VenueResponse": {
+        "properties": {
+          "slug": {
+            "type": "string",
+            "title": "Slug"
+          },
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          },
+          "venue_class": {
+            "type": "string",
+            "enum": [
+              "cex",
+              "perp_dex",
+              "amm_dex",
+              "prop_amm"
+            ],
+            "title": "Venue Class"
+          },
+          "chain": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chain"
+          },
+          "adapter_registered": {
+            "type": "boolean",
+            "title": "Adapter Registered",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "slug",
+          "display_name",
+          "venue_class"
+        ],
+        "title": "VenueResponse",
+        "description": "One row of ``GET /venues``."
+      }
+    }
+  }
+}

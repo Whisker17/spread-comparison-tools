@@ -16,11 +16,13 @@ loaded into a typed, validated model at startup.
   checking out a release tag never conflicts with live settings.
 
 Loaders:
-- `spread_compare/settings.py` — `load_mid_settings`, `load_aggregator_settings`
+- `spread_compare/settings.py` — `load_mid_settings`, `load_aggregator_settings`,
+  `load_api_settings`
 - `spread_compare/fees.py` — `get_fee_catalog` / `get_fee_schedule` (one YAML per venue)
 
 Checked-in files:
-- `mid.yaml`, `aggregator.yaml` (defaults flagged unvalidated pending DESIGN.md §2)
+- `mid.yaml`, `aggregator.yaml`, `api.yaml` (defaults flagged unvalidated pending
+  DESIGN.md §2)
 - `fees/<venue>.yaml` — verified venue fee schedules (WHI-812); every number cites
   `source_urls` and carries `updated_at`. Filename stem must equal `venue:`.
   Adding a slug to `venues.py` requires a matching fee file (fail-fast at startup).

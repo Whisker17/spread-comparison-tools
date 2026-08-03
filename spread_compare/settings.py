@@ -48,6 +48,21 @@ class AggregatorSettings(BaseModel):
     response_cache_ttl_sec: float = Field(ge=0)
 
 
+class ApiSettings(BaseModel):
+    """``config/api.yaml`` — HTTP surface tunables (CORS origins, WHI-808)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    cors_origins: list[str] = Field(min_length=0)
+
+    @field_validator("cors_origins", mode="before")
+    @classmethod
+    def _strip_origins(cls, value: object) -> object:
+        if not isinstance(value, list):
+            return value
+        return [str(v).rstrip("/") for v in value]
+
+
 def _read_yaml(path: Path) -> dict[str, Any]:
     if not path.is_file():
         return {}
@@ -81,7 +96,14 @@ def load_aggregator_settings() -> AggregatorSettings:
     return AggregatorSettings.model_validate(_merge_local("aggregator"))
 
 
+@lru_cache(maxsize=1)
+def load_api_settings() -> ApiSettings:
+    """Parse API settings once; fail fast on invalid config."""
+    return ApiSettings.model_validate(_merge_local("api"))
+
+
 def clear_settings_cache() -> None:
     """Drop cached settings (tests that rewrite YAML)."""
     load_mid_settings.cache_clear()
     load_aggregator_settings.cache_clear()
+    load_api_settings.cache_clear()
