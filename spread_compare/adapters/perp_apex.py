@@ -42,6 +42,7 @@ from spread_compare.models import (
     TopOfBook,
     VenueClass,
 )
+from spread_compare.perp_symbols import resolve_apex_base
 
 logger = logging.getLogger(__name__)
 
@@ -96,6 +97,7 @@ class ApexAdapter(BaseAdapter):
     ) -> Quote:
         itype_default = instrument_type or default_instrument_type(self.venue_class)
         asset_key = asset.upper()
+        resolved = resolve_apex_base(asset_key)
         tier = fee_tier or DEFAULT_FEE_TIER
 
         require_mid_asset(mid, asset_key)
@@ -114,7 +116,7 @@ class ApexAdapter(BaseAdapter):
                 fee_tier=tier,
             )
 
-        sym = self._symbols_by_base.get(asset_key)
+        sym = self._symbols_by_base.get(resolved.venue_symbol)
         if sym is None:
             return build_unsupported_quote(
                 venue=self.venue,
@@ -145,6 +147,7 @@ class ApexAdapter(BaseAdapter):
             # (WHI-800 §4.3 does not state hourly vs 8h).
             funding_rate_8h=None,
             venue_mark=mark,
+            multiplier=resolved.multiplier,
         )
 
     async def get_orderbook_spread(
@@ -155,12 +158,13 @@ class ApexAdapter(BaseAdapter):
         instrument_type: Literal["spot", "perp"] | None = None,
     ) -> TopOfBook | None:
         asset_key = asset.upper()
+        resolved = resolve_apex_base(asset_key)
         require_mid_asset(mid, asset_key)
         if instrument_type not in (None, "perp"):
             raise UnsupportedAssetError(
                 f"apex adapter only supports perp, got {instrument_type!r}"
             )
-        sym = self._symbols_by_base.get(asset_key)
+        sym = self._symbols_by_base.get(resolved.venue_symbol)
         if sym is None:
             raise UnsupportedAssetError(f"{asset} not supported by apex")
         bids, asks = await self._fetch_depth(sym.cross_symbol_name)
@@ -171,6 +175,7 @@ class ApexAdapter(BaseAdapter):
             bids=bids,
             asks=asks,
             instrument_type="perp",
+            multiplier=resolved.multiplier,
         )
 
     def get_fees(
@@ -193,19 +198,27 @@ class ApexAdapter(BaseAdapter):
     ) -> list[str]:
         _ = instrument_type
         if self._symbols_by_base:
-            blue = [c for c in _BLUE_CHIPS if c in self._symbols_by_base]
-            rest = sorted(s for s in self._symbols_by_base if s not in _BLUE_CHIPS)
+            logicals: set[str] = set()
+            for base in self._symbols_by_base:
+                if base.startswith("1000") and len(base) > 4:
+                    logicals.add(base[4:])
+                else:
+                    logicals.add(base)
+            blue = [c for c in _BLUE_CHIPS if c in logicals]
+            rest = sorted(s for s in logicals if s not in _BLUE_CHIPS)
             return blue + rest
         return list(_BLUE_CHIPS)
 
     def cross_symbol_for(self, asset: str) -> str | None:
         """Return depth-query symbol for ``asset`` (tests: BTC → BTCUSDT)."""
-        sym = self._symbols_by_base.get(asset.upper())
+        resolved = resolve_apex_base(asset)
+        sym = self._symbols_by_base.get(resolved.venue_symbol)
         return None if sym is None else sym.cross_symbol_name
 
     def config_symbol_for(self, asset: str) -> str | None:
         """Return config ``symbol`` field (tests: BTC → BTC-USDT; not for depth)."""
-        sym = self._symbols_by_base.get(asset.upper())
+        resolved = resolve_apex_base(asset)
+        sym = self._symbols_by_base.get(resolved.venue_symbol)
         return None if sym is None else sym.config_symbol
 
     async def _load_symbols(self) -> None:

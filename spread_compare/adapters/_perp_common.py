@@ -142,6 +142,18 @@ def parse_levels(raw: Sequence[Sequence[object]]) -> OrderbookLevels:
     return levels
 
 
+def scale_book_to_canonical(
+    levels: OrderbookLevels,
+    multiplier: Decimal,
+) -> OrderbookLevels:
+    """Convert contract-unit levels to 1× canonical (price/mult, size×mult)."""
+    if multiplier == 1:
+        return levels
+    if multiplier <= 0:
+        raise AdapterError(f"contract multiplier must be positive, got {multiplier}")
+    return [(price / multiplier, size * multiplier) for price, size in levels]
+
+
 def require_mid_asset(mid: ReferenceMid, asset: str) -> None:
     """Raise AdapterError when ``mid.asset`` does not match the requested asset."""
     if mid.asset.upper() != asset.upper():
@@ -204,19 +216,29 @@ def build_quote_from_book(
     funding_rate_8h: Decimal | None = None,
     venue_mark: Decimal | None = None,
     timestamp: datetime | None = None,
+    multiplier: Decimal = Decimal(1),
 ) -> Quote:
-    """Walk the book and assemble a ``Quote`` (shared perp path)."""
+    """Walk the book and assemble a ``Quote`` (shared perp path).
+
+    ``multiplier`` scales venue contract units to 1× canonical before walk/bps
+    (e.g. HL ``kPEPE`` / CEX ``1000PEPE`` — WHI-826).
+    """
     now = timestamp or datetime.now(tz=UTC)
     fees = non_ok_fees(fee_tier=fee_tier)
     if mid.mid <= 0:
         raise AdapterError(f"mid must be positive, got {mid.mid}")
+    bids = scale_book_to_canonical(bids, multiplier)
+    asks = scale_book_to_canonical(asks, multiplier)
+    mark = venue_mark
+    if mark is not None and multiplier != 1:
+        mark = mark / multiplier
     q_star = notional_usd / mid.mid
     levels = asks if side == "buy" else bids
     p_star = walk_book(levels, q_star)
 
     basis: Decimal | None = None
-    if venue_mark is not None:
-        basis = basis_bps(venue_mark, mid.mid)
+    if mark is not None:
+        basis = basis_bps(mark, mid.mid)
 
     if p_star is None:
         return Quote(
@@ -234,7 +256,7 @@ def build_quote_from_book(
             timestamp=now,
             status="insufficient_liquidity",
             qty_method="base_from_mid",
-            venue_mark=venue_mark,
+            venue_mark=mark,
             basis_bps=basis,
             error_code="insufficient_liquidity",
             error_message=f"depth < q_star={q_star}",
@@ -280,7 +302,7 @@ def build_quote_from_book(
         status="ok",
         qty_base=q_star,
         qty_method="base_from_mid",
-        venue_mark=venue_mark,
+        venue_mark=mark,
         basis_bps=basis,
     )
 
@@ -324,7 +346,10 @@ def build_top_of_book(
     asks: OrderbookLevels,
     instrument_type: Literal["spot", "perp"] = "perp",
     timestamp: datetime | None = None,
+    multiplier: Decimal = Decimal(1),
 ) -> TopOfBook:
+    bids = scale_book_to_canonical(bids, multiplier)
+    asks = scale_book_to_canonical(asks, multiplier)
     if not bids or not asks:
         raise AdapterError(f"{venue}: empty bids or asks for TOB")
     best_bid, bid_size = bids[0]

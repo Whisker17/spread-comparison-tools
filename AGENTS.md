@@ -41,7 +41,10 @@ keyless ≥2s limiter); KyberSwap `includedSources=tessera` for `tessera_base` /
 `tessera_bsc` (gas from route response). M2 aggregation API (WHI-807):
 reference-mid service (`mids.py` + `config/mid.yaml`), `QuoteAggregator` fan-out with
 per-venue timeout/degradation, short-TTL response cache, `GET /quotes` / `GET /venues`
-/ `GET /assets`.
+/ `GET /assets`. M3 asset catalog expansion (WHI-826): Phase 1 stocks / equity perps /
+others in `assets.py`; instrument-aware `cex_symbols.CexSymbol` + contract multipliers;
+HL HIP-3 `xyz:` meta + `kPEPE`/`kBONK` scaling; PancakeSwap BSC bStocks tokens;
+`perp_symbols` shared maps.
 
 **Not implemented:** remaining venue adapters (WHI-805), fee config numbers
 (WHI-812), collector, frontend. Do not assume a module exists until its issue lands.
@@ -83,7 +86,8 @@ load-bearing interfaces other modules may depend on.
 - **`spread_compare/models.py`** — WHI-799 pydantic models + Quote §6.2 invariants.
 - **`spread_compare/venues.py`** — static venue slug registry (WHI-799 §6.5) + chain for FE.
 - **`spread_compare/assets.py`** — logical asset catalog + representation labels (WHI-798 §3.3).
-- **`spread_compare/cex_symbols.py`** — logical asset → CEX USDT symbol map (WHI-798 §3.3).
+- **`spread_compare/cex_symbols.py`** — logical asset → CEX spot/perp USDT symbols + multipliers (WHI-798 §3.3 / WHI-826).
+- **`spread_compare/perp_symbols.py`** — perp-DEX logical → venue coin/base + multipliers (HL HIP-3, k-prefix, 1000×).
 - **`spread_compare/bookwalk.py`** — sole walk-the-book VWAP; CEX/perp adapters import only this.
 - **`spread_compare/costs.py`** — sole `spread_bps` / `total_cost_bps` / `basis_bps`; aggregator never recomputes.
 - **`spread_compare/settings.py`** — typed YAML config loader (`config/mid.yaml`, `config/aggregator.yaml`).

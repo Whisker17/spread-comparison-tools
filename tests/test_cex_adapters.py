@@ -159,8 +159,8 @@ async def test_fee_tier_label_echoed(monkeypatch: pytest.MonkeyPatch, slug: str)
 async def test_unsupported_asset(monkeypatch: pytest.MonkeyPatch, slug: str) -> None:
     adapter = get(slug)
     assert isinstance(adapter, CexBaseAdapter)
-    mid = _MID.model_copy(update={"asset": "DOGE"})
-    quote = await adapter.get_quote("DOGE", "buy", Decimal("1000"), mid=mid)
+    mid = _MID.model_copy(update={"asset": "NOTACOIN"})
+    quote = await adapter.get_quote("NOTACOIN", "buy", Decimal("1000"), mid=mid)
     assert quote.status == "unsupported_asset"
 
 
@@ -258,6 +258,10 @@ def test_adapters_import_bookwalk_and_costs() -> None:
 @pytest.mark.parametrize("slug", _VENUES)
 def test_supported_assets_includes_btc(slug: str) -> None:
     assets = get(slug).supported_assets()
+    assert "DOGE" in assets
+    assert "QQQB" in get(slug).supported_assets(instrument_type="spot")
+    assert "TSLA" in get(slug).supported_assets(instrument_type="perp")
+    assert "TSLA" not in get(slug).supported_assets(instrument_type="spot")
     assert "BTC" in assets
     assert "ETH" in assets
     assert "SOL" in assets
