@@ -166,3 +166,64 @@ export function bestVenueMap(
   }
   return out;
 }
+
+export type SnapshotSummaryOptions = BestVenueOptions & {
+  /** Logical asset id shown in the prose (e.g. "BTC"). */
+  asset: string;
+  /**
+   * Map venue slug → display label used in the sentence.
+   * Defaults to the raw slug when missing.
+   */
+  venueLabels?: Readonly<Record<string, string>>;
+};
+
+/**
+ * Point-in-time prose summary of best venue per tier (WHI-809 Phase 1).
+ *
+ * Uses the same WHI-799 §5.2 eligibility as `bestVenuePerTier` — non-ok and
+ * gas_unknown / cost-incomplete venues never appear. Empty when no tier has
+ * an eligible pick.
+ *
+ * Example:
+ *   "At $10k, HumidiFi has the lowest total cost for BTC (2.1 bps); at $1M, Binance perp (4.4 bps)."
+ */
+export function formatSnapshotSummary(
+  pairs: readonly SizeQuotePair[],
+  options: SnapshotSummaryOptions,
+): string {
+  const picks = bestVenuePerTier(pairs, options).filter((p) => !p.empty);
+  if (picks.length === 0) {
+    return "";
+  }
+
+  const asset = options.asset;
+  const labelOf = (slug: string) => options.venueLabels?.[slug] ?? slug;
+
+  const clauses = picks.map((pick, i) => {
+    const notional = formatNotionalInline(pick.notionalUsd);
+    const venue = labelOf(pick.venue);
+    const bps = pick.valueBps.toFixed(1);
+    if (i === 0) {
+      return `At ${notional}, ${venue} has the lowest total cost for ${asset} (${bps} bps)`;
+    }
+    return `at ${notional}, ${venue} (${bps} bps)`;
+  });
+
+  if (clauses.length === 1) {
+    return `${clauses[0]}.`;
+  }
+  return `${clauses.join("; ")}.`;
+}
+
+/** Compact notional for prose ($1k / $10k / $100k / $1M). */
+function formatNotionalInline(usd: string): string {
+  const n = Number(usd);
+  if (!Number.isFinite(n)) return `$${usd}`;
+  if (n >= 1_000_000) {
+    return `$${(n / 1_000_000).toFixed(n % 1_000_000 === 0 ? 0 : 1)}M`;
+  }
+  if (n >= 1_000) {
+    return `$${(n / 1_000).toFixed(n % 1_000 === 0 ? 0 : 1)}k`;
+  }
+  return `$${n}`;
+}
