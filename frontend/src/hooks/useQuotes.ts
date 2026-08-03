@@ -21,8 +21,11 @@ import {
   type SizeQuotePair,
 } from "@/lib/api";
 
-/** Default auto-poll interval (WHI-809: 30s product default). */
-export const DEFAULT_POLL_MS = 30_000;
+/**
+ * Hook default poll interval. Section pages that need a product default
+ * (e.g. blue-chips 30s) set `section.pollIntervalMs` instead of changing this.
+ */
+export const DEFAULT_POLL_MS = 15_000;
 
 export type UseQuotesParams = {
   asset: string;
@@ -30,7 +33,7 @@ export type UseQuotesParams = {
   venues?: readonly string[];
   side?: "buy" | "sell";
   instrument_type?: "spot" | "perp" | "amm_pool" | "prop_amm";
-  /** Polling interval ms; 0 / false disables. Default DEFAULT_POLL_MS (30s). */
+  /** Polling interval ms; 0 / false disables. Default DEFAULT_POLL_MS (15s). */
   refetchInterval?: number | false;
   enabled?: boolean;
 };

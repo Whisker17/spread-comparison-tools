@@ -27,9 +27,9 @@ pnpm dev
 
 Open http://localhost:3000 — `/` redirects to `/blue-chips` (WHI-809): BTC / ETH /
 SOL blocks with live matrices, representation labels, snapshot summary, and
-30s auto-poll. Per-venue failures degrade to `status=error` / `no_quote` rather
-than failing the page. Reference mid still needs a working mid source (Binance
-index by default); without network, `/quotes` may 503.
+section-level 30s auto-poll. Per-venue failures degrade to `status=error` /
+`no_quote` rather than failing the page. Reference mid still needs a working mid
+source (Binance index by default); without network, `/quotes` may 503.
 
 UI primitives under `src/components/ui/` follow the shadcn/new-york stack
 (Radix + CVA + `cn`). `components.json` is checked in so section agents can run
@@ -93,7 +93,8 @@ Section pages (WHI-809/810/811) should only edit their own
 
 **TanStack Query** (not SWR): explicit query keys, multi-notional fan-out for
 the matrix, and first-class `refetch` for the manual refresh button. Default
-poll interval: 30s (`DEFAULT_POLL_MS` in `hooks/useQuotes.ts`).
+poll interval: 15s hook default (`DEFAULT_POLL_MS`); blue-chips overrides to 30s
+via `section.pollIntervalMs`.
 
 ## Status rendering
 

@@ -7,7 +7,7 @@
  */
 
 import type { components } from "@/lib/api-types";
-import { parseDecimal, sortNotionals } from "@/lib/format";
+import { formatNotional, parseDecimal, sortNotionals } from "@/lib/format";
 import { isEligibleForBest } from "@/lib/status";
 
 export type Quote = components["schemas"]["Quote"];
@@ -200,7 +200,7 @@ export function formatSnapshotSummary(
   const labelOf = (slug: string) => options.venueLabels?.[slug] ?? slug;
 
   const clauses = picks.map((pick, i) => {
-    const notional = formatNotionalInline(pick.notionalUsd);
+    const notional = formatNotional(pick.notionalUsd);
     const venue = labelOf(pick.venue);
     const bps = pick.valueBps.toFixed(1);
     if (i === 0) {
@@ -213,17 +213,4 @@ export function formatSnapshotSummary(
     return `${clauses[0]}.`;
   }
   return `${clauses.join("; ")}.`;
-}
-
-/** Compact notional for prose ($1k / $10k / $100k / $1M). */
-function formatNotionalInline(usd: string): string {
-  const n = Number(usd);
-  if (!Number.isFinite(n)) return `$${usd}`;
-  if (n >= 1_000_000) {
-    return `$${(n / 1_000_000).toFixed(n % 1_000_000 === 0 ? 0 : 1)}M`;
-  }
-  if (n >= 1_000) {
-    return `$${(n / 1_000).toFixed(n % 1_000 === 0 ? 0 : 1)}k`;
-  }
-  return `$${n}`;
 }

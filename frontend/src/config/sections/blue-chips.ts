@@ -19,6 +19,9 @@ export const EVM_AMM_VENUES = [
   "pancakeswap_bsc",
 ] as const;
 
+/** Tessera EVM instances — SOL has Solana-only prop coverage (WHI-798 §3.1). */
+export const TESSERA_EVM_VENUES = ["tessera_base", "tessera_bsc"] as const;
+
 /**
  * Canonical row order: CEX → perp DEX → public AMM → prop AMM.
  * Includes Tessera Base/BSC for BTC/ETH prop coverage (WHI-798 v2).
@@ -41,7 +44,11 @@ export const BLUE_CHIP_VENUES = [
 
 export type BlueChipAsset = "BTC" | "ETH" | "SOL";
 
-/** Static venue metadata for labels / quote-currency annotation. */
+/**
+ * Static venue metadata for labels / quote-currency annotation.
+ * Display names mirror `spread_compare/venues.py`; quote currency is FE
+ * annotation only (WHI-798 §7.1) — not re-derived from adapters.
+ */
 export const BLUE_CHIP_VENUE_META: Readonly<Record<string, VenueMeta>> = {
   binance: {
     slug: "binance",
@@ -59,13 +66,14 @@ export const BLUE_CHIP_VENUE_META: Readonly<Record<string, VenueMeta>> = {
     slug: "hyperliquid",
     displayName: "Hyperliquid",
     venueClass: "perp_dex",
-    quoteCurrency: "USDT",
+    // USDC-margined perps (not USDT).
+    quoteCurrency: "USDC",
   },
   lighter: {
     slug: "lighter",
     displayName: "Lighter",
     venueClass: "perp_dex",
-    quoteCurrency: "USDT",
+    quoteCurrency: "USDC",
   },
   apex: {
     slug: "apex",
@@ -135,6 +143,7 @@ export const BLUE_CHIP_VENUE_META: Readonly<Record<string, VenueMeta>> = {
  * Per-asset venue → representation label (WHI-798 §3.3).
  * On-chain wrappers are different assets with different bridge/peg risk —
  * never render bare "BTC" / "ETH" / "SOL" for those rows.
+ * Solana prop ETH uses Wormhole WETH (distinct from canonical WETH on EVM).
  */
 export const REPRESENTATIONS: Readonly<
   Record<BlueChipAsset, Readonly<Record<string, string>>>
@@ -160,14 +169,16 @@ export const REPRESENTATIONS: Readonly<
     hyperliquid: "ETH",
     lighter: "ETH",
     apex: "ETH-USDT",
-    humidifi: "WETH",
-    tessera_solana: "WETH",
-    bisonfi: "WETH",
+    // Solana prop: Wormhole-bridged WETH (WHI-798 §3.3), not canonical ETH WETH.
+    humidifi: "Wormhole WETH",
+    tessera_solana: "Wormhole WETH",
+    bisonfi: "Wormhole WETH",
     tessera_base: "WETH",
-    // tessera_bsc: no ETH main market — omit
+    // tessera_bsc: no ETH main market — hidden via hiddenVenuesByAsset
     uniswap_eth: "WETH",
     aerodrome_base: "WETH",
-    pancakeswap_bsc: "ETH",
+    // BSC bridged ETH — must not render as bare logical "ETH".
+    pancakeswap_bsc: "BSC ETH",
   },
   SOL: {
     binance: "SOLUSDT",
@@ -196,9 +207,11 @@ export const blueChipsSection: SectionConfig = {
     "BTC / ETH / SOL across CEX, perp DEX, public AMM, and prop AMM. Where is it cheapest to buy at your size right now?",
   assets: ["BTC", "ETH", "SOL"],
   venues: [...BLUE_CHIP_VENUES],
-  // SOL: hide EVM AMM rows — no native SOL market (WHI-798 §3.1).
+  // SOL: Solana-only prop + no EVM AMM (WHI-798 §3.1).
+  // ETH: no Tessera BSC market (WHI-797/798).
   hiddenVenuesByAsset: {
-    SOL: [...EVM_AMM_VENUES],
+    SOL: [...EVM_AMM_VENUES, ...TESSERA_EVM_VENUES],
+    ETH: ["tessera_bsc"],
   },
   notionals: [...NOTIONAL_TIERS_USD],
   defaultSideView: "buy",
@@ -231,10 +244,16 @@ export function venuesForAsset(
   return ordered.filter((v) => !hidden.has(v));
 }
 
+function defaultInstrumentType(venueClass: string | undefined): string | undefined {
+  if (venueClass === "perp_dex") return "perp";
+  if (venueClass === "cex") return "spot";
+  return undefined;
+}
+
 /**
  * Build display labels for matrix rows.
  *
- * - On-chain (AMM / prop AMM): display name + representation (e.g. "cbBTC") + quote currency
+ * - On-chain (AMM / prop AMM): display name + representation + quote currency
  * - CEX / perp: display name + instrument type + quote currency
  * - Representation never collapses to bare logical ticker for wrappers
  */
@@ -258,20 +277,19 @@ export function buildVenueLabels(
     const quote = meta?.quoteCurrency;
     const venueClass = meta?.venueClass;
     const rep = reps[slug];
-    const instrument = instrumentByVenue?.[slug];
+    const instrument =
+      instrumentByVenue?.[slug] ?? defaultInstrumentType(venueClass);
 
     const parts: string[] = [display];
 
     if (venueClass && ON_CHAIN_VENUE_CLASSES.has(venueClass)) {
-      // Prefer explicit representation; fall back to logical only if missing.
       if (rep) {
         parts.push(rep);
       }
     } else if (venueClass === "cex" || venueClass === "perp_dex") {
-      const itype =
-        instrument ??
-        (venueClass === "perp_dex" ? "perp" : "spot");
-      parts.push(itype);
+      if (instrument) {
+        parts.push(instrument);
+      }
     }
 
     if (quote) {
@@ -282,11 +300,6 @@ export function buildVenueLabels(
   }
 
   return out;
-}
-
-/** Short venue label for summary sentences (display name, not slug). */
-export function venueSummaryName(slug: string): string {
-  return BLUE_CHIP_VENUE_META[slug]?.displayName ?? slug;
 }
 
 /**
@@ -307,11 +320,19 @@ export function venueSummaryLabel(
   if (meta.venueClass === "perp_dex") {
     return `${name} perp`;
   }
-  // On-chain: include representation if known for the logical asset is caller concern.
+  // On-chain: display name only; representation is for matrix rows.
   return name;
 }
 
 export function isOrderbookVenue(slug: string): boolean {
   const cls = BLUE_CHIP_VENUE_META[slug]?.venueClass;
   return cls !== undefined && ORDERBOOK_VENUE_CLASSES.has(cls);
+}
+
+/** Representation for an asset×venue, or undefined if not listed. */
+export function representationFor(
+  asset: string,
+  venue: string,
+): string | undefined {
+  return REPRESENTATIONS[asset as BlueChipAsset]?.[venue];
 }

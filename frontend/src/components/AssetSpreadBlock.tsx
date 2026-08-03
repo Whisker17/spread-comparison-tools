@@ -2,7 +2,8 @@
 
 /**
  * One logical asset: live multi-notional matrix + TOB + snapshot summary.
- * Used by section pages (WHI-809+). Does not edit SpreadMatrix internals.
+ * Section-agnostic — callers pass venue order, labels, and orderbook rows
+ * so WHI-809/810/811 do not share section-config imports (parallel-safety).
  */
 
 import { RefreshCw } from "lucide-react";
@@ -10,14 +11,8 @@ import { useMemo, useState } from "react";
 
 import { SnapshotSummary } from "@/components/SnapshotSummary";
 import { SpreadMatrix } from "@/components/SpreadMatrix";
-import { SummaryStrip } from "@/components/SummaryStrip";
 import { TopOfBookRow } from "@/components/TopOfBookRow";
 import { Button } from "@/components/ui/button";
-import {
-  buildVenueLabels,
-  isOrderbookVenue,
-  venueSummaryLabel,
-} from "@/config/sections/blue-chips";
 import type { SectionConfig } from "@/config/sections/types";
 import { useQuotesMatrix } from "@/hooks/useQuotes";
 import type { TopOfBook } from "@/lib/api";
@@ -36,58 +31,37 @@ export type AssetSpreadBlockProps = {
   asset: string;
   /** Visible venue row order (already filtered for this asset). */
   venues: readonly string[];
-  /** Venues hidden for this asset (SOL EVM AMMs, etc.). */
-  hiddenVenues?: readonly string[];
+  /** Matrix / TOB row labels keyed by venue slug. */
+  venueLabels: Readonly<Record<string, string>>;
+  /** Shorter labels for snapshot summary prose. */
+  summaryVenueLabels?: Readonly<Record<string, string>>;
+  /** Subset of `venues` that can produce TopOfBook (orderbook classes). */
+  orderbookVenues?: readonly string[];
 };
 
 export function AssetSpreadBlock({
   section,
   asset,
   venues,
-  hiddenVenues = [],
+  venueLabels,
+  summaryVenueLabels,
+  orderbookVenues: orderbookVenuesProp,
 }: AssetSpreadBlockProps) {
   const [sideView, setSideView] = useState<SideView>(section.defaultSideView);
-
-  const pollMs =
-    section.pollIntervalMs === undefined ? undefined : section.pollIntervalMs;
 
   const query = useQuotesMatrix({
     asset,
     notionals: section.notionals,
     // Pin to the section venue set so we don't surface mock/other adapters.
     venues: venues.length > 0 ? venues : undefined,
-    refetchInterval: pollMs === undefined ? undefined : pollMs,
+    refetchInterval: section.pollIntervalMs,
   });
 
   const pairs = useMemo(() => query.data?.pairs ?? [], [query.data?.pairs]);
 
-  const instrumentByVenue = useMemo(() => {
-    const map: Record<string, string> = {};
-    for (const p of pairs) {
-      if (p.instrument_type && map[p.venue] === undefined) {
-        map[p.venue] = p.instrument_type;
-      }
-    }
-    return map;
-  }, [pairs]);
-
-  const venueLabels = useMemo(
-    () => buildVenueLabels(asset, venues, instrumentByVenue),
-    [asset, venues, instrumentByVenue],
-  );
-
-  /** Labels for summary prose — shorter, with instrument annotation. */
-  const summaryVenueLabels = useMemo(() => {
-    const out: Record<string, string> = {};
-    for (const slug of venues) {
-      out[slug] = venueSummaryLabel(slug, instrumentByVenue[slug]);
-    }
-    return out;
-  }, [venues, instrumentByVenue]);
-
   const orderbookVenues = useMemo(
-    () => venues.filter((v) => isOrderbookVenue(v)),
-    [venues],
+    () => orderbookVenuesProp ?? venues,
+    [orderbookVenuesProp, venues],
   );
 
   const tobByVenue = useMemo(() => {
@@ -121,6 +95,9 @@ export function AssetSpreadBlock({
     }
     return null;
   }, [mid, pairs]);
+
+  const proseLabels = summaryVenueLabels ?? venueLabels;
+  const pollMs = section.pollIntervalMs;
 
   return (
     <section
@@ -178,7 +155,10 @@ export function AssetSpreadBlock({
         {snapshotTs ? (
           <span>
             Snapshot:{" "}
-            <time dateTime={snapshotTs} className="tabular-nums text-zinc-700 dark:text-zinc-300">
+            <time
+              dateTime={snapshotTs}
+              className="tabular-nums text-zinc-700 dark:text-zinc-300"
+            >
               {formatTimestamp(snapshotTs)}
             </time>
           </span>
@@ -207,7 +187,7 @@ export function AssetSpreadBlock({
           </span>
         ) : null}
         {snapshotId ? (
-          <span className="truncate max-w-[12rem]" title={snapshotId}>
+          <span className="max-w-[12rem] truncate" title={snapshotId}>
             id: <code className="text-[10px]">{snapshotId.slice(0, 12)}…</code>
           </span>
         ) : null}
@@ -246,22 +226,12 @@ export function AssetSpreadBlock({
             side={sideView}
             metric={section.cellMetric}
             venues={venues}
-            hiddenVenues={hiddenVenues}
-            venueLabels={summaryVenueLabels}
-          />
-          <SummaryStrip
-            pairs={pairs}
-            side={sideView}
-            metric={section.cellMetric}
-            venues={venues}
-            hiddenVenues={hiddenVenues}
-            venueLabels={summaryVenueLabels}
+            venueLabels={proseLabels}
           />
           <SpreadMatrix
             pairs={pairs}
             notionals={section.notionals}
             venues={venues}
-            hiddenVenues={hiddenVenues}
             sideView={sideView}
             metric={section.cellMetric}
             venueLabels={venueLabels}

@@ -55,7 +55,7 @@ export type VenueMeta = {
   displayName: string;
   venueClass: VenueClass;
   /** Stablecoin quote leg for UI annotation (WHI-798 §7.1). */
-  quoteCurrency: "USDT" | "USDC" | "USD" | string;
+  quoteCurrency: "USDT" | "USDC";
   /** Settlement / deployment chain when single-chain; null for multi-chain CEX/perp. */
   chain?: string | null;
 };
