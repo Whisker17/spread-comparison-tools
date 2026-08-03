@@ -48,14 +48,17 @@ Tailwind + typed OpenAPI client (`openapi-typescript`), `SpreadMatrix` /
 M3 blue chips section (WHI-809): `/blue-chips` BTC/ETH/SOL live matrices +
 representation labels + snapshot summary (WHI-799 §5.2) + 30s poll; SOL hides
 EVM AMM rows.
+M3 others section (WHI-811): `/others` P0 (DOGE/WIF/XRP/SUI/LINK/AVAX/ADA/BNB)
++ P1 scaled memes (PEPE/BONK with `venue_symbol` 1× note) + P2 collapsed
+watchlist (JUP/AERO/VIRTUAL/EURC); CEX+perp only (no prop AMM requests).
 M4 fee schedules (WHI-812): `config/fees/*.yaml` + `fees.py` loader, adapters'
 `get_fees` config-backed, `GET /fees`. M3 asset catalog expansion (WHI-826): Phase 1
 stocks / equity perps / others in `assets.py`; instrument-aware `cex_symbols.CexSymbol`
 + contract multipliers; HL HIP-3 `xyz:` meta + `kPEPE`/`kBONK` scaling; PancakeSwap BSC
 bStocks tokens; `perp_symbols` shared maps.
 
-**Not implemented:** remaining venue adapters (WHI-805), collector, section page
-content (WHI-810/811), fees/simulate UI. Do not assume a module exists until
+**Not implemented:** remaining venue adapters (WHI-805), collector, stocks
+section (WHI-810), fees/simulate UI. Do not assume a module exists until
 its issue lands.
 
 **Blocking gap:** `docs/DESIGN.md` is still mostly the empty template stub (§4.2 module

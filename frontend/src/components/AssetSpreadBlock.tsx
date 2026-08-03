@@ -6,19 +6,24 @@
  * so WHI-809/810/811 do not share section-config imports (parallel-safety).
  */
 
-import { RefreshCw } from "lucide-react";
+import { Info, RefreshCw } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { SnapshotSummary } from "@/components/SnapshotSummary";
 import { SpreadMatrix } from "@/components/SpreadMatrix";
 import { TopOfBookRow } from "@/components/TopOfBookRow";
 import { Button } from "@/components/ui/button";
+import { Tooltip } from "@/components/ui/tooltip";
 import type { SectionConfig } from "@/config/sections/types";
 import { useQuotesMatrix } from "@/hooks/useQuotes";
 import type { TopOfBook } from "@/lib/api";
 import { formatTimestamp } from "@/lib/format";
 import type { SideView } from "@/lib/summary";
 import { cn } from "@/lib/utils";
+import {
+  formatVenueSymbolNote,
+  venueSymbolsFromPairs,
+} from "@/lib/venue-symbols";
 
 const SIDE_OPTIONS: { id: SideView; label: string }[] = [
   { id: "buy", label: "Buy" },
@@ -37,6 +42,27 @@ export type AssetSpreadBlockProps = {
   summaryVenueLabels?: Readonly<Record<string, string>>;
   /** Subset of `venues` that can produce TopOfBook (orderbook classes). */
   orderbookVenues?: readonly string[];
+  /**
+   * Short subtitle under the asset title (e.g. "CEX + perp DEX").
+   * Defaults to a generic multi-venue line.
+   */
+  subtitle?: string;
+  /**
+   * When true, after quotes load, surface a venue_symbol contract note
+   * (scaled memes). Uses Quote.venue_symbol only — no multiplier parsing.
+   * Default false so other sections are unchanged.
+   */
+  showVenueSymbolNote?: boolean;
+  /**
+   * Display names for venue_symbol note prose (slug → short name).
+   * Falls back to slug when omitted.
+   */
+  venueDisplayNames?: Readonly<Record<string, string>>;
+  /**
+   * Optional instrument_type override for `/quotes` (e.g. perp for scaled
+   * memes so CEX hits 1000× books). Default = adapter default.
+   */
+  instrumentType?: "spot" | "perp" | "amm_pool" | "prop_amm";
 };
 
 export function AssetSpreadBlock({
@@ -46,6 +72,10 @@ export function AssetSpreadBlock({
   venueLabels,
   summaryVenueLabels,
   orderbookVenues: orderbookVenuesProp,
+  subtitle,
+  showVenueSymbolNote = false,
+  venueDisplayNames,
+  instrumentType,
 }: AssetSpreadBlockProps) {
   const [sideView, setSideView] = useState<SideView>(section.defaultSideView);
 
@@ -54,6 +84,7 @@ export function AssetSpreadBlock({
     notionals: section.notionals,
     // Pin to the section venue set so we don't surface mock/other adapters.
     venues: venues.length > 0 ? venues : undefined,
+    instrument_type: instrumentType,
     refetchInterval: section.pollIntervalMs,
   });
 
@@ -96,8 +127,21 @@ export function AssetSpreadBlock({
     return null;
   }, [mid, pairs]);
 
+  const contractNote = useMemo(() => {
+    if (!showVenueSymbolNote) return null;
+    const symbols = venueSymbolsFromPairs(pairs, venues);
+    const names: Record<string, string> = {};
+    for (const slug of venues) {
+      names[slug] = venueDisplayNames?.[slug] ?? slug;
+    }
+    return formatVenueSymbolNote(asset, symbols, names);
+  }, [showVenueSymbolNote, pairs, venues, venueDisplayNames, asset]);
+
   const proseLabels = summaryVenueLabels ?? venueLabels;
   const pollMs = section.pollIntervalMs;
+  const subtitleText =
+    subtitle ??
+    `All venue classes · ${section.notionals.length} notional tiers · ${sideView.replace("_", " ")}`;
 
   return (
     <section
@@ -107,11 +151,23 @@ export function AssetSpreadBlock({
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold tracking-tight">{asset}</h2>
-          <p className="mt-0.5 text-xs text-zinc-500">
-            All venue classes · {section.notionals.length} notional tiers ·{" "}
-            {sideView.replace("_", " ")}
-          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-lg font-semibold tracking-tight">{asset}</h2>
+            {contractNote ? (
+              <Tooltip content={contractNote}>
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200"
+                  data-testid={`venue-symbol-note-${asset}`}
+                  aria-label={`Contract symbols for ${asset}`}
+                >
+                  <Info className="h-3 w-3" aria-hidden />
+                  1× normalized
+                </button>
+              </Tooltip>
+            ) : null}
+          </div>
+          <p className="mt-0.5 text-xs text-zinc-500">{subtitleText}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex items-center gap-1 rounded-md border border-zinc-200 p-0.5 dark:border-zinc-700">
