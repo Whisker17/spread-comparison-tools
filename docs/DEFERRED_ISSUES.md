@@ -32,12 +32,23 @@ defines none: `docs/GIT_WORKFLOW.md` § High-risk paths), **Medium**
 
 ## Open
 
-- **`mid_stale` is never computed by adapters** (Low, WHI-801).
-  `spread_compare/models.py::Quote.mid_stale` — WHI-799 §3.2 defines
-  `mid_stale = abs(quote.timestamp - mid_timestamp) > mid.stale_threshold_sec`, but
-  computing it needs `config/mid.yaml` (still unvalidated / WHI-807). Mock leaves the
-  default `False`. Fix in WHI-807 (or a shared helper once the threshold lives in
-  typed config).
+- **`GET /assets` lists blue chips only** (Low, WHI-807).
+  `spread_compare/assets.py::list_assets` — WHI-798 stocks/equity catalogs are
+  mid-routing seeds (`TOKENIZED_*`, `EQUITY_PERP_ASSETS`) but not returned by
+  `/assets`. Expand with WHI-810.
+
+- **SizeQuotePair has no first-class TOB-error field** (Low, WHI-807).
+  `spread_compare/aggregator.py::_collect_venue` — WHI-799 §6.3 says orderbook
+  TOB fetch failure must not look like AMM `None`, but §6.4's `SizeQuotePair`
+  has no `tob_error` channel. WHI-807 stamps `raw_ref=tob_error:…` on ok legs
+  instead so spread bps stay authoritative. Promote a dedicated field if the FE
+  needs structured handling.
+
+- **`cex_tradfi_index` is best-effort via Binance premiumIndex only** (Low, WHI-807).
+  `spread_compare/mids.py::_try_cex_tradfi_index` — WHI-799 §3.3 prefers a CEX
+  TradFi index; we reuse USDT-M `premiumIndex` when the equity symbol is listed,
+  else fall through to mark median. A dedicated TradFi feed (when productized)
+  should replace this probe.
 
 - **Default HTTP timeout hardcoded on BaseAdapter** (Low, WHI-823).
   `spread_compare/adapters/base.py::_DEFAULT_HTTP_TIMEOUT` — AGENTS.md requires
@@ -98,7 +109,14 @@ defines none: `docs/GIT_WORKFLOW.md` § High-risk paths), **Medium**
 
 ## Resolved
 
+- **`mid_stale` is never computed by adapters** (Low, WHI-801 → fixed in WHI-807).
+  Aggregator stamps `mid_stale` via `spread_compare.mids.is_mid_stale` /
+  `apply_mid_stale` using `config/mid.yaml` `stale_threshold_sec` after each
+  adapter quote is collected. Adapters may still leave the default `False`; the
+  aggregator is the SSOT for the flag on the assembled package.
+
 - **Shared Quote assembly helper not extracted** (Low, WHI-801 → WHI-802).
   CEX path extracted into `spread_compare/adapters/_cex_common.py`
   (`CexBaseAdapter`, `build_quote_from_book`). Mock still has its own shell;
   promote further only if AMM/perp adapters re-copy.
+

@@ -15,4 +15,6 @@ loaded into a typed, validated model at startup.
 - Per-deployment overrides use an untracked `<name>.local.yaml` copy (gitignored), so
   checking out a release tag never conflicts with live settings.
 
-No loader code ships with the template — write it when the first config file lands.
+Loader: `spread_compare/settings.py` (`load_mid_settings`, `load_aggregator_settings`).
+Checked-in files: `mid.yaml`, `aggregator.yaml` (defaults flagged unvalidated pending
+DESIGN.md §2).
