@@ -4,7 +4,7 @@
  * Types come from `api-types.ts` (openapi-typescript). Do not hand-write
  * parallel response shapes — regenerate with `pnpm gen:api`.
  *
- * `/simulate` remains a stub until M5 (WHI-814 defines the contract).
+ * `/simulate` remains a stub until M5 (WHI-815).
  */
 
 import type { components, paths } from "@/lib/api-types";
