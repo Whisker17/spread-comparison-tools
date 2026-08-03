@@ -10,11 +10,11 @@ import pytest
 
 import spread_compare.adapters  # noqa: F401 — ensure self-registration
 from spread_compare.adapters import get
-from spread_compare.adapters._cex_common import OrderbookLevels
+from spread_compare.adapters._cex_common import CexBaseAdapter, OrderbookLevels
 from spread_compare.adapters.base import AdapterError, AdapterFetchError
 from spread_compare.adapters.cex_binance import BinanceAdapter
 from spread_compare.adapters.cex_bybit import BybitAdapter
-from spread_compare.models import NOTIONAL_TIERS_USD, Quote, ReferenceMid, TopOfBook
+from spread_compare.models import Quote, ReferenceMid, TopOfBook
 
 # WHI-799 §4.7 fixture book (symmetric about mid=100_000).
 _ASKS: OrderbookLevels = [
@@ -47,22 +47,18 @@ _VENUES = ("binance", "bybit")
 
 def _patch_book(
     monkeypatch: pytest.MonkeyPatch,
-    adapter: BinanceAdapter | BybitAdapter,
+    adapter: CexBaseAdapter,
     bids: OrderbookLevels,
     asks: OrderbookLevels,
 ) -> None:
     """Inject a fixed book so get_quote / get_orderbook_spread need no network."""
 
-    async def fake_depth(
+    async def fake_book(
         *args: Any, **kwargs: Any
     ) -> tuple[OrderbookLevels, OrderbookLevels]:
         return bids, asks
 
-    if isinstance(adapter, BinanceAdapter):
-        monkeypatch.setattr(adapter, "_fetch_depth", fake_depth)
-        monkeypatch.setattr(adapter, "_fetch_depth_for_walk", fake_depth)
-    else:
-        monkeypatch.setattr(adapter, "_fetch_orderbook", fake_depth)
+    monkeypatch.setattr(adapter, "_fetch_book", fake_book)
 
 
 @pytest.mark.parametrize("slug", _VENUES)
@@ -70,6 +66,7 @@ def test_registry_has_cex_adapters(slug: str) -> None:
     adapter = get(slug)
     assert adapter.venue == slug
     assert adapter.venue_class == "cex"
+    assert isinstance(adapter, CexBaseAdapter)
 
 
 @pytest.mark.parametrize("slug", _VENUES)
@@ -78,7 +75,7 @@ async def test_get_quote_buy_canonical_section_4_7(
     monkeypatch: pytest.MonkeyPatch, slug: str
 ) -> None:
     adapter = get(slug)
-    assert isinstance(adapter, (BinanceAdapter, BybitAdapter))
+    assert isinstance(adapter, CexBaseAdapter)
     _patch_book(monkeypatch, adapter, _BIDS, _ASKS)
     quote = await adapter.get_quote("BTC", "buy", Decimal("10000"), mid=_MID)
     assert isinstance(quote, Quote)
@@ -103,7 +100,7 @@ async def test_get_quote_sell_canonical_section_4_7(
     monkeypatch: pytest.MonkeyPatch, slug: str
 ) -> None:
     adapter = get(slug)
-    assert isinstance(adapter, (BinanceAdapter, BybitAdapter))
+    assert isinstance(adapter, CexBaseAdapter)
     _patch_book(monkeypatch, adapter, _BIDS, _ASKS)
     quote = await adapter.get_quote("BTC", "sell", Decimal("10000"), mid=_MID)
     assert quote.status == "ok"
@@ -117,7 +114,7 @@ async def test_insufficient_liquidity(
     monkeypatch: pytest.MonkeyPatch, slug: str
 ) -> None:
     adapter = get(slug)
-    assert isinstance(adapter, (BinanceAdapter, BybitAdapter))
+    assert isinstance(adapter, CexBaseAdapter)
     _patch_book(monkeypatch, adapter, _SHALLOW_BIDS, _SHALLOW_ASKS)
     quote = await adapter.get_quote("BTC", "buy", Decimal("10000"), mid=_MID)
     assert quote.status == "insufficient_liquidity"
@@ -126,14 +123,14 @@ async def test_insufficient_liquidity(
     assert quote.total_cost_bps is None
     assert quote.qty_base is None
     assert quote.fee_breakdown.explicit_fee_bps is None
-    # Invariants enforced by Quote model construction (would raise if violated).
+    assert quote.fee_breakdown.gas_bps == Decimal("0")
 
 
 @pytest.mark.parametrize("slug", _VENUES)
 @pytest.mark.asyncio
 async def test_perp_instrument_type(monkeypatch: pytest.MonkeyPatch, slug: str) -> None:
     adapter = get(slug)
-    assert isinstance(adapter, (BinanceAdapter, BybitAdapter))
+    assert isinstance(adapter, CexBaseAdapter)
     _patch_book(monkeypatch, adapter, _BIDS, _ASKS)
     quote = await adapter.get_quote(
         "BTC", "buy", Decimal("10000"), mid=_MID, instrument_type="perp"
@@ -146,10 +143,25 @@ async def test_perp_instrument_type(monkeypatch: pytest.MonkeyPatch, slug: str) 
 @pytest.mark.asyncio
 async def test_unsupported_asset(monkeypatch: pytest.MonkeyPatch, slug: str) -> None:
     adapter = get(slug)
-    assert isinstance(adapter, (BinanceAdapter, BybitAdapter))
+    assert isinstance(adapter, CexBaseAdapter)
     mid = _MID.model_copy(update={"asset": "DOGE"})
     quote = await adapter.get_quote("DOGE", "buy", Decimal("1000"), mid=mid)
     assert quote.status == "unsupported_asset"
+
+
+@pytest.mark.parametrize("slug", _VENUES)
+@pytest.mark.asyncio
+async def test_invalid_instrument_type_is_error(
+    monkeypatch: pytest.MonkeyPatch, slug: str
+) -> None:
+    adapter = get(slug)
+    assert isinstance(adapter, CexBaseAdapter)
+    _patch_book(monkeypatch, adapter, _BIDS, _ASKS)
+    quote = await adapter.get_quote(
+        "BTC", "buy", Decimal("1000"), mid=_MID, instrument_type="amm_pool"
+    )
+    assert quote.status == "error"
+    assert quote.error_code == "unsupported_instrument_type"
 
 
 @pytest.mark.parametrize("slug", _VENUES)
@@ -158,7 +170,7 @@ async def test_get_orderbook_spread_spot_and_perp(
     monkeypatch: pytest.MonkeyPatch, slug: str
 ) -> None:
     adapter = get(slug)
-    assert isinstance(adapter, (BinanceAdapter, BybitAdapter))
+    assert isinstance(adapter, CexBaseAdapter)
     _patch_book(monkeypatch, adapter, _BIDS, _ASKS)
 
     tob_spot = await adapter.get_orderbook_spread("BTC", mid=_MID)
@@ -184,15 +196,12 @@ async def test_get_orderbook_spread_fetch_failure_raises(
     monkeypatch: pytest.MonkeyPatch, slug: str
 ) -> None:
     adapter = get(slug)
-    assert isinstance(adapter, (BinanceAdapter, BybitAdapter))
+    assert isinstance(adapter, CexBaseAdapter)
 
     async def boom(*args: Any, **kwargs: Any) -> tuple[OrderbookLevels, OrderbookLevels]:
         raise AdapterFetchError("injected failure")
 
-    if isinstance(adapter, BinanceAdapter):
-        monkeypatch.setattr(adapter, "_fetch_depth", boom)
-    else:
-        monkeypatch.setattr(adapter, "_fetch_orderbook", boom)
+    monkeypatch.setattr(adapter, "_fetch_book", boom)
 
     with pytest.raises(AdapterError):
         await adapter.get_orderbook_spread("BTC", mid=_MID)
@@ -211,8 +220,7 @@ def test_get_fees_placeholder(slug: str) -> None:
     assert fees_perp.funding_model == "perp_8h"
 
 
-@pytest.mark.parametrize("slug", _VENUES)
-def test_adapters_import_bookwalk_and_costs(slug: str) -> None:
+def test_adapters_import_bookwalk_and_costs() -> None:
     """Neither adapter reimplements walk/bps — shared modules only."""
     import inspect
 
@@ -220,7 +228,6 @@ def test_adapters_import_bookwalk_and_costs(slug: str) -> None:
     import spread_compare.adapters.cex_binance as binance_mod
     import spread_compare.adapters.cex_bybit as bybit_mod
 
-    # Common path is the only place that calls walk_book / spread_bps.
     common_src = inspect.getsource(common_mod)
     assert "walk_book" in common_src
     assert "spread_bps" in common_src
@@ -228,7 +235,6 @@ def test_adapters_import_bookwalk_and_costs(slug: str) -> None:
 
     for mod in (binance_mod, bybit_mod):
         src = inspect.getsource(mod)
-        # Adapters must not redefine the formulas locally.
         assert "def walk_book" not in src
         assert "def spread_bps" not in src
         assert "def total_cost_bps" not in src
@@ -248,12 +254,57 @@ async def test_mid_asset_mismatch_raises(
     monkeypatch: pytest.MonkeyPatch, slug: str
 ) -> None:
     adapter = get(slug)
-    assert isinstance(adapter, (BinanceAdapter, BybitAdapter))
+    assert isinstance(adapter, CexBaseAdapter)
     _patch_book(monkeypatch, adapter, _BIDS, _ASKS)
     bad_mid = _MID.model_copy(update={"asset": "ETH"})
     with pytest.raises(AdapterError, match="mid.asset"):
         await adapter.get_quote("BTC", "buy", Decimal("1000"), mid=bad_mid)
 
 
-# Keep NOTIONAL_TIERS_USD referenced so live tests and unit path stay aligned.
-assert NOTIONAL_TIERS_USD[0] == Decimal("1000")
+@pytest.mark.asyncio
+async def test_quote_uses_fee_schedule_taker(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """trading_fee_bps comes from get_fees().taker_bps, not a parallel constant."""
+    adapter = get("binance")
+    assert isinstance(adapter, BinanceAdapter)
+    _patch_book(monkeypatch, adapter, _BIDS, _ASKS)
+
+    def custom_fees(*args: Any, **kwargs: Any) -> Any:
+        base = CexBaseAdapter.get_fees(adapter, "BTC")
+        return base.model_copy(update={"taker_bps": Decimal("7.5")})
+
+    monkeypatch.setattr(adapter, "get_fees", custom_fees)
+    quote = await adapter.get_quote("BTC", "buy", Decimal("10000"), mid=_MID)
+    assert quote.status == "ok"
+    assert quote.fee_breakdown.trading_fee_bps == Decimal("7.5")
+    assert quote.total_cost_bps == Decimal("11.9")  # 4.4 + 7.5
+
+
+@pytest.mark.asyncio
+async def test_binance_depth_escalation_on_shallow_first_page(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When limit=100 walks short, Binance escalates to deeper limits."""
+    adapter = get("binance")
+    assert isinstance(adapter, BinanceAdapter)
+    calls: list[int] = []
+
+    async def fake_depth(
+        symbol: str, book_side: str, *, limit: int
+    ) -> tuple[OrderbookLevels, OrderbookLevels]:
+        calls.append(limit)
+        if limit < 500:
+            return _SHALLOW_BIDS, _SHALLOW_ASKS
+        return _BIDS, _ASKS
+
+    monkeypatch.setattr(adapter, "_fetch_depth", fake_depth)
+    quote = await adapter.get_quote("BTC", "buy", Decimal("10000"), mid=_MID)
+    assert quote.status == "ok"
+    assert quote.spread_bps == Decimal("4.4")
+    assert 100 in calls
+    assert 500 in calls
+
+
+def test_bybit_is_bybit_adapter() -> None:
+    assert isinstance(get("bybit"), BybitAdapter)

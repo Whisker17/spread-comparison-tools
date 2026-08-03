@@ -1,22 +1,28 @@
-"""Shared CEX adapter helpers (quote shell, fees, rate-limit backoff).
+"""Shared CEX adapter base + quote helpers (WHI-802).
 
-Not a venue module — leading underscore keeps auto-discovery from importing it
-as an adapter. Binance and Bybit import from here; walk/bps math stay in
-``bookwalk`` / ``costs`` only.
+Not a venue module — leading underscore keeps auto-discovery from treating it
+as an adapter. Binance and Bybit subclass :class:`CexBaseAdapter` and only
+own URL/parse/rate-limit details. Walk/bps math stays in ``bookwalk`` / ``costs``.
 """
 
 from __future__ import annotations
 
 import asyncio
-import logging
 import time
+from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Literal
 
-from spread_compare.adapters.base import AdapterError
+from spread_compare.adapters.base import (
+    AdapterError,
+    BaseAdapter,
+    UnsupportedAssetError,
+    default_instrument_type,
+)
 from spread_compare.bookwalk import walk_book
+from spread_compare.cex_symbols import resolve_cex_symbol, supported_cex_assets
 from spread_compare.costs import spread_bps, top_of_book_spread_bps, total_cost_bps
 from spread_compare.models import (
     FeeBreakdown,
@@ -27,9 +33,8 @@ from spread_compare.models import (
     ReferenceMid,
     Side,
     TopOfBook,
+    VenueClass,
 )
-
-logger = logging.getLogger(__name__)
 
 # TODO(WHI-812): replace placeholder taker with real default_taker schedule.
 PLACEHOLDER_TAKER_BPS: Decimal = Decimal("10")
@@ -71,14 +76,30 @@ def parse_levels(raw: Sequence[Sequence[object]]) -> OrderbookLevels:
 
 
 def non_ok_fees(*, fee_tier: str) -> FeeBreakdown:
+    """FeeBreakdown for non-ok quotes; CEX gas is explicit zero (WHI-799 §5)."""
     return FeeBreakdown(
         embedded_in_price=False,
         fee_tier=fee_tier,
         trading_fee_bps=None,
         platform_fee_bps=Decimal("0"),
+        gas_bps=Decimal("0"),
         gas_unknown=False,
         explicit_fee_bps=None,
     )
+
+
+def resolve_cex_instrument(
+    instrument_type: InstrumentType | None,
+) -> CexBookSide | None:
+    """Map optional instrument_type to spot|perp; default spot (WHI-799 §7).
+
+    Returns ``None`` when the type is not a CEX book instrument.
+    """
+    if instrument_type is None:
+        return "spot"
+    if instrument_type in ("spot", "perp"):
+        return instrument_type
+    return None
 
 
 def build_quote_from_book(
@@ -88,12 +109,12 @@ def build_quote_from_book(
     side: Side,
     notional_usd: Decimal,
     mid: ReferenceMid,
-    instrument_type: InstrumentType,
+    instrument_type: CexBookSide,
     venue_symbol: str,
     bids: OrderbookLevels,
     asks: OrderbookLevels,
+    trading_fee_bps: Decimal,
     fee_tier: str = DEFAULT_FEE_TIER,
-    trading_fee_bps: Decimal = PLACEHOLDER_TAKER_BPS,
     funding_rate_8h: Decimal | None = None,
     timestamp: datetime | None = None,
 ) -> Quote:
@@ -141,6 +162,8 @@ def build_quote_from_book(
         gas_usd=None,
         gas_bps=cost.gas_bps,  # explicit 0 when gas_usd is None
         gas_unknown=False,
+        # funding_rate_8h: null unless a cheap secondary fetch populates it
+        # (WHI-802: "when cheaply available, else null" — not free on depth path).
         funding_rate_8h=funding_rate_8h if instrument_type == "perp" else None,
         explicit_fee_bps=cost.explicit_fee_bps,
     )
@@ -166,7 +189,7 @@ def build_quote_from_book(
     )
 
 
-def build_unsupported_quote(
+def build_error_quote(
     *,
     venue: str,
     asset: str,
@@ -174,14 +197,18 @@ def build_unsupported_quote(
     notional_usd: Decimal,
     mid: ReferenceMid,
     instrument_type: InstrumentType,
+    error_code: str,
     message: str,
     fee_tier: str = DEFAULT_FEE_TIER,
+    venue_symbol: str | None = None,
+    status: Literal["unsupported_asset", "error"] = "error",
 ) -> Quote:
     now = datetime.now(tz=UTC)
     return Quote(
         snapshot_id=mid.snapshot_id,
         venue=venue,
         asset=asset,
+        venue_symbol=venue_symbol,
         instrument_type=instrument_type,
         side=side,
         notional_usd=notional_usd,
@@ -190,8 +217,8 @@ def build_unsupported_quote(
         mid_timestamp=mid.timestamp,
         fee_breakdown=non_ok_fees(fee_tier=fee_tier),
         timestamp=now,
-        status="unsupported_asset",
-        error_code="unsupported_asset",
+        status=status,
+        error_code=error_code,
         error_message=message,
     )
 
@@ -252,14 +279,152 @@ def placeholder_fee_schedule(
     )
 
 
-def resolve_cex_instrument(
-    instrument_type: InstrumentType | None,
-) -> CexBookSide:
-    """Map optional instrument_type to spot|perp; default spot (WHI-799 §7)."""
-    if instrument_type is None:
-        return "spot"
-    if instrument_type in ("spot", "perp"):
-        return instrument_type
-    raise AdapterError(
-        f"CEX adapters only support instrument_type spot|perp, got {instrument_type!r}"
-    )
+class CexBaseAdapter(BaseAdapter, ABC):
+    """Shared get_quote / TOB / fees for orderbook CEX venues.
+
+    Subclasses implement :meth:`_fetch_book` (and optionally escalate depth).
+    """
+
+    venue: str
+    venue_class: VenueClass = "cex"
+    # Tunables stay module-level until DESIGN.md §2 + config YAML land
+    # (see docs/DEFERRED_ISSUES.md — CEX rate-limit / HTTP config).
+    _min_interval_s: float = 0.2
+
+    def __init__(self, *, timeout: float = 10.0) -> None:
+        super().__init__(timeout=timeout)
+        self._limiter = AsyncRateLimiter(self._min_interval_s)
+
+    @abstractmethod
+    async def _fetch_book(
+        self,
+        symbol: str,
+        book_side: CexBookSide,
+        *,
+        side: Side | None = None,
+        q_star: Decimal | None = None,
+    ) -> tuple[OrderbookLevels, OrderbookLevels]:
+        """Return ``(bids, asks)`` best-first. May use ``side``/``q_star`` to escalate depth."""
+        ...
+
+    async def get_quote(
+        self,
+        asset: str,
+        side: Side,
+        notional_usd: Decimal,
+        *,
+        mid: ReferenceMid,
+        instrument_type: InstrumentType | None = None,
+        fee_tier: str | None = None,
+    ) -> Quote:
+        requested = instrument_type or default_instrument_type(self.venue_class)
+        asset_key = asset.upper()
+        # Phase 1: only default_taker bps (WHI-799 §11 Q3 / WHI-802 out of scope for VIP).
+        tier = DEFAULT_FEE_TIER
+        _ = fee_tier  # accepted for API parity; ignored until WHI-812 tiers land
+
+        if mid.asset.upper() != asset_key:
+            raise AdapterError(
+                f"mid.asset={mid.asset!r} does not match asset={asset!r}"
+            )
+
+        book_side = resolve_cex_instrument(requested)
+        if book_side is None:
+            return build_error_quote(
+                venue=self.venue,
+                asset=asset_key,
+                side=side,
+                notional_usd=notional_usd,
+                mid=mid,
+                instrument_type=requested,
+                error_code="unsupported_instrument_type",
+                message=(
+                    f"CEX adapters only support instrument_type spot|perp, "
+                    f"got {requested!r}"
+                ),
+                fee_tier=tier,
+                status="error",
+            )
+
+        symbol = resolve_cex_symbol(asset_key)
+        if symbol is None:
+            return build_error_quote(
+                venue=self.venue,
+                asset=asset_key,
+                side=side,
+                notional_usd=notional_usd,
+                mid=mid,
+                instrument_type=book_side,
+                error_code="unsupported_asset",
+                message=f"{asset} not supported by {self.venue} adapter",
+                fee_tier=tier,
+                status="unsupported_asset",
+            )
+
+        schedule = self.get_fees(asset_key, instrument_type=book_side)
+        trading_fee = (
+            schedule.taker_bps
+            if schedule.taker_bps is not None
+            else PLACEHOLDER_TAKER_BPS
+        )
+
+        q_star = notional_usd / mid.mid
+        bids, asks = await self._fetch_book(
+            symbol, book_side, side=side, q_star=q_star
+        )
+        return build_quote_from_book(
+            venue=self.venue,
+            asset=asset_key,
+            side=side,
+            notional_usd=notional_usd,
+            mid=mid,
+            instrument_type=book_side,
+            venue_symbol=symbol,
+            bids=bids,
+            asks=asks,
+            fee_tier=tier,
+            trading_fee_bps=trading_fee,
+        )
+
+    async def get_orderbook_spread(
+        self,
+        asset: str,
+        *,
+        mid: ReferenceMid,
+        instrument_type: Literal["spot", "perp"] | None = None,
+    ) -> TopOfBook | None:
+        asset_key = asset.upper()
+        symbol = resolve_cex_symbol(asset_key)
+        if symbol is None:
+            raise UnsupportedAssetError(f"{asset} not supported by {self.venue}")
+        book_side: CexBookSide = instrument_type or "spot"
+        bids, asks = await self._fetch_book(symbol, book_side)
+        return build_top_of_book(
+            venue=self.venue,
+            asset=asset_key,
+            instrument_type=book_side,
+            mid=mid,
+            bids=bids,
+            asks=asks,
+        )
+
+    def get_fees(
+        self,
+        asset: str | None = None,
+        *,
+        instrument_type: InstrumentType | None = None,
+    ) -> FeeSchedule:
+        itype = instrument_type or default_instrument_type(self.venue_class)
+        return placeholder_fee_schedule(
+            venue=self.venue,
+            asset=asset.upper() if asset else None,
+            instrument_type=itype,
+        )
+
+    def supported_assets(
+        self,
+        *,
+        instrument_type: InstrumentType | None = None,
+    ) -> list[str]:
+        _ = instrument_type
+        return supported_cex_assets()

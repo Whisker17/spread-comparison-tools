@@ -8,183 +8,63 @@ from __future__ import annotations
 import asyncio
 import logging
 from decimal import Decimal
-from typing import Any, Literal
+from typing import Any
 
 import httpx
 
 from spread_compare.adapters._cex_common import (
-    DEFAULT_FEE_TIER,
-    PLACEHOLDER_TAKER_BPS,
-    AsyncRateLimiter,
+    CexBaseAdapter,
+    CexBookSide,
     OrderbookLevels,
-    build_quote_from_book,
-    build_top_of_book,
-    build_unsupported_quote,
     parse_levels,
-    placeholder_fee_schedule,
-    resolve_cex_instrument,
 )
 from spread_compare.adapters.base import (
     AdapterError,
     AdapterFetchError,
     AdapterTimeoutError,
-    BaseAdapter,
-    UnsupportedAssetError,
-    default_instrument_type,
 )
 from spread_compare.adapters.registry import register_adapter
 from spread_compare.bookwalk import walk_book
-from spread_compare.cex_symbols import resolve_cex_symbol, supported_cex_assets
-from spread_compare.models import (
-    FeeSchedule,
-    InstrumentType,
-    Quote,
-    ReferenceMid,
-    Side,
-    TopOfBook,
-    VenueClass,
-)
+from spread_compare.models import Side
 
 logger = logging.getLogger(__name__)
 
 _SPOT_BASE = "https://api.binance.com"
 _FAPI_BASE = "https://fapi.binance.com"
 # WHI-800: start limit=100 (weight 5); escalate only when walk exhausts depth.
+# Tunables deferred to config YAML — see docs/DEFERRED_ISSUES.md (WHI-802).
 _DEPTH_LIMITS: tuple[int, ...] = (100, 500, 1000)
-# Well under 6000 weight/min spot / 2400 fapi: ~5 rps with limit=100 (weight 5).
-_MIN_INTERVAL_S = 0.2
 _MAX_RETRIES = 4
 _BACKOFF_START_S = 0.5
 
 
 @register_adapter
-class BinanceAdapter(BaseAdapter):
+class BinanceAdapter(CexBaseAdapter):
     """Binance spot + USDT-M futures depth walker."""
 
     venue: str = "binance"
-    venue_class: VenueClass = "cex"
+    # Well under 6000 weight/min spot / 2400 fapi: ~5 rps with limit=100 (weight 5).
+    _min_interval_s: float = 0.2
 
-    def __init__(self, *, timeout: float = 10.0) -> None:
-        super().__init__(timeout=timeout)
-        self._limiter = AsyncRateLimiter(_MIN_INTERVAL_S)
-
-    async def get_quote(
-        self,
-        asset: str,
-        side: Side,
-        notional_usd: Decimal,
-        *,
-        mid: ReferenceMid,
-        instrument_type: InstrumentType | None = None,
-        fee_tier: str | None = None,
-    ) -> Quote:
-        itype_default = instrument_type or default_instrument_type(self.venue_class)
-        asset_key = asset.upper()
-        tier = fee_tier or DEFAULT_FEE_TIER
-
-        if mid.asset.upper() != asset_key:
-            raise AdapterError(
-                f"mid.asset={mid.asset!r} does not match asset={asset!r}"
-            )
-
-        try:
-            book_side = resolve_cex_instrument(itype_default)
-        except AdapterError as exc:
-            return build_unsupported_quote(
-                venue=self.venue,
-                asset=asset_key,
-                side=side,
-                notional_usd=notional_usd,
-                mid=mid,
-                instrument_type=itype_default,
-                message=str(exc),
-                fee_tier=tier,
-            )
-
-        symbol = resolve_cex_symbol(asset_key)
-        if symbol is None:
-            return build_unsupported_quote(
-                venue=self.venue,
-                asset=asset_key,
-                side=side,
-                notional_usd=notional_usd,
-                mid=mid,
-                instrument_type=book_side,
-                message=f"{asset} not supported by binance adapter",
-                fee_tier=tier,
-            )
-
-        bids, asks = await self._fetch_depth_for_walk(
-            symbol, book_side, side=side, notional_usd=notional_usd, mid=mid
-        )
-        return build_quote_from_book(
-            venue=self.venue,
-            asset=asset_key,
-            side=side,
-            notional_usd=notional_usd,
-            mid=mid,
-            instrument_type=book_side,
-            venue_symbol=symbol,
-            bids=bids,
-            asks=asks,
-            fee_tier=tier,
-            trading_fee_bps=PLACEHOLDER_TAKER_BPS,
-        )
-
-    async def get_orderbook_spread(
-        self,
-        asset: str,
-        *,
-        mid: ReferenceMid,
-        instrument_type: Literal["spot", "perp"] | None = None,
-    ) -> TopOfBook | None:
-        asset_key = asset.upper()
-        symbol = resolve_cex_symbol(asset_key)
-        if symbol is None:
-            raise UnsupportedAssetError(f"{asset} not supported by binance")
-        book_side: Literal["spot", "perp"] = instrument_type or "spot"
-        bids, asks = await self._fetch_depth(symbol, book_side, limit=_DEPTH_LIMITS[0])
-        return build_top_of_book(
-            venue=self.venue,
-            asset=asset_key,
-            instrument_type=book_side,
-            mid=mid,
-            bids=bids,
-            asks=asks,
-        )
-
-    def get_fees(
-        self,
-        asset: str | None = None,
-        *,
-        instrument_type: InstrumentType | None = None,
-    ) -> FeeSchedule:
-        itype = instrument_type or default_instrument_type(self.venue_class)
-        return placeholder_fee_schedule(
-            venue=self.venue,
-            asset=asset.upper() if asset else None,
-            instrument_type=itype,
-        )
-
-    def supported_assets(
-        self,
-        *,
-        instrument_type: InstrumentType | None = None,
-    ) -> list[str]:
-        _ = instrument_type
-        return supported_cex_assets()
-
-    async def _fetch_depth_for_walk(
+    async def _fetch_book(
         self,
         symbol: str,
-        book_side: Literal["spot", "perp"],
+        book_side: CexBookSide,
         *,
-        side: Side,
-        notional_usd: Decimal,
-        mid: ReferenceMid,
+        side: Side | None = None,
+        q_star: Decimal | None = None,
     ) -> tuple[OrderbookLevels, OrderbookLevels]:
-        """Fetch depth, escalating limit when the walked side exhausts."""
-        q_star = notional_usd / mid.mid
+        if side is not None and q_star is not None:
+            return await self._fetch_depth_escalating(symbol, book_side, side, q_star)
+        return await self._fetch_depth(symbol, book_side, limit=_DEPTH_LIMITS[0])
+
+    async def _fetch_depth_escalating(
+        self,
+        symbol: str,
+        book_side: CexBookSide,
+        side: Side,
+        q_star: Decimal,
+    ) -> tuple[OrderbookLevels, OrderbookLevels]:
         last: tuple[OrderbookLevels, OrderbookLevels] | None = None
         for limit in _DEPTH_LIMITS:
             bids, asks = await self._fetch_depth(symbol, book_side, limit=limit)
@@ -198,7 +78,7 @@ class BinanceAdapter(BaseAdapter):
     async def _fetch_depth(
         self,
         symbol: str,
-        book_side: Literal["spot", "perp"],
+        book_side: CexBookSide,
         *,
         limit: int,
     ) -> tuple[OrderbookLevels, OrderbookLevels]:

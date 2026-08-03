@@ -8,173 +8,50 @@ from __future__ import annotations
 import asyncio
 import logging
 from decimal import Decimal
-from typing import Any, Literal
+from typing import Any
 
 import httpx
 
 from spread_compare.adapters._cex_common import (
-    DEFAULT_FEE_TIER,
-    PLACEHOLDER_TAKER_BPS,
-    AsyncRateLimiter,
+    CexBaseAdapter,
+    CexBookSide,
     OrderbookLevels,
-    build_quote_from_book,
-    build_top_of_book,
-    build_unsupported_quote,
     parse_levels,
-    placeholder_fee_schedule,
-    resolve_cex_instrument,
 )
 from spread_compare.adapters.base import (
     AdapterError,
     AdapterFetchError,
     AdapterTimeoutError,
-    BaseAdapter,
-    UnsupportedAssetError,
-    default_instrument_type,
 )
 from spread_compare.adapters.registry import register_adapter
-from spread_compare.cex_symbols import resolve_cex_symbol, supported_cex_assets
-from spread_compare.models import (
-    FeeSchedule,
-    InstrumentType,
-    Quote,
-    ReferenceMid,
-    Side,
-    TopOfBook,
-    VenueClass,
-)
+from spread_compare.models import Side
 
 logger = logging.getLogger(__name__)
 
 _BASE = "https://api.bybit.com"
-# WHI-802: default limit=200 (covers $1k…$1M blue-chip walks for Phase 1).
+# WHI-802: default limit=200. Tunables deferred — docs/DEFERRED_ISSUES.md (WHI-802).
 _ORDERBOOK_LIMIT = 200
-# Well under Bybit IP 600 req / 5s (~120 rps): ~10 rps.
-_MIN_INTERVAL_S = 0.1
 _MAX_RETRIES = 4
 _BACKOFF_START_S = 0.5
 
 
 @register_adapter
-class BybitAdapter(BaseAdapter):
+class BybitAdapter(CexBaseAdapter):
     """Bybit spot + linear perpetual orderbook walker."""
 
     venue: str = "bybit"
-    venue_class: VenueClass = "cex"
+    # Well under Bybit IP 600 req / 5s (~120 rps): ~10 rps.
+    _min_interval_s: float = 0.1
 
-    def __init__(self, *, timeout: float = 10.0) -> None:
-        super().__init__(timeout=timeout)
-        self._limiter = AsyncRateLimiter(_MIN_INTERVAL_S)
-
-    async def get_quote(
-        self,
-        asset: str,
-        side: Side,
-        notional_usd: Decimal,
-        *,
-        mid: ReferenceMid,
-        instrument_type: InstrumentType | None = None,
-        fee_tier: str | None = None,
-    ) -> Quote:
-        itype_default = instrument_type or default_instrument_type(self.venue_class)
-        asset_key = asset.upper()
-        tier = fee_tier or DEFAULT_FEE_TIER
-
-        if mid.asset.upper() != asset_key:
-            raise AdapterError(
-                f"mid.asset={mid.asset!r} does not match asset={asset!r}"
-            )
-
-        try:
-            book_side = resolve_cex_instrument(itype_default)
-        except AdapterError as exc:
-            return build_unsupported_quote(
-                venue=self.venue,
-                asset=asset_key,
-                side=side,
-                notional_usd=notional_usd,
-                mid=mid,
-                instrument_type=itype_default,
-                message=str(exc),
-                fee_tier=tier,
-            )
-
-        symbol = resolve_cex_symbol(asset_key)
-        if symbol is None:
-            return build_unsupported_quote(
-                venue=self.venue,
-                asset=asset_key,
-                side=side,
-                notional_usd=notional_usd,
-                mid=mid,
-                instrument_type=book_side,
-                message=f"{asset} not supported by bybit adapter",
-                fee_tier=tier,
-            )
-
-        bids, asks = await self._fetch_orderbook(symbol, book_side)
-        return build_quote_from_book(
-            venue=self.venue,
-            asset=asset_key,
-            side=side,
-            notional_usd=notional_usd,
-            mid=mid,
-            instrument_type=book_side,
-            venue_symbol=symbol,
-            bids=bids,
-            asks=asks,
-            fee_tier=tier,
-            trading_fee_bps=PLACEHOLDER_TAKER_BPS,
-        )
-
-    async def get_orderbook_spread(
-        self,
-        asset: str,
-        *,
-        mid: ReferenceMid,
-        instrument_type: Literal["spot", "perp"] | None = None,
-    ) -> TopOfBook | None:
-        asset_key = asset.upper()
-        symbol = resolve_cex_symbol(asset_key)
-        if symbol is None:
-            raise UnsupportedAssetError(f"{asset} not supported by bybit")
-        book_side: Literal["spot", "perp"] = instrument_type or "spot"
-        bids, asks = await self._fetch_orderbook(symbol, book_side)
-        return build_top_of_book(
-            venue=self.venue,
-            asset=asset_key,
-            instrument_type=book_side,
-            mid=mid,
-            bids=bids,
-            asks=asks,
-        )
-
-    def get_fees(
-        self,
-        asset: str | None = None,
-        *,
-        instrument_type: InstrumentType | None = None,
-    ) -> FeeSchedule:
-        itype = instrument_type or default_instrument_type(self.venue_class)
-        return placeholder_fee_schedule(
-            venue=self.venue,
-            asset=asset.upper() if asset else None,
-            instrument_type=itype,
-        )
-
-    def supported_assets(
-        self,
-        *,
-        instrument_type: InstrumentType | None = None,
-    ) -> list[str]:
-        _ = instrument_type
-        return supported_cex_assets()
-
-    async def _fetch_orderbook(
+    async def _fetch_book(
         self,
         symbol: str,
-        book_side: Literal["spot", "perp"],
+        book_side: CexBookSide,
+        *,
+        side: Side | None = None,
+        q_star: Decimal | None = None,
     ) -> tuple[OrderbookLevels, OrderbookLevels]:
+        _ = side, q_star  # Bybit Phase 1: fixed depth 200 (no escalation in WHI-802)
         category = "spot" if book_side == "spot" else "linear"
         url = f"{_BASE}/v5/market/orderbook"
         params = {
@@ -208,9 +85,7 @@ class BybitAdapter(BaseAdapter):
                 "x-bapi-limit-status"
             )
             if limit_status is not None:
-                logger.info(
-                    "bybit X-Bapi-Limit-Status=%s url=%s", limit_status, url
-                )
+                logger.info("bybit X-Bapi-Limit-Status=%s url=%s", limit_status, url)
 
             # IP throttle often returns 403; UID market-data may use retCode 10006.
             if resp.status_code in (403, 429):

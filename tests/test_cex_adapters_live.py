@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from decimal import Decimal
+from typing import Literal
 
 import pytest
 
@@ -17,7 +18,7 @@ from spread_compare.models import NOTIONAL_TIERS_USD, Quote, ReferenceMid, Side,
 
 _VENUES = ("binance", "bybit")
 _SIDES: tuple[Side, ...] = ("buy", "sell")
-_INSTRUMENTS = ("spot", "perp")
+_INSTRUMENTS: tuple[Literal["spot", "perp"], ...] = ("spot", "perp")
 
 
 async def _approx_mid(adapter: BaseAdapter, venue: str) -> ReferenceMid:
@@ -26,7 +27,6 @@ async def _approx_mid(adapter: BaseAdapter, venue: str) -> ReferenceMid:
     WHI-807 will own real mid resolution; here we only need a mid that lets
     Quotes validate. Using mid_local keeps the smoke independent of mid service.
     """
-    # Bootstrap mid so get_orderbook_spread can run; mid_ref is overwritten after.
     seed = ReferenceMid(
         snapshot_id="live-seed",
         asset="BTC",
@@ -36,12 +36,14 @@ async def _approx_mid(adapter: BaseAdapter, venue: str) -> ReferenceMid:
     )
     tob = await adapter.get_orderbook_spread("BTC", mid=seed, instrument_type="spot")
     assert tob is not None
-    source = "binance_spot_tob" if venue == "binance" else "bybit_spot_tob"
+    source: Literal["binance_spot_tob", "bybit_spot_tob"] = (
+        "binance_spot_tob" if venue == "binance" else "bybit_spot_tob"
+    )
     return ReferenceMid(
         snapshot_id=f"live-{venue}-{int(datetime.now(tz=UTC).timestamp())}",
         asset="BTC",
         mid=tob.mid_local,
-        mid_source=source,  # type: ignore[arg-type]
+        mid_source=source,
         timestamp=datetime.now(tz=UTC),
     )
 
@@ -63,7 +65,7 @@ async def test_live_quotes_all_tiers_sides_instruments(slug: str) -> None:
                         side,
                         notional,
                         mid=mid,
-                        instrument_type=instrument,  # type: ignore[arg-type]
+                        instrument_type=instrument,
                     )
                     assert isinstance(quote, Quote)
                     assert quote.venue == slug
@@ -71,12 +73,11 @@ async def test_live_quotes_all_tiers_sides_instruments(slug: str) -> None:
                     assert quote.side == side
                     assert quote.notional_usd == notional
                     assert quote.instrument_type == instrument
-                    # status ok or insufficient_liquidity both satisfy invariants
-                    # (pydantic enforces §6.2); large notionals may thin out.
-                    assert quote.status in (
-                        "ok",
-                        "insufficient_liquidity",
-                        "error",
+                    # Live AC: invariant-passing quotes only — not generic "error".
+                    # Large notionals may legitimately thin out.
+                    assert quote.status in ("ok", "insufficient_liquidity"), (
+                        f"{slug} {instrument} {side} N={notional}: "
+                        f"status={quote.status!r} msg={quote.error_message!r}"
                     )
                     if quote.status == "ok":
                         assert quote.effective_price is not None
@@ -99,7 +100,7 @@ async def test_live_orderbook_spread_spot_and_perp(slug: str) -> None:
             tob = await adapter.get_orderbook_spread(
                 "BTC",
                 mid=mid,
-                instrument_type=instrument,  # type: ignore[arg-type]
+                instrument_type=instrument,
             )
             assert isinstance(tob, TopOfBook)
             assert tob.venue == slug

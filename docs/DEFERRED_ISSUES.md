@@ -39,18 +39,26 @@ defines none: `docs/GIT_WORKFLOW.md` § High-risk paths), **Medium**
   default `False`. Fix in WHI-807 (or a shared helper once the threshold lives in
   typed config).
 
-- **Shared Quote assembly helper not extracted** (Low, WHI-801).
-  `spread_compare/adapters/mock.py::_quote_shell` — mapping `ReferenceMid` + status
-  into a §6.2-valid `Quote` is private to the mock. Real adapters (WHI-802…806) risk
-  copy-paste drift. Promote a `build_quote(...)` (and optional mid/asset guard) into
-  `adapters/base.py` with the first real adapter PR if duplication appears.
-
 - **Default HTTP timeout hardcoded on BaseAdapter** (Low, WHI-823).
   `spread_compare/adapters/base.py::_DEFAULT_HTTP_TIMEOUT` — AGENTS.md requires
   non-secret tunables in `config/` traced to DESIGN.md §2, but neither the config
   loader nor DESIGN §2 exists yet. Subclasses can override via
-  `super().__init__(timeout=…)`. Move to typed YAML when the first real adapter
-  lands a shared HTTP config (or when DESIGN §2 is written).
+  `super().__init__(timeout=…)`. Move to typed YAML when DESIGN §2 is written.
+
+- **CEX rate-limit / depth / fee placeholder tunables hardcoded** (Low, WHI-802).
+  `spread_compare/adapters/cex_binance.py::_DEPTH_LIMITS` /
+  `_min_interval_s` / `_MAX_RETRIES` / `_BACKOFF_START_S`,
+  `cex_bybit.py::_ORDERBOOK_LIMIT` / same trio,
+  `_cex_common.PLACEHOLDER_TAKER_BPS` — config/README.md wants YAML, but
+  DESIGN.md §2 and the typed loader still do not exist. Defer until DESIGN §2 +
+  config loader land (or WHI-812 for fees). Fix: `config/cex.yaml` + pydantic
+  model, loaded at adapter startup.
+
+- **`funding_rate_8h` not fetched on CEX quote path** (Low, WHI-802).
+  Spec allows null "when not cheaply available". Depth endpoints do not carry
+  funding; piggybacking `premiumIndex` / Bybit tickers adds weight and latency
+  per quote. Leave null for Phase 1; optional cheap join once the aggregator
+  batches mid+funding (WHI-807) or WHI-812 fee work.
 
 - **Adapter init state is process-global** (Low, WHI-823).
   `spread_compare/adapters/registry.py::_INITIALIZED` — `/health`'s
@@ -64,4 +72,7 @@ defines none: `docs/GIT_WORKFLOW.md` § High-risk paths), **Medium**
 
 ## Resolved
 
-_(none yet)_
+- **Shared Quote assembly helper not extracted** (Low, WHI-801 → WHI-802).
+  CEX path extracted into `spread_compare/adapters/_cex_common.py`
+  (`CexBaseAdapter`, `build_quote_from_book`). Mock still has its own shell;
+  promote further only if AMM/perp adapters re-copy.
