@@ -160,9 +160,14 @@ async def test_lighter_per_order_aggregation_section_4_7() -> None:
         assert quote.effective_price == Decimal("100044")
         assert quote.spread_bps == Decimal("4.4")
         assert quote.total_cost_bps == Decimal("14.4")
-        assert quote.venue_symbol == "1"
+        assert quote.venue_symbol == "BTC"
         assert quote.venue_mark == Decimal("100050")
         assert quote.instrument_type == "perp"
+
+        sell = await adapter.get_quote("BTC", "sell", Decimal("10000"), mid=_mid())
+        assert sell.status == "ok"
+        assert sell.effective_price == Decimal("99956")
+        assert sell.spread_bps == Decimal("4.4")
     finally:
         await adapter.aclose()
 

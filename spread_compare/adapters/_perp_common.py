@@ -12,12 +12,23 @@ import time
 from collections import deque
 from collections.abc import Sequence
 from datetime import UTC, datetime
-from decimal import ROUND_HALF_UP, Decimal
-from typing import Literal
+from decimal import Decimal
+from typing import Any, Literal
 
-from spread_compare.adapters.base import AdapterError
+import httpx
+
+from spread_compare.adapters.base import (
+    AdapterError,
+    AdapterFetchError,
+    AdapterTimeoutError,
+)
 from spread_compare.bookwalk import walk_book
-from spread_compare.costs import spread_bps, top_of_book_spread_bps, total_cost_bps
+from spread_compare.costs import (
+    basis_bps,
+    spread_bps,
+    top_of_book_spread_bps,
+    total_cost_bps,
+)
 from spread_compare.models import (
     FeeBreakdown,
     FeeSchedule,
@@ -30,13 +41,12 @@ from spread_compare.models import (
 )
 
 # TODO(WHI-812): replace placeholder taker with real default_taker schedule.
+# Rate/depth defaults trace to docs/research/WHI-800-venue-api-survey.md §4
+# until DESIGN.md §2 exists (see docs/DEFERRED_ISSUES.md).
 PLACEHOLDER_TAKER_BPS: Decimal = Decimal("10")
 DEFAULT_FEE_TIER: str = "default_taker"
 
 OrderbookLevels = list[tuple[Decimal, Decimal]]
-
-_BPS = Decimal("10000")
-_BPS_QUANT = Decimal("0.0001")
 
 
 class AsyncRateLimiter:
@@ -114,11 +124,12 @@ def aggregate_orders_by_price(
     *,
     price_key: str = "price",
     size_key: str = "remaining_base_amount",
-    side: Side,
+    descending: bool = False,
 ) -> OrderbookLevels:
     """Aggregate per-order book rows into price levels (Lighter shape).
 
-    Asks are sorted ascending (best ask first); bids descending (best bid first).
+    Use ``descending=False`` for asks (best ask first) and ``descending=True``
+    for bids (best bid first).
     """
     buckets: dict[Decimal, Decimal] = {}
     for order in orders:
@@ -133,7 +144,7 @@ def aggregate_orders_by_price(
             continue
         buckets[price] = buckets.get(price, Decimal("0")) + size
 
-    prices = sorted(buckets.keys(), reverse=(side == "sell"))
+    prices = sorted(buckets.keys(), reverse=descending)
     return [(px, buckets[px]) for px in prices]
 
 
@@ -146,14 +157,6 @@ def non_ok_fees(*, fee_tier: str) -> FeeBreakdown:
         gas_unknown=False,
         explicit_fee_bps=None,
     )
-
-
-def compute_basis_bps(venue_mark: Decimal, mid: Decimal) -> Decimal:
-    """``(venue_mark - mid) / mid * 10_000`` (WHI-799 §3.4); never folded into spread."""
-    if mid == 0:
-        raise ValueError("mid must be non-zero")
-    raw = (venue_mark - mid) / mid * _BPS
-    return raw.quantize(_BPS_QUANT, rounding=ROUND_HALF_UP)
 
 
 def build_quote_from_book(
@@ -182,7 +185,7 @@ def build_quote_from_book(
 
     basis: Decimal | None = None
     if venue_mark is not None:
-        basis = compute_basis_bps(venue_mark, mid.mid)
+        basis = basis_bps(venue_mark, mid.mid)
 
     if p_star is None:
         return Quote(
@@ -349,3 +352,59 @@ def resolve_perp_instrument(
             f"perp DEX adapters only support instrument_type=perp, got {itype!r}"
         )
     return itype
+
+
+async def request_json(
+    client: httpx.AsyncClient,
+    method: str,
+    url: str,
+    *,
+    venue: str,
+    limiter: AsyncRateLimiter | RollingWindowRateLimiter,
+    params: dict[str, str] | None = None,
+    json_body: dict[str, Any] | None = None,
+    retry_statuses: frozenset[int] = frozenset({429}),
+    max_retries: int = 4,
+    backoff_start_s: float = 0.5,
+    ok_codes: frozenset[int | None] | None = None,
+) -> Any:
+    """Shared GET/POST JSON helper with rate-limit backoff for perp adapters."""
+    delay = backoff_start_s
+    last_error: Exception | None = None
+    for attempt in range(max_retries):
+        await limiter.acquire()
+        try:
+            resp = await client.request(method, url, params=params, json=json_body)
+        except httpx.TimeoutException as exc:
+            raise AdapterTimeoutError(f"{venue} timeout: {url}") from exc
+        except httpx.HTTPError as exc:
+            raise AdapterFetchError(f"{venue} HTTP error: {exc}") from exc
+
+        if resp.status_code in retry_statuses:
+            last_error = AdapterFetchError(
+                f"{venue} rate limited (HTTP {resp.status_code}) attempt={attempt + 1}"
+            )
+            await asyncio.sleep(delay)
+            delay *= 2
+            continue
+
+        if resp.status_code >= 400:
+            raise AdapterFetchError(
+                f"{venue} HTTP {resp.status_code}: {resp.text[:200]}"
+            )
+
+        try:
+            payload = resp.json()
+        except ValueError as exc:
+            raise AdapterFetchError(f"{venue} response is not JSON") from exc
+
+        if ok_codes is not None and isinstance(payload, dict):
+            code = payload.get("code")
+            if code not in ok_codes:
+                raise AdapterFetchError(
+                    f"{venue} code={code} body={str(payload)[:200]}"
+                )
+        return payload
+
+    assert last_error is not None
+    raise last_error

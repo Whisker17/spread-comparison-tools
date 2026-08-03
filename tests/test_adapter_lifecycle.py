@@ -65,8 +65,12 @@ async def test_base_adapter_lazy_http_client(monkeypatch: pytest.MonkeyPatch) ->
 
 @pytest.mark.asyncio
 async def test_startup_all_initializes_mock() -> None:
+    from tests.perp_offline_http import install_offline_clients
+
     _INITIALIZED.clear()
     await aclose_all()
+    # aclose_all drops HTTP clients; reinstall offline mocks for real adapters.
+    install_offline_clients()
     assert initialized_count() == 0
     await startup_all()
     try:

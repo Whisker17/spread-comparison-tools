@@ -6,13 +6,10 @@ client-side via :class:`RollingWindowRateLimiter`.
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any, Literal
-
-import httpx
 
 from spread_compare.adapters._perp_common import (
     DEFAULT_FEE_TIER,
@@ -24,12 +21,12 @@ from spread_compare.adapters._perp_common import (
     build_top_of_book,
     build_unsupported_quote,
     placeholder_fee_schedule,
+    request_json,
     resolve_perp_instrument,
 )
 from spread_compare.adapters.base import (
     AdapterError,
     AdapterFetchError,
-    AdapterTimeoutError,
     BaseAdapter,
     UnsupportedAssetError,
     default_instrument_type,
@@ -55,16 +52,6 @@ _DEFAULT_MAX_RPM = 60
 _DEFAULT_WINDOW_S = 60.0
 _ORDER_LIMIT = 100
 _BLUE_CHIPS: tuple[str, ...] = ("BTC", "ETH", "SOL")
-_MAX_RETRIES = 4
-_BACKOFF_START_S = 0.5
-
-# Offline / startup-failure fallback only (WHI-800 live 2026-08-03 snapshot).
-# Prefer the orderBookDetails table whenever network warm-up succeeds.
-_FALLBACK_MARKET_IDS: dict[str, int] = {
-    "ETH": 0,
-    "BTC": 1,
-    "SOL": 2,
-}
 
 
 @dataclass(frozen=True, slots=True)
@@ -99,31 +86,8 @@ class LighterAdapter(BaseAdapter):
     async def startup(self) -> None:
         if self._started:
             return
-        # Resolve market_id from live orderBookDetails when possible; fall back
-        # to the documented blue-chip snapshot so offline startup_all() works.
-        try:
-            await self._load_markets()
-        except Exception as exc:
-            logger.warning(
-                "lighter orderBookDetails failed; using blue-chip market_id "
-                "fallback: %s",
-                exc,
-            )
-            self._seed_fallback_markets()
-        if not self._markets_by_symbol:
-            self._seed_fallback_markets()
+        await self._load_markets()
         await super().startup()
-
-    def _seed_fallback_markets(self) -> None:
-        self._markets_by_symbol = {
-            sym: _MarketMeta(
-                market_id=mid,
-                symbol=sym,
-                mark_price=None,
-                index_price=None,
-            )
-            for sym, mid in _FALLBACK_MARKET_IDS.items()
-        }
 
     async def get_quote(
         self,
@@ -179,7 +143,7 @@ class LighterAdapter(BaseAdapter):
             notional_usd=notional_usd,
             mid=mid,
             instrument_type=itype,
-            venue_symbol=str(meta.market_id),
+            venue_symbol=meta.symbol,
             bids=bids,
             asks=asks,
             fee_tier=tier,
@@ -244,7 +208,7 @@ class LighterAdapter(BaseAdapter):
         return None if meta is None else meta.market_id
 
     async def _load_markets(self) -> None:
-        payload = await self._request_json("GET", f"{_BASE}{_DETAILS_PATH}")
+        payload = await self._get_json(f"{_BASE}{_DETAILS_PATH}")
         try:
             details = payload.get("order_book_details")
             if not isinstance(details, list):
@@ -267,7 +231,6 @@ class LighterAdapter(BaseAdapter):
                     if row.get("index_price") is not None
                     else None
                 )
-                # Prefer first active-looking row; later duplicates ignored.
                 if symbol in markets:
                     continue
                 markets[symbol] = _MarketMeta(
@@ -287,7 +250,7 @@ class LighterAdapter(BaseAdapter):
     ) -> tuple[OrderbookLevels, OrderbookLevels]:
         url = f"{_BASE}{_ORDERS_PATH}"
         params = {"market_id": str(market_id), "limit": str(_ORDER_LIMIT)}
-        payload = await self._request_json("GET", url, params=params)
+        payload = await self._get_json(url, params=params)
         try:
             raw_asks = payload.get("asks") or []
             raw_bids = payload.get("bids") or []
@@ -295,11 +258,11 @@ class LighterAdapter(BaseAdapter):
                 raise AdapterFetchError("lighter orderBookOrders asks/bids not lists")
             asks = aggregate_orders_by_price(
                 [o for o in raw_asks if isinstance(o, dict)],
-                side="buy",  # asks: ascending price
+                descending=False,
             )
             bids = aggregate_orders_by_price(
                 [o for o in raw_bids if isinstance(o, dict)],
-                side="sell",  # bids: descending price
+                descending=True,
             )
         except (TypeError, AdapterError) as exc:
             raise AdapterFetchError(f"lighter orders parse failed: {exc}") from exc
@@ -309,50 +272,19 @@ class LighterAdapter(BaseAdapter):
             )
         return bids, asks
 
-    async def _request_json(
-        self,
-        method: str,
-        url: str,
-        *,
-        params: dict[str, str] | None = None,
+    async def _get_json(
+        self, url: str, *, params: dict[str, str] | None = None
     ) -> dict[str, Any]:
-        delay = _BACKOFF_START_S
-        last_error: Exception | None = None
-        for attempt in range(_MAX_RETRIES):
-            await self._limiter.acquire()
-            try:
-                resp = await self.http.request(method, url, params=params)
-            except httpx.TimeoutException as exc:
-                raise AdapterTimeoutError(f"lighter timeout: {url}") from exc
-            except httpx.HTTPError as exc:
-                raise AdapterFetchError(f"lighter HTTP error: {exc}") from exc
-
-            # Standard tier: 429 or 405 on breach (WHI-800 §4.2).
-            if resp.status_code in (405, 429):
-                last_error = AdapterFetchError(
-                    f"lighter rate limited (HTTP {resp.status_code}) "
-                    f"attempt={attempt + 1}"
-                )
-                logger.warning("%s; sleeping %.2fs", last_error, delay)
-                await asyncio.sleep(delay)
-                delay *= 2
-                continue
-
-            if resp.status_code >= 400:
-                raise AdapterFetchError(
-                    f"lighter HTTP {resp.status_code}: {resp.text[:200]}"
-                )
-
-            try:
-                payload = resp.json()
-            except ValueError as exc:
-                raise AdapterFetchError("lighter response is not JSON") from exc
-            if not isinstance(payload, dict):
-                raise AdapterFetchError(f"lighter unexpected JSON type: {type(payload)}")
-            code = payload.get("code")
-            if code not in (None, 200, 0):
-                raise AdapterFetchError(f"lighter code={code} body={str(payload)[:200]}")
-            return payload
-
-        assert last_error is not None
-        raise last_error
+        payload = await request_json(
+            self.http,
+            "GET",
+            url,
+            venue=self.venue,
+            limiter=self._limiter,
+            params=params,
+            retry_statuses=frozenset({405, 429}),
+            ok_codes=frozenset({None, 200, 0}),
+        )
+        if not isinstance(payload, dict):
+            raise AdapterFetchError(f"lighter unexpected JSON type: {type(payload)}")
+        return payload

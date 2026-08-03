@@ -10,8 +10,6 @@ import logging
 from decimal import Decimal
 from typing import Any, Literal
 
-import httpx
-
 from spread_compare.adapters._perp_common import (
     DEFAULT_FEE_TIER,
     PLACEHOLDER_TAKER_BPS,
@@ -21,12 +19,12 @@ from spread_compare.adapters._perp_common import (
     build_top_of_book,
     build_unsupported_quote,
     placeholder_fee_schedule,
+    request_json,
     resolve_perp_instrument,
 )
 from spread_compare.adapters.base import (
     AdapterError,
     AdapterFetchError,
-    AdapterTimeoutError,
     BaseAdapter,
     UnsupportedAssetError,
     default_instrument_type,
@@ -47,8 +45,9 @@ logger = logging.getLogger(__name__)
 _INFO_URL = "https://api.hyperliquid.xyz/info"
 # HL hard-caps L2 at 20 levels/side (WHI-800 §4.1).
 _MAX_LEVELS = 20
-# l2Book weight=2; aggregate 1200/min → theoretical 600 l2/min. Stay well under.
-_MIN_INTERVAL_S = 0.05
+# l2Book weight=2; aggregate weight pool 1200/min → max ~600 l2Book/min.
+# 0.12s floor ≈ 500/min (1000 weight) — under the pool with headroom.
+_MIN_INTERVAL_S = 0.12
 # Blue chips always listed; HIP-3 coins pass through on request (WHI-810).
 _BLUE_CHIPS: tuple[str, ...] = ("BTC", "ETH", "SOL")
 # HL ``funding`` field is hourly; store 8h-equivalent for FeeBreakdown (WHI-799 §5.3).
@@ -73,16 +72,7 @@ class HyperliquidAdapter(BaseAdapter):
     async def startup(self) -> None:
         if self._started:
             return
-        # Metadata warm-up is best-effort so offline unit tests / broken proxies
-        # still let startup_all() succeed; live deploys populate funding/mark.
-        try:
-            await self._load_meta()
-        except Exception as exc:
-            logger.warning(
-                "hyperliquid metaAndAssetCtxs failed; continuing without "
-                "funding/mark cache: %s",
-                exc,
-            )
+        await self._load_meta()
         await super().startup()
 
     async def get_quote(
@@ -96,9 +86,10 @@ class HyperliquidAdapter(BaseAdapter):
         fee_tier: str | None = None,
     ) -> Quote:
         itype_default = instrument_type or default_instrument_type(self.venue_class)
-        # Pass-through coin strings (HIP-3 uses prefixes like ``xyz:TSLA``).
         coin = _normalize_hl_coin(asset)
-        asset_key = coin
+        # Canonical asset id for blue chips; HIP-3 keeps the dex-prefixed coin form
+        # until WHI-810 defines a separate logical id (venue form also in venue_symbol).
+        asset_key = coin.split(":", 1)[-1] if ":" in coin else coin
         tier = fee_tier or DEFAULT_FEE_TIER
 
         if mid.asset.upper() != asset_key.upper():
@@ -147,6 +138,7 @@ class HyperliquidAdapter(BaseAdapter):
         instrument_type: Literal["spot", "perp"] | None = None,
     ) -> TopOfBook | None:
         coin = _normalize_hl_coin(asset)
+        asset_key = coin.split(":", 1)[-1] if ":" in coin else coin
         if instrument_type not in (None, "perp"):
             raise UnsupportedAssetError(
                 f"hyperliquid adapter only supports perp, got {instrument_type!r}"
@@ -154,7 +146,7 @@ class HyperliquidAdapter(BaseAdapter):
         bids, asks = await self._fetch_l2_book(coin)
         return build_top_of_book(
             venue=self.venue,
-            asset=coin,
+            asset=asset_key,
             mid=mid,
             bids=bids,
             asks=asks,
@@ -181,14 +173,13 @@ class HyperliquidAdapter(BaseAdapter):
     ) -> list[str]:
         _ = instrument_type
         if self._universe:
-            # Prefer blue chips first, then the rest of the cached universe.
             blue = [c for c in _BLUE_CHIPS if c in self._universe]
             rest = sorted(c for c in self._universe if c not in _BLUE_CHIPS)
             return blue + rest
         return list(_BLUE_CHIPS)
 
     def _funding_rate_8h(self, coin: str) -> Decimal | None:
-        hourly = self._funding_hourly.get(coin) or self._funding_hourly.get(coin.upper())
+        hourly = self._funding_hourly.get(coin)
         if hourly is None:
             return None
         return hourly * _HOURS_PER_FUNDING_PERIOD
@@ -235,10 +226,8 @@ class HyperliquidAdapter(BaseAdapter):
             levels = payload["levels"]
             if not isinstance(levels, list) or len(levels) < 2:
                 raise AdapterFetchError("hyperliquid l2Book missing levels[0/1]")
-            raw_bids = levels[0]
-            raw_asks = levels[1]
-            bids = self._parse_hl_levels(raw_bids)
-            asks = self._parse_hl_levels(raw_asks)
+            bids = self._parse_hl_levels(levels[0])
+            asks = self._parse_hl_levels(levels[1])
         except (KeyError, TypeError, AdapterError) as exc:
             raise AdapterFetchError(f"hyperliquid l2Book parse failed: {exc}") from exc
         if not bids or not asks:
@@ -261,22 +250,15 @@ class HyperliquidAdapter(BaseAdapter):
         return levels
 
     async def _post_info(self, body: dict[str, Any]) -> Any:
-        await self._limiter.acquire()
-        try:
-            resp = await self.http.post(_INFO_URL, json=body)
-        except httpx.TimeoutException as exc:
-            raise AdapterTimeoutError(f"hyperliquid timeout: {_INFO_URL}") from exc
-        except httpx.HTTPError as exc:
-            raise AdapterFetchError(f"hyperliquid HTTP error: {exc}") from exc
-
-        if resp.status_code >= 400:
-            raise AdapterFetchError(
-                f"hyperliquid HTTP {resp.status_code}: {resp.text[:200]}"
-            )
-        try:
-            return resp.json()
-        except ValueError as exc:
-            raise AdapterFetchError("hyperliquid response is not JSON") from exc
+        return await request_json(
+            self.http,
+            "POST",
+            _INFO_URL,
+            venue=self.venue,
+            limiter=self._limiter,
+            json_body=body,
+            max_retries=1,
+        )
 
 
 def _normalize_hl_coin(asset: str) -> str:

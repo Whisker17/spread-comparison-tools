@@ -12,8 +12,8 @@ from spread_compare.adapters._perp_common import (
     RollingWindowRateLimiter,
     aggregate_orders_by_price,
     build_quote_from_book,
-    compute_basis_bps,
 )
+from spread_compare.costs import basis_bps
 
 # WHI-799 §4.7
 _MID = Decimal("100000")
@@ -47,12 +47,12 @@ def test_aggregate_orders_by_price_sums_same_price() -> None:
         {"price": "100.0", "remaining_base_amount": "0.02"},
         {"price": "101.0", "remaining_base_amount": "0.05"},
     ]
-    asks = aggregate_orders_by_price(orders, side="buy")
+    asks = aggregate_orders_by_price(orders, descending=False)
     assert asks == [
         (Decimal("100.0"), Decimal("0.03")),
         (Decimal("101.0"), Decimal("0.05")),
     ]
-    bids = aggregate_orders_by_price(orders, side="sell")
+    bids = aggregate_orders_by_price(orders, descending=True)
     assert bids[0][0] == Decimal("101.0")
     assert bids[1][0] == Decimal("100.0")
 
@@ -98,8 +98,8 @@ def test_build_quote_insufficient_liquidity() -> None:
     assert quote.spread_bps is None
 
 
-def test_compute_basis_bps() -> None:
-    assert compute_basis_bps(Decimal("100100"), Decimal("100000")) == Decimal("10")
+def test_basis_bps() -> None:
+    assert basis_bps(Decimal("100100"), Decimal("100000")) == Decimal("10")
 
 
 @pytest.mark.asyncio

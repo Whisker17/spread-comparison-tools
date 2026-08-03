@@ -39,6 +39,17 @@ defines none: `docs/GIT_WORKFLOW.md` § High-risk paths), **Medium**
   default `False`. Fix in WHI-807 (or a shared helper once the threshold lives in
   typed config).
 
+- **Perp adapter rate/depth/taker constants live in source, not `config/`** (Low, WHI-803).
+  `spread_compare/adapters/_perp_common.py`, `perp_*.py` — placeholders and rate floors
+  (`PLACEHOLDER_TAKER_BPS`, min intervals, depth limits) cite WHI-800 / TODO(WHI-812)
+  until `docs/DESIGN.md` §2 exists. Move into typed `config/` once that section is
+  written (same blocking gap called out in AGENTS.md Status).
+
+- **Perp `venue_mark` / funding cached at startup, not per-quote** (Low, WHI-803).
+  HL/Lighter marks and ApeX funding are warmed in `startup()` only. Fine for short-lived
+  smoke processes; a long-running collector (WHI-816) should refresh mark/funding on a
+  timer or alongside each book fetch so `basis_bps` stays same-snapshot (WHI-799 §3.4).
+
 - **Shared Quote assembly helper not extracted** (Low, WHI-801).
   `spread_compare/adapters/mock.py::_quote_shell` — mapping `ReferenceMid` + status
   into a §6.2-valid `Quote` is private to the mock. Real adapters (WHI-802…806) risk

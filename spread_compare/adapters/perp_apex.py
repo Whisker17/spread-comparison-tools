@@ -6,13 +6,10 @@ never the config ``symbol`` field (``BTC-USDT``) which returns null books.
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any, Literal
-
-import httpx
 
 from spread_compare.adapters._perp_common import (
     DEFAULT_FEE_TIER,
@@ -24,12 +21,12 @@ from spread_compare.adapters._perp_common import (
     build_unsupported_quote,
     parse_levels,
     placeholder_fee_schedule,
+    request_json,
     resolve_perp_instrument,
 )
 from spread_compare.adapters.base import (
     AdapterError,
     AdapterFetchError,
-    AdapterTimeoutError,
     BaseAdapter,
     UnsupportedAssetError,
     default_instrument_type,
@@ -55,16 +52,9 @@ _TICKER_PATH = "/v3/ticker"
 _MIN_INTERVAL_S = 0.15
 _DEPTH_LIMIT = 100
 _BLUE_CHIPS: tuple[str, ...] = ("BTC", "ETH", "SOL")
-_MAX_RETRIES = 4
-_BACKOFF_START_S = 0.5
-
-# Offline / startup-failure fallback only. Prefer /v3/symbols when warm-up works.
-# crossSymbolName form is required for depth (BTCUSDT, never BTC-USDT).
-_FALLBACK_SYMBOLS: dict[str, tuple[str, str]] = {
-    "BTC": ("BTC-USDT", "BTCUSDT"),
-    "ETH": ("ETH-USDT", "ETHUSDT"),
-    "SOL": ("SOL-USDT", "SOLUSDT"),
-}
+# ApeX ticker ``fundingRate`` is hourly-scale (same magnitude as HL hourly);
+# convert to 8h for FeeBreakdown.funding_rate_8h (WHI-799 §5.3).
+_HOURS_PER_FUNDING_PERIOD = Decimal("8")
 
 
 @dataclass(frozen=True, slots=True)
@@ -93,30 +83,9 @@ class ApexAdapter(BaseAdapter):
     async def startup(self) -> None:
         if self._started:
             return
-        # Resolve crossSymbolName from live /v3/symbols when possible; fall back
-        # to blue-chip cross names so offline startup_all() still succeeds.
-        try:
-            await self._load_symbols()
-        except Exception as exc:
-            logger.warning(
-                "apex symbols warm-up failed; using blue-chip crossSymbol "
-                "fallback: %s",
-                exc,
-            )
-            self._seed_fallback_symbols()
-        if not self._symbols_by_base:
-            self._seed_fallback_symbols()
+        await self._load_symbols()
+        await self._warm_blue_chip_tickers()
         await super().startup()
-
-    def _seed_fallback_symbols(self) -> None:
-        self._symbols_by_base = {
-            base: _ApexSymbol(
-                base=base,
-                config_symbol=config_sym,
-                cross_symbol_name=cross,
-            )
-            for base, (config_sym, cross) in _FALLBACK_SYMBOLS.items()
-        }
 
     async def get_quote(
         self,
@@ -165,8 +134,6 @@ class ApexAdapter(BaseAdapter):
             )
 
         bids, asks = await self._fetch_depth(sym.cross_symbol_name)
-        # Best-effort funding/mark from last ticker refresh (optional per quote).
-        await self._maybe_refresh_ticker(sym.cross_symbol_name)
         funding = self._funding_by_cross.get(sym.cross_symbol_name)
         mark = self._mark_by_cross.get(sym.cross_symbol_name)
         return build_quote_from_book(
@@ -246,7 +213,7 @@ class ApexAdapter(BaseAdapter):
         return None if sym is None else sym.config_symbol
 
     async def _load_symbols(self) -> None:
-        payload = await self._request_json("GET", f"{_BASE}{_SYMBOLS_PATH}")
+        payload = await self._get_json(f"{_BASE}{_SYMBOLS_PATH}")
         try:
             data = payload["data"]
             contracts = data["contractConfig"]["perpetualContract"]
@@ -261,8 +228,6 @@ class ApexAdapter(BaseAdapter):
                 config_sym = str(row.get("symbol") or "")
                 if not base or not cross:
                     continue
-                # Prefer first enableTrade / enableDisplay row; skip prelaunch if
-                # a primary listing already exists.
                 if base in by_base:
                     continue
                 by_base[base] = _ApexSymbol(
@@ -276,32 +241,40 @@ class ApexAdapter(BaseAdapter):
         except (KeyError, TypeError, AdapterError) as exc:
             raise AdapterFetchError(f"apex symbols parse failed: {exc}") from exc
 
-    async def _maybe_refresh_ticker(self, cross_symbol: str) -> None:
-        """Fetch ticker for funding/mark; failures are non-fatal for quotes."""
-        try:
-            payload = await self._request_json(
-                "GET",
-                f"{_BASE}{_TICKER_PATH}",
-                params={"symbol": cross_symbol},
-            )
-            rows = payload.get("data")
-            if not isinstance(rows, list) or not rows:
-                return
-            row = rows[0]
-            if not isinstance(row, dict):
-                return
-            if row.get("fundingRate") is not None:
-                self._funding_by_cross[cross_symbol] = Decimal(str(row["fundingRate"]))
-            if row.get("markPrice") is not None:
-                self._mark_by_cross[cross_symbol] = Decimal(str(row["markPrice"]))
-        except AdapterError as exc:
-            logger.warning("apex ticker refresh failed for %s: %s", cross_symbol, exc)
+    async def _warm_blue_chip_tickers(self) -> None:
+        """Cache funding/mark for blue chips once at startup (optional fields)."""
+        for base in _BLUE_CHIPS:
+            sym = self._symbols_by_base.get(base)
+            if sym is None:
+                continue
+            try:
+                await self._load_ticker(sym.cross_symbol_name)
+            except AdapterError as exc:
+                logger.warning(
+                    "apex ticker warm-up failed for %s: %s", sym.cross_symbol_name, exc
+                )
+
+    async def _load_ticker(self, cross_symbol: str) -> None:
+        payload = await self._get_json(
+            f"{_BASE}{_TICKER_PATH}",
+            params={"symbol": cross_symbol},
+        )
+        rows = payload.get("data")
+        if not isinstance(rows, list) or not rows:
+            return
+        row = rows[0]
+        if not isinstance(row, dict):
+            return
+        if row.get("fundingRate") is not None:
+            hourly = Decimal(str(row["fundingRate"]))
+            self._funding_by_cross[cross_symbol] = hourly * _HOURS_PER_FUNDING_PERIOD
+        if row.get("markPrice") is not None:
+            self._mark_by_cross[cross_symbol] = Decimal(str(row["markPrice"]))
 
     async def _fetch_depth(
         self, cross_symbol: str
     ) -> tuple[OrderbookLevels, OrderbookLevels]:
-        payload = await self._request_json(
-            "GET",
+        payload = await self._get_json(
             f"{_BASE}{_DEPTH_PATH}",
             params={"symbol": cross_symbol, "limit": str(_DEPTH_LIMIT)},
         )
@@ -326,45 +299,18 @@ class ApexAdapter(BaseAdapter):
             raise AdapterFetchError(f"apex empty book for {cross_symbol}")
         return bids, asks
 
-    async def _request_json(
-        self,
-        method: str,
-        url: str,
-        *,
-        params: dict[str, str] | None = None,
+    async def _get_json(
+        self, url: str, *, params: dict[str, str] | None = None
     ) -> dict[str, Any]:
-        delay = _BACKOFF_START_S
-        last_error: Exception | None = None
-        for attempt in range(_MAX_RETRIES):
-            await self._limiter.acquire()
-            try:
-                resp = await self.http.request(method, url, params=params)
-            except httpx.TimeoutException as exc:
-                raise AdapterTimeoutError(f"apex timeout: {url}") from exc
-            except httpx.HTTPError as exc:
-                raise AdapterFetchError(f"apex HTTP error: {exc}") from exc
-
-            if resp.status_code == 429:
-                last_error = AdapterFetchError(
-                    f"apex rate limited (429) attempt={attempt + 1}"
-                )
-                logger.warning("%s; sleeping %.2fs", last_error, delay)
-                await asyncio.sleep(delay)
-                delay *= 2
-                continue
-
-            if resp.status_code >= 400:
-                raise AdapterFetchError(
-                    f"apex HTTP {resp.status_code}: {resp.text[:200]}"
-                )
-
-            try:
-                payload = resp.json()
-            except ValueError as exc:
-                raise AdapterFetchError("apex response is not JSON") from exc
-            if not isinstance(payload, dict):
-                raise AdapterFetchError(f"apex unexpected JSON type: {type(payload)}")
-            return payload
-
-        assert last_error is not None
-        raise last_error
+        payload = await request_json(
+            self.http,
+            "GET",
+            url,
+            venue=self.venue,
+            limiter=self._limiter,
+            params=params,
+            retry_statuses=frozenset({429}),
+        )
+        if not isinstance(payload, dict):
+            raise AdapterFetchError(f"apex unexpected JSON type: {type(payload)}")
+        return payload
