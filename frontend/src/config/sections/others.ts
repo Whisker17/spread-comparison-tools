@@ -172,7 +172,7 @@ export const othersSection: SectionConfig = {
 
 function defaultInstrumentType(
   venueClass: VenueClass | undefined,
-): string | undefined {
+): "spot" | "perp" | undefined {
   if (venueClass === "perp_dex") return "perp";
   if (venueClass === "cex") return "spot";
   return undefined;
@@ -203,10 +203,9 @@ export function buildVenueLabels(
     const display = meta?.displayName ?? slug;
     const quote = meta?.quoteCurrency;
     const venueClass = meta?.venueClass;
-    let instrument: string | undefined;
+    let instrument: "spot" | "perp" | undefined;
     if (venueClass === "cex" || venueClass === "perp_dex") {
-      instrument =
-        options.instrument ?? defaultInstrumentType(venueClass) ?? undefined;
+      instrument = options.instrument ?? defaultInstrumentType(venueClass);
     }
 
     const parts: string[] = [display];

@@ -7,7 +7,7 @@
  */
 
 import { Info, RefreshCw } from "lucide-react";
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, useState } from "react";
 
 import { SnapshotSummary } from "@/components/SnapshotSummary";
 import { SpreadMatrix } from "@/components/SpreadMatrix";
@@ -47,8 +47,6 @@ export type AssetSpreadBlockProps = {
    * Defaults to a generic multi-venue line.
    */
   subtitle?: string;
-  /** Static caveat / badge text under the title (e.g. coverage note). */
-  caveat?: ReactNode;
   /**
    * When true, after quotes load, surface a venue_symbol contract note
    * (scaled memes). Uses Quote.venue_symbol only — no multiplier parsing.
@@ -75,7 +73,6 @@ export function AssetSpreadBlock({
   summaryVenueLabels,
   orderbookVenues: orderbookVenuesProp,
   subtitle,
-  caveat,
   showVenueSymbolNote = false,
   venueDisplayNames,
   instrumentType,
@@ -171,14 +168,6 @@ export function AssetSpreadBlock({
             ) : null}
           </div>
           <p className="mt-0.5 text-xs text-zinc-500">{subtitleText}</p>
-          {caveat ? (
-            <p
-              className="mt-1 text-xs text-amber-800 dark:text-amber-200/90"
-              data-testid={`asset-caveat-${asset}`}
-            >
-              {caveat}
-            </p>
-          ) : null}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex items-center gap-1 rounded-md border border-zinc-200 p-0.5 dark:border-zinc-700">
