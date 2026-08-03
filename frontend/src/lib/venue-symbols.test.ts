@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { SizeQuotePair } from "@/lib/api";
 import {
   formatVenueSymbolNote,
+  isNonTrivialVenueSymbol,
   venueSymbolsFromPairs,
 } from "@/lib/venue-symbols";
 
@@ -45,45 +46,62 @@ function pair(
 }
 
 describe("venueSymbolsFromPairs", () => {
-  it("collects first non-null venue_symbol per venue", () => {
+  it("collects first non-null venue_symbol per venue within filter", () => {
     const pairs = [
       pair("hyperliquid", "kPEPE"),
       pair("binance", "1000PEPEUSDT"),
       pair("hyperliquid", "ignored-second"),
       pair("lighter", null),
+      pair("humidifi", "should-not-appear"),
     ];
-    expect(venueSymbolsFromPairs(pairs)).toEqual({
+    expect(
+      venueSymbolsFromPairs(pairs, ["hyperliquid", "binance", "lighter"]),
+    ).toEqual({
       hyperliquid: "kPEPE",
       binance: "1000PEPEUSDT",
     });
   });
+});
 
-  it("respects an optional venue filter", () => {
-    const pairs = [
-      pair("hyperliquid", "kPEPE"),
-      pair("humidifi", "should-not-appear"),
-    ];
-    expect(venueSymbolsFromPairs(pairs, ["hyperliquid"])).toEqual({
-      hyperliquid: "kPEPE",
-    });
+describe("isNonTrivialVenueSymbol", () => {
+  it("drops bare and simple USDT labels without parsing multipliers", () => {
+    expect(isNonTrivialVenueSymbol("PEPE", "PEPE")).toBe(false);
+    expect(isNonTrivialVenueSymbol("PEPE", "PEPEUSDT")).toBe(false);
+    expect(isNonTrivialVenueSymbol("PEPE", "PEPE-USDT")).toBe(false);
+    expect(isNonTrivialVenueSymbol("PEPE", "kPEPE")).toBe(true);
+    expect(isNonTrivialVenueSymbol("PEPE", "1000PEPEUSDT")).toBe(true);
   });
 });
 
 describe("formatVenueSymbolNote", () => {
-  it("names venue contracts and 1× unit without parsing multipliers", () => {
+  it("names scaled venue contracts and 1× unit", () => {
     const note = formatVenueSymbolNote(
       "PEPE",
-      { hyperliquid: "kPEPE", binance: "1000PEPEUSDT" },
-      { hyperliquid: "Hyperliquid", binance: "Binance" },
+      {
+        hyperliquid: "kPEPE",
+        binance: "1000PEPEUSDT",
+        bybit: "PEPEUSDT",
+      },
+      {
+        hyperliquid: "Hyperliquid",
+        binance: "Binance",
+        bybit: "Bybit",
+      },
     );
     expect(note).toBe(
       "Hyperliquid quotes kPEPE contracts; Binance quotes 1000PEPEUSDT contracts; prices shown normalized to 1× PEPE.",
     );
-    // No numeric multiplier extraction — symbol string is shown as-is.
+    expect(note).not.toContain("Bybit");
     expect(note).not.toMatch(/\b1000×\b/);
   });
 
-  it("returns null when no symbols", () => {
-    expect(formatVenueSymbolNote("PEPE", {}, {})).toBeNull();
+  it("returns null when only trivial symbols", () => {
+    expect(
+      formatVenueSymbolNote(
+        "PEPE",
+        { binance: "PEPEUSDT" },
+        { binance: "Binance" },
+      ),
+    ).toBeNull();
   });
 });

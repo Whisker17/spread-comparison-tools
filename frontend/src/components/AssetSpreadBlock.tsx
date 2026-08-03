@@ -57,9 +57,16 @@ export type AssetSpreadBlockProps = {
   showVenueSymbolNote?: boolean;
   /**
    * Display names for venue_symbol note prose (slug → short name).
-   * Falls back to venueLabels / slug when omitted.
+   * Falls back to slug when omitted.
    */
   venueDisplayNames?: Readonly<Record<string, string>>;
+  /**
+   * Optional instrument_type override for `/quotes` (e.g. perp for scaled
+   * memes so CEX hits 1000× books). Default = adapter default.
+   */
+  instrumentType?: "spot" | "perp" | "amm_pool" | "prop_amm";
+  /** When false, skip polling (lazy watchlist rows). Default true. */
+  enabled?: boolean;
 };
 
 export function AssetSpreadBlock({
@@ -73,6 +80,8 @@ export function AssetSpreadBlock({
   caveat,
   showVenueSymbolNote = false,
   venueDisplayNames,
+  instrumentType,
+  enabled = true,
 }: AssetSpreadBlockProps) {
   const [sideView, setSideView] = useState<SideView>(section.defaultSideView);
 
@@ -81,7 +90,9 @@ export function AssetSpreadBlock({
     notionals: section.notionals,
     // Pin to the section venue set so we don't surface mock/other adapters.
     venues: venues.length > 0 ? venues : undefined,
+    instrument_type: instrumentType,
     refetchInterval: section.pollIntervalMs,
+    enabled,
   });
 
   const pairs = useMemo(() => query.data?.pairs ?? [], [query.data?.pairs]);
@@ -124,22 +135,19 @@ export function AssetSpreadBlock({
   }, [mid, pairs]);
 
   const contractNote = useMemo(() => {
-    if (!showVenueSymbolNote) return null;
+    if (!showVenueSymbolNote || !enabled) return null;
     const symbols = venueSymbolsFromPairs(pairs, venues);
     const names: Record<string, string> = {};
     for (const slug of venues) {
-      names[slug] =
-        venueDisplayNames?.[slug] ??
-        venueLabels[slug]?.split(" · ")[0] ??
-        slug;
+      names[slug] = venueDisplayNames?.[slug] ?? slug;
     }
     return formatVenueSymbolNote(asset, symbols, names);
   }, [
     showVenueSymbolNote,
+    enabled,
     pairs,
     venues,
     venueDisplayNames,
-    venueLabels,
     asset,
   ]);
 
@@ -206,7 +214,7 @@ export function AssetSpreadBlock({
             variant="outline"
             size="sm"
             onClick={() => void query.refetch()}
-            disabled={query.isFetching}
+            disabled={!enabled || query.isFetching}
             aria-label={`Refresh ${asset} quotes`}
           >
             <RefreshCw
@@ -261,15 +269,18 @@ export function AssetSpreadBlock({
             id: <code className="text-[10px]">{snapshotId.slice(0, 12)}…</code>
           </span>
         ) : null}
-        {pollMs ? (
+        {pollMs && enabled ? (
           <span>Auto-refresh {Math.round(pollMs / 1000)}s</span>
         ) : null}
       </div>
 
-      {query.isLoading && (
+      {!enabled && (
+        <p className="text-sm text-zinc-500">Expand to load live quotes.</p>
+      )}
+      {enabled && query.isLoading && (
         <p className="text-sm text-zinc-500">Loading {asset} quotes…</p>
       )}
-      {query.isError && (
+      {enabled && query.isError && (
         <div className="rounded-md border border-rose-300 bg-rose-50 px-3 py-2 text-sm text-rose-800 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-200">
           <p className="font-medium">Failed to load {asset} quotes</p>
           <p className="mt-0.5 text-xs opacity-90">
@@ -288,7 +299,7 @@ export function AssetSpreadBlock({
         </div>
       )}
 
-      {!query.isLoading && !query.isError && (
+      {enabled && !query.isLoading && !query.isError && (
         <>
           <SnapshotSummary
             pairs={pairs}

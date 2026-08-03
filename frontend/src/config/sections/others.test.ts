@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  OTHER_ASSET_GROUPS,
   OTHER_P0_ASSETS,
   OTHER_P1_SCALED_ASSETS,
   OTHER_P2_WATCHLIST,
   OTHER_VENUES,
   buildVenueLabels,
+  buildVenueLabelsForInstrument,
+  expandedOtherAssets,
   isOrderbookVenue,
   isScaledContractAsset,
   othersSection,
@@ -14,7 +17,7 @@ import {
 import { venuesForAsset } from "@/config/sections/helpers";
 
 describe("others section config (WHI-811)", () => {
-  it("lists the eight P0 assets then PEPE/BONK as expanded board", () => {
+  it("lists the eight P0 assets then PEPE/BONK via OTHER_ASSET_GROUPS SSOT", () => {
     expect(OTHER_P0_ASSETS).toEqual([
       "DOGE",
       "WIF",
@@ -26,10 +29,15 @@ describe("others section config (WHI-811)", () => {
       "BNB",
     ]);
     expect(OTHER_P1_SCALED_ASSETS).toEqual(["PEPE", "BONK"]);
+    expect(othersSection.assets).toEqual(expandedOtherAssets());
     expect(othersSection.assets).toEqual([
       ...OTHER_P0_ASSETS,
       ...OTHER_P1_SCALED_ASSETS,
     ]);
+    // Groups are the rendering SSOT — flat assets must match group union.
+    expect(OTHER_ASSET_GROUPS.flatMap((g) => [...g.assets])).toEqual(
+      othersSection.assets,
+    );
   });
 
   it("uses only CEX + three perp DEXes (no prop AMM venues)", () => {
@@ -58,16 +66,23 @@ describe("others section config (WHI-811)", () => {
         expect(venues).not.toContain(p);
       }
       expect(venues).toHaveLength(5);
+      // Explicit filter string that useQuotesMatrix will join for /quotes.
+      expect(venues.join(",")).toBe(
+        "binance,bybit,hyperliquid,lighter,apex",
+      );
     }
   });
 
-  it("marks PEPE/BONK as scaled-contract assets for venue_symbol notes", () => {
+  it("marks P1 group as preferPerp + venue_symbol notes", () => {
+    const p1 = OTHER_ASSET_GROUPS.find((g) => g.id === "p1");
+    expect(p1?.preferPerp).toBe(true);
+    expect(p1?.showVenueSymbolNote).toBe(true);
     expect(isScaledContractAsset("PEPE")).toBe(true);
     expect(isScaledContractAsset("bonk")).toBe(true);
     expect(isScaledContractAsset("DOGE")).toBe(false);
   });
 
-  it("defines P2 watchlist with coverage caveats, default-collapsed in UI", () => {
+  it("defines P2 watchlist with coverage caveats outside section.assets", () => {
     expect(OTHER_P2_WATCHLIST.map((w) => w.id)).toEqual([
       "JUP",
       "AERO",
@@ -76,20 +91,22 @@ describe("others section config (WHI-811)", () => {
     ]);
     for (const row of OTHER_P2_WATCHLIST) {
       expect(row.caveat.length).toBeGreaterThan(10);
-    }
-    // Watchlist ids are not in the expanded section.assets board.
-    for (const row of OTHER_P2_WATCHLIST) {
       expect(othersSection.assets).not.toContain(row.id);
     }
   });
 
-  it("labels CEX as spot and perp DEX as perp with quote currency", () => {
-    const labels = buildVenueLabels([...OTHER_VENUES]);
-    expect(labels.binance).toMatch(/spot/i);
-    expect(labels.binance).toMatch(/USDT/);
-    expect(labels.hyperliquid).toMatch(/perp/i);
-    expect(labels.hyperliquid).toMatch(/USDC/);
-    expect(labels.apex).toMatch(/USDT/);
+  it("labels CEX as spot by default and perp when forced", () => {
+    const spot = buildVenueLabels("DOGE", [...OTHER_VENUES]);
+    expect(spot.binance).toMatch(/spot/i);
+    expect(spot.binance).toMatch(/USDT/);
+    expect(spot.hyperliquid).toMatch(/perp/i);
+    expect(spot.hyperliquid).toMatch(/USDC/);
+    // Representation must not be appended to CEX/perp rows.
+    expect(spot.binance.split(" · ")).toHaveLength(3);
+
+    const perp = buildVenueLabelsForInstrument([...OTHER_VENUES], "perp");
+    expect(perp.binance).toMatch(/perp/i);
+    expect(perp.hyperliquid).toMatch(/perp/i);
   });
 
   it("treats all five venues as orderbook-capable", () => {
@@ -104,6 +121,9 @@ describe("others section config (WHI-811)", () => {
 
   it("summary labels include instrument type", () => {
     expect(venueSummaryLabel("binance")).toBe("Binance spot");
+    expect(venueSummaryLabel("binance", { instrument: "perp" })).toBe(
+      "Binance perp",
+    );
     expect(venueSummaryLabel("hyperliquid")).toBe("Hyperliquid perp");
   });
 });

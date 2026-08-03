@@ -11,14 +11,13 @@ import type { SizeQuotePair } from "@/lib/api";
 /** First non-null venue_symbol per venue from quote pairs. */
 export function venueSymbolsFromPairs(
   pairs: readonly SizeQuotePair[],
-  venues?: readonly string[],
+  venues: readonly string[],
 ): Record<string, string> {
-  const allowed =
-    venues && venues.length > 0 ? new Set(venues) : null;
+  const allowed = new Set(venues);
   const out: Record<string, string> = {};
 
   for (const pair of pairs) {
-    if (allowed && !allowed.has(pair.venue)) continue;
+    if (!allowed.has(pair.venue)) continue;
     if (out[pair.venue]) continue;
     const q = pair.buy ?? pair.sell;
     const sym = q?.venue_symbol;
@@ -30,16 +29,37 @@ export function venueSymbolsFromPairs(
 }
 
 /**
+ * Drop trivial unscaled wire labels (bare ASSET / ASSETUSDT / ASSET-USDT).
+ * Full-string equality only — does not parse a numeric multiplier.
+ */
+export function isNonTrivialVenueSymbol(
+  asset: string,
+  venueSymbol: string,
+): boolean {
+  const a = asset.toUpperCase();
+  const s = venueSymbol.toUpperCase();
+  if (s === a) return false;
+  if (s === `${a}USDT`) return false;
+  if (s === `${a}-USDT`) return false;
+  if (s === `${a}USDC`) return false;
+  return true;
+}
+
+/**
  * Build prose like:
- * "Hyperliquid quotes kPEPE contracts; Binance quotes 1000PEPEUSDT;
+ * "Hyperliquid quotes kPEPE contracts; Binance quotes 1000PEPEUSDT contracts;
  * prices shown normalized to 1× PEPE."
+ *
+ * Only includes non-trivial venue_symbol values (scaled / prefixed contracts).
  */
 export function formatVenueSymbolNote(
   asset: string,
   symbolsByVenue: Readonly<Record<string, string>>,
   venueDisplayNames: Readonly<Record<string, string>>,
 ): string | null {
-  const entries = Object.entries(symbolsByVenue);
+  const entries = Object.entries(symbolsByVenue).filter(([, sym]) =>
+    isNonTrivialVenueSymbol(asset, sym),
+  );
   if (entries.length === 0) return null;
 
   const clauses = entries.map(([slug, sym]) => {
