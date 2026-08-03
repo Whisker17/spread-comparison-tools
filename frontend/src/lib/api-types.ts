@@ -101,6 +101,49 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/simulate/pairs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List valid simulate pair legs
+         * @description Return tradeable stables and catalogued assets for pair construction.
+         *
+         *     Discovery only — does not change ``POST /simulate`` validation. Clients
+         *     should not hardcode USDC/USDT; this list is the SSOT (WHI-833).
+         */
+        get: operations["get_simulate_pairs_simulate_pairs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/simulate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post Simulate
+         * @description Fan out a free-form pair trade to adapters; rank by expected output.
+         */
+        post: operations["post_simulate_simulate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -355,6 +398,145 @@ export interface components {
             sources_detail?: string[] | null;
         };
         /**
+         * SimulatePairErrorDetail
+         * @description Structured 422 body for pair validation failures (WHI-814 / WHI-815 client).
+         */
+        SimulatePairErrorDetail: {
+            /** Message */
+            message: string;
+            /**
+             * Reason
+             * @enum {string}
+             */
+            reason: "unknown_asset" | "cross_pair";
+        };
+        /**
+         * SimulatePairsResponse
+         * @description ``GET /simulate/pairs`` — valid legs for building a simulate pair (WHI-833).
+         *
+         *     Contract for WHI-815: clients form pairs as (one of ``stables``) ×
+         *     (one of ``assets``), either direction. Exactly one leg must be a tradeable
+         *     stable; ``USD`` is never listed (peg-only, not tradeable).
+         */
+        SimulatePairsResponse: {
+            /**
+             * Stables
+             * @description Tradeable USD stablecoin symbols accepted as a pair leg (no USD).
+             */
+            stables: string[];
+            /**
+             * Assets
+             * @description Catalogued non-stable logical assets for the other leg.
+             */
+            assets: string[];
+        };
+        /**
+         * SimulateRequest
+         * @description ``POST /simulate`` body: sell/buy assets and amount in sell-asset units.
+         */
+        SimulateRequest: {
+            /**
+             * Sell Asset
+             * @description Asset the user sells, e.g. SOL or USDC
+             */
+            sell_asset: string;
+            /**
+             * Buy Asset
+             * @description Asset the user receives, e.g. USDC or SOL
+             */
+            buy_asset: string;
+            /**
+             * Amount
+             * @description Quantity of sell_asset (free-form; not snapped to notional tiers)
+             */
+            amount: number | string;
+            /**
+             * Venues
+             * @description Optional venue slug filter; default = all registered adapters
+             */
+            venues?: string[] | null;
+            /**
+             * Instrument Type
+             * @description Override adapter default instrument type when the class supports it
+             */
+            instrument_type?: ("spot" | "perp" | "amm_pool" | "prop_amm") | null;
+        };
+        /**
+         * SimulateResponse
+         * @description ``POST /simulate`` payload — contract for WHI-815.
+         */
+        SimulateResponse: {
+            /** Snapshot Id */
+            snapshot_id: string;
+            /** Sell Asset */
+            sell_asset: string;
+            /** Buy Asset */
+            buy_asset: string;
+            /** Amount */
+            amount: string;
+            /**
+             * Asset
+             * @description Non-stable leg passed to adapters
+             */
+            asset: string;
+            /**
+             * Side
+             * @description Adapter side: sell when selling non-stable, buy otherwise
+             * @enum {string}
+             */
+            side: "buy" | "sell";
+            /** Notional Usd */
+            notional_usd: string;
+            mid: components["schemas"]["ReferenceMid"];
+            /** Rows */
+            rows: components["schemas"]["SimulateRowResponse"][];
+        };
+        /**
+         * SimulateRowResponse
+         * @description One ranked venue row in the simulate response.
+         */
+        SimulateRowResponse: {
+            /** Venue */
+            venue: string;
+            /** Venue Symbol */
+            venue_symbol?: string | null;
+            /**
+             * Instrument Type
+             * @enum {string}
+             */
+            instrument_type: "spot" | "perp" | "amm_pool" | "prop_amm";
+            /** Expected Output */
+            expected_output?: string | null;
+            /** Effective Price */
+            effective_price?: string | null;
+            /** Spread Bps */
+            spread_bps?: string | null;
+            fee_breakdown: components["schemas"]["FeeBreakdown"];
+            /** Total Cost Bps */
+            total_cost_bps?: string | null;
+            /**
+             * Timestamp
+             * Format: date-time
+             */
+            timestamp: string;
+            /** Status */
+            status: ("ok" | "no_quote" | "insufficient_liquidity" | "unsupported_asset" | "error") | "not_supported";
+            /**
+             * Best
+             * @default false
+             */
+            best: boolean;
+            /** Error Code */
+            error_code?: string | null;
+            /** Error Message */
+            error_message?: string | null;
+            /**
+             * Mid Stale
+             * @default false
+             */
+            mid_stale: boolean;
+        };
+        /**
          * SizeQuotePair
          * @description Buy+sell pair at one size for one venue (WHI-799 §6.4; aggregator synthesizes).
          */
@@ -586,6 +768,73 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["FeeSchedule"][];
                 };
+            };
+        };
+    };
+    get_simulate_pairs_simulate_pairs_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SimulatePairsResponse"];
+                };
+            };
+        };
+    };
+    post_simulate_simulate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SimulateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SimulateResponse"];
+                };
+            };
+            /** @description Pair validation or request body error. Pair failures use SimulatePairErrorDetail ({message, reason}); pydantic body validation uses the default HTTPValidationError shape. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SimulatePairErrorDetail"];
+                };
+            };
+            /** @description Per-client rate limit for on-demand simulation */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Reference mid unavailable or simulator not initialized */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
