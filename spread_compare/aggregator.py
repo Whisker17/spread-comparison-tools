@@ -44,22 +44,33 @@ logger = logging.getLogger(__name__)
 _ORDERBOOK_CLASSES: frozenset[VenueClass] = frozenset({"cex", "perp_dex"})
 
 # instrument_type overrides that each venue class can honor (WHI-799 §7).
-_CLASS_INSTRUMENTS: dict[VenueClass, frozenset[InstrumentType]] = {
+# Public so simulator (WHI-814) shares the same map — do not fork.
+CLASS_INSTRUMENTS: dict[VenueClass, frozenset[InstrumentType]] = {
     "cex": frozenset({"spot", "perp"}),
     "perp_dex": frozenset({"perp"}),
     "amm_dex": frozenset({"amm_pool"}),
     "prop_amm": frozenset({"prop_amm"}),
 }
+# Back-compat alias for any external imports of the private name.
+_CLASS_INSTRUMENTS = CLASS_INSTRUMENTS
+
+
+def effective_instrument_type(
+    venue_class: VenueClass,
+    requested: InstrumentType | None,
+) -> InstrumentType:
+    """Apply filter only when the venue class can serve that instrument type."""
+    if requested is not None and requested in CLASS_INSTRUMENTS[venue_class]:
+        return requested
+    return default_instrument_type(venue_class)
 
 
 def _effective_instrument_type(
     venue_class: VenueClass,
     requested: InstrumentType | None,
 ) -> InstrumentType:
-    """Apply filter only when the venue class can serve that instrument type."""
-    if requested is not None and requested in _CLASS_INSTRUMENTS[venue_class]:
-        return requested
-    return default_instrument_type(venue_class)
+    """Deprecated private alias — prefer :func:`effective_instrument_type`."""
+    return effective_instrument_type(venue_class, requested)
 
 
 def _append_raw_ref(existing: str | None, tag: str) -> str:
@@ -153,6 +164,76 @@ def error_quote(
         error_code=error_code,
         error_message=error_message,
     )
+
+
+async def quote_with_timeout(
+    adapter: VenueAdapter,
+    *,
+    asset: str,
+    side: Side,
+    notional_usd: Decimal,
+    mid: ReferenceMid,
+    instrument_type: InstrumentType,
+    timeout: float,
+    log_tag: str = "",
+) -> Quote:
+    """Call ``get_quote`` with a per-venue timeout; degrade to ``status=error``.
+
+    Shared by :class:`QuoteAggregator` and :class:`~spread_compare.simulator.TradeSimulator`.
+    """
+    suffix = f" {log_tag}" if log_tag else ""
+    try:
+        async with asyncio.timeout(timeout):
+            return await adapter.get_quote(
+                asset,
+                side,
+                notional_usd,
+                mid=mid,
+                instrument_type=instrument_type,
+            )
+    except TimeoutError:
+        logger.warning(
+            "venue %s get_quote timed out after %ss (%s %s)%s",
+            adapter.venue,
+            timeout,
+            side,
+            asset,
+            suffix,
+        )
+        return error_quote(
+            mid=mid,
+            venue=adapter.venue,
+            asset=asset,
+            side=side,
+            notional_usd=notional_usd,
+            instrument_type=instrument_type,
+            error_code="timeout",
+            error_message=f"get_quote timed out after {timeout}s",
+        )
+    except AdapterError as exc:
+        logger.warning("venue %s get_quote error%s: %s", adapter.venue, suffix, exc)
+        return error_quote(
+            mid=mid,
+            venue=adapter.venue,
+            asset=asset,
+            side=side,
+            notional_usd=notional_usd,
+            instrument_type=instrument_type,
+            error_code="adapter_error",
+            error_message=str(exc),
+        )
+    except Exception as exc:  # noqa: BLE001 — degrade per venue, never whole package
+        logger.exception("venue %s get_quote unexpected error%s", adapter.venue, suffix)
+        return error_quote(
+            mid=mid,
+            venue=adapter.venue,
+            asset=asset,
+            side=side,
+            notional_usd=notional_usd,
+            instrument_type=instrument_type,
+            error_code="adapter_error",
+            error_message=f"{type(exc).__name__}: {exc}",
+        )
 
 
 def apply_mid_stale(quote: Quote, *, stale_threshold_sec: float) -> Quote:
@@ -442,57 +523,15 @@ class QuoteAggregator:
         instrument_type: InstrumentType,
         timeout: float,
     ) -> Quote:
-        try:
-            async with asyncio.timeout(timeout):
-                return await adapter.get_quote(
-                    asset,
-                    side,
-                    notional_usd,
-                    mid=mid,
-                    instrument_type=instrument_type,
-                )
-        except TimeoutError:
-            logger.warning(
-                "venue %s get_quote timed out after %ss (%s %s)",
-                adapter.venue,
-                timeout,
-                side,
-                asset,
-            )
-            return error_quote(
-                mid=mid,
-                venue=adapter.venue,
-                asset=asset,
-                side=side,
-                notional_usd=notional_usd,
-                instrument_type=instrument_type,
-                error_code="timeout",
-                error_message=f"get_quote timed out after {timeout}s",
-            )
-        except AdapterError as exc:
-            logger.warning("venue %s get_quote error: %s", adapter.venue, exc)
-            return error_quote(
-                mid=mid,
-                venue=adapter.venue,
-                asset=asset,
-                side=side,
-                notional_usd=notional_usd,
-                instrument_type=instrument_type,
-                error_code="adapter_error",
-                error_message=str(exc),
-            )
-        except Exception as exc:  # noqa: BLE001 — degrade per venue, never whole package
-            logger.exception("venue %s get_quote unexpected error", adapter.venue)
-            return error_quote(
-                mid=mid,
-                venue=adapter.venue,
-                asset=asset,
-                side=side,
-                notional_usd=notional_usd,
-                instrument_type=instrument_type,
-                error_code="adapter_error",
-                error_message=f"{type(exc).__name__}: {exc}",
-            )
+        return await quote_with_timeout(
+            adapter,
+            asset=asset,
+            side=side,
+            notional_usd=notional_usd,
+            mid=mid,
+            instrument_type=instrument_type,
+            timeout=timeout,
+        )
 
     async def _tob_with_timeout(
         self,

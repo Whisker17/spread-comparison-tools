@@ -10,18 +10,18 @@ import asyncio
 import logging
 import uuid
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Literal
 
-from spread_compare.adapters.base import AdapterError, VenueAdapter, default_instrument_type
 from spread_compare.adapters.registry import get as registry_get
 from spread_compare.adapters.registry import list_venues
 from spread_compare.aggregator import (
     UnknownVenueError,
     apply_mid_stale,
-    error_quote,
+    effective_instrument_type,
+    quote_with_timeout,
 )
 from spread_compare.assets import get_asset, is_usd_stable
 from spread_compare.mids import MidService
@@ -31,28 +31,26 @@ from spread_compare.models import (
     Quote,
     ReferenceMid,
     Side,
-    VenueClass,
+    SimulateRowStatus,
 )
 from spread_compare.settings import AggregatorSettings, MidSettings, load_aggregator_settings
 
 logger = logging.getLogger(__name__)
 
-# Row status extends QuoteStatus with an explicit "listed but cannot trade" mark.
-SimulateRowStatus = Literal[
-    "ok",
-    "no_quote",
-    "insufficient_liquidity",
-    "unsupported_asset",
-    "not_supported",
-    "error",
+__all__ = [
+    "InvalidSimulateAmountError",
+    "InvalidSimulatePairError",
+    "ResolvedPair",
+    "SimulatePackage",
+    "SimulateRow",
+    "SimulateRowStatus",
+    "SimulatorError",
+    "TradeSimulator",
+    "amount_to_notional_usd",
+    "expected_output_from_quote",
+    "rank_and_flag_best",
+    "resolve_simulate_pair",
 ]
-
-_CLASS_INSTRUMENTS: dict[VenueClass, frozenset[InstrumentType]] = {
-    "cex": frozenset({"spot", "perp"}),
-    "perp_dex": frozenset({"perp"}),
-    "amm_dex": frozenset({"amm_pool"}),
-    "prop_amm": frozenset({"prop_amm"}),
-}
 
 
 class SimulatorError(Exception):
@@ -196,17 +194,22 @@ def expected_output_from_quote(quote: Quote, *, side: Side) -> Decimal | None:
     """Derive expected buy-leg units from an ok Quote (WHI-814 direction convention).
 
     * ``side=sell`` (selling non-stable): stablecoin out = ``qty_base × effective_price``
-    * ``side=buy`` (buying non-stable): base out = ``qty_base``
+    * ``side=buy`` (buying non-stable): base out = ``notional_usd / effective_price``
+
+    Buy uses notional/price (not mid-sized ``qty_base``) so orderbook venues with
+    ``qty_method=base_from_mid`` still differentiate on execution price when ranked.
 
     Non-ok quotes return None. bps are never recomputed here.
     """
     if quote.status != "ok":
         return None
-    if quote.qty_base is None or quote.effective_price is None:
+    if quote.effective_price is None or quote.effective_price <= 0:
         return None
     if side == "sell":
+        if quote.qty_base is None:
+            return None
         return quote.qty_base * quote.effective_price
-    return quote.qty_base
+    return quote.notional_usd / quote.effective_price
 
 
 def _empty_fee_breakdown() -> FeeBreakdown:
@@ -218,15 +221,6 @@ def _empty_fee_breakdown() -> FeeBreakdown:
         gas_unknown=False,
         explicit_fee_bps=None,
     )
-
-
-def _effective_instrument_type(
-    venue_class: VenueClass,
-    requested: InstrumentType | None,
-) -> InstrumentType:
-    if requested is not None and requested in _CLASS_INSTRUMENTS[venue_class]:
-        return requested
-    return default_instrument_type(venue_class)
 
 
 def _row_from_quote(quote: Quote, *, side: Side, best: bool = False) -> SimulateRow:
@@ -255,7 +249,6 @@ def _not_supported_row(
     venue: str,
     asset: str,
     instrument_type: InstrumentType,
-    mid: ReferenceMid,
 ) -> SimulateRow:
     now = datetime.now(tz=UTC)
     return SimulateRow(
@@ -295,31 +288,10 @@ def rank_and_flag_best(rows: list[SimulateRow]) -> list[SimulateRow]:
             best_idx = i
             break
 
-    flagged: list[SimulateRow] = []
-    for i, row in enumerate(ordered):
-        is_best = best_idx is not None and i == best_idx
-        if row.best == is_best:
-            flagged.append(row)
-        else:
-            flagged.append(
-                SimulateRow(
-                    venue=row.venue,
-                    venue_symbol=row.venue_symbol,
-                    instrument_type=row.instrument_type,
-                    expected_output=row.expected_output,
-                    effective_price=row.effective_price,
-                    spread_bps=row.spread_bps,
-                    fee_breakdown=row.fee_breakdown,
-                    total_cost_bps=row.total_cost_bps,
-                    timestamp=row.timestamp,
-                    status=row.status,
-                    best=is_best,
-                    error_code=row.error_code,
-                    error_message=row.error_message,
-                    mid_stale=row.mid_stale,
-                )
-            )
-    return flagged
+    return [
+        replace(row, best=(best_idx is not None and i == best_idx))
+        for i, row in enumerate(ordered)
+    ]
 
 
 class TradeSimulator:
@@ -370,6 +342,7 @@ class TradeSimulator:
         venue_slugs = self._resolve_venues(venues)
         snap = snapshot_id or str(uuid.uuid4())
 
+        # Same mid-resolution budget as QuoteAggregator.collect (WHI-807).
         mid_timeout = max(self._agg.venue_timeout_sec * 4, 10.0)
         try:
             async with asyncio.timeout(mid_timeout):
@@ -430,17 +403,16 @@ class TradeSimulator:
         instrument_type: InstrumentType | None,
     ) -> SimulateRow:
         adapter = registry_get(slug)
-        itype = _effective_instrument_type(adapter.venue_class, instrument_type)
+        itype = effective_instrument_type(adapter.venue_class, instrument_type)
         supported = {a.upper() for a in adapter.supported_assets(instrument_type=itype)}
         if pair.asset not in supported:
             return _not_supported_row(
                 venue=slug,
                 asset=pair.asset,
                 instrument_type=itype,
-                mid=mid,
             )
 
-        quote = await self._quote_with_timeout(
+        quote = await quote_with_timeout(
             adapter,
             asset=pair.asset,
             side=pair.side,
@@ -448,69 +420,7 @@ class TradeSimulator:
             mid=mid,
             instrument_type=itype,
             timeout=self._agg.venue_timeout_sec,
+            log_tag="[simulate]",
         )
         quote = apply_mid_stale(quote, stale_threshold_sec=self._mid_settings.stale_threshold_sec)
         return _row_from_quote(quote, side=pair.side)
-
-    async def _quote_with_timeout(
-        self,
-        adapter: VenueAdapter,
-        *,
-        asset: str,
-        side: Side,
-        notional_usd: Decimal,
-        mid: ReferenceMid,
-        instrument_type: InstrumentType,
-        timeout: float,
-    ) -> Quote:
-        try:
-            async with asyncio.timeout(timeout):
-                return await adapter.get_quote(
-                    asset,
-                    side,
-                    notional_usd,
-                    mid=mid,
-                    instrument_type=instrument_type,
-                )
-        except TimeoutError:
-            logger.warning(
-                "venue %s get_quote timed out after %ss (%s %s) [simulate]",
-                adapter.venue,
-                timeout,
-                side,
-                asset,
-            )
-            return error_quote(
-                mid=mid,
-                venue=adapter.venue,
-                asset=asset,
-                side=side,
-                notional_usd=notional_usd,
-                instrument_type=instrument_type,
-                error_code="timeout",
-                error_message=f"get_quote timed out after {timeout}s",
-            )
-        except AdapterError as exc:
-            logger.warning("venue %s get_quote error [simulate]: %s", adapter.venue, exc)
-            return error_quote(
-                mid=mid,
-                venue=adapter.venue,
-                asset=asset,
-                side=side,
-                notional_usd=notional_usd,
-                instrument_type=instrument_type,
-                error_code="adapter_error",
-                error_message=str(exc),
-            )
-        except Exception as exc:  # noqa: BLE001 — degrade per venue, never whole package
-            logger.exception("venue %s get_quote unexpected error [simulate]", adapter.venue)
-            return error_quote(
-                mid=mid,
-                venue=adapter.venue,
-                asset=asset,
-                side=side,
-                notional_usd=notional_usd,
-                instrument_type=instrument_type,
-                error_code="adapter_error",
-                error_message=f"{type(exc).__name__}: {exc}",
-            )

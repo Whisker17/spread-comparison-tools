@@ -12,14 +12,19 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validato
 
 from spread_compare.aggregator import UnknownVenueError
 from spread_compare.mids import MidResolutionError
-from spread_compare.models import FeeBreakdown, InstrumentType, ReferenceMid, Side
+from spread_compare.models import (
+    FeeBreakdown,
+    InstrumentType,
+    ReferenceMid,
+    Side,
+    SimulateRowStatus,
+)
 from spread_compare.settings import ApiSettings, load_api_settings
 from spread_compare.simulator import (
     InvalidSimulateAmountError,
     InvalidSimulatePairError,
     SimulatePackage,
     SimulateRow,
-    SimulateRowStatus,
     TradeSimulator,
 )
 
@@ -173,8 +178,7 @@ def _client_key(request: Request) -> str:
 def _get_rate_guard(request: Request) -> ClientRateGuard:
     guard = getattr(request.app.state, "simulate_rate_guard", None)
     if guard is None:
-        # Tests / partial app construction: no-op guard.
-        return ClientRateGuard(0.0)
+        raise HTTPException(status_code=503, detail="simulate rate guard not initialized")
     return guard  # type: ignore[no-any-return]
 
 
@@ -200,7 +204,11 @@ async def post_simulate(request: Request, body: SimulateRequest) -> SimulateResp
             instrument_type=body.instrument_type,
         )
     except InvalidSimulatePairError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+        # Structured detail so clients can branch without prose-matching (WHI-814).
+        raise HTTPException(
+            status_code=422,
+            detail={"message": str(exc), "reason": exc.reason},
+        ) from exc
     except InvalidSimulateAmountError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except UnknownVenueError as exc:

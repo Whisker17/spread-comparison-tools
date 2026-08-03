@@ -23,6 +23,15 @@ QuoteStatus = Literal[
     "unsupported_asset",
     "error",
 ]
+# /simulate row status: QuoteStatus plus "listed but cannot trade" (WHI-814).
+SimulateRowStatus = Literal[
+    "ok",
+    "no_quote",
+    "insufficient_liquidity",
+    "unsupported_asset",
+    "not_supported",
+    "error",
+]
 InstrumentType = Literal["spot", "perp", "amm_pool", "prop_amm"]
 Side = Literal["buy", "sell"]
 VenueClass = Literal["cex", "perp_dex", "amm_dex", "prop_amm"]

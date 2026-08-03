@@ -89,7 +89,10 @@ def test_simulate_happy_path_buy(client: TestClient) -> None:
     assert Decimal(body["notional_usd"]) == Decimal("10000")
     row = body["rows"][0]
     assert row["status"] == "ok"
-    assert Decimal(row["expected_output"]) == Decimal("0.1")
+    assert row["effective_price"] is not None
+    assert Decimal(row["expected_output"]) == (
+        Decimal("10000") / Decimal(row["effective_price"])
+    )
 
 
 def test_simulate_cross_pair_422(client: TestClient) -> None:
@@ -100,9 +103,11 @@ def test_simulate_cross_pair_422(client: TestClient) -> None:
         json={"sell_asset": "WETH", "buy_asset": "cbBTC", "amount": "1"},
     )
     assert resp.status_code == 422
-    detail = resp.json()["detail"].lower()
-    assert "cross pair" in detail or "non-stable" in detail
-    assert "unknown asset" not in detail
+    detail = resp.json()["detail"]
+    assert isinstance(detail, dict)
+    assert detail["reason"] == "cross_pair"
+    assert "cross pair" in detail["message"].lower() or "non-stable" in detail["message"].lower()
+    assert "unknown asset" not in detail["message"].lower()
     resolve.assert_not_called()
 
 
@@ -114,7 +119,10 @@ def test_simulate_unknown_asset_422(client: TestClient) -> None:
         json={"sell_asset": "NOTREAL", "buy_asset": "USDC", "amount": "1"},
     )
     assert resp.status_code == 422
-    assert "unknown asset" in resp.json()["detail"].lower()
+    detail = resp.json()["detail"]
+    assert isinstance(detail, dict)
+    assert detail["reason"] == "unknown_asset"
+    assert "unknown asset" in detail["message"].lower()
     resolve.assert_not_called()
 
 

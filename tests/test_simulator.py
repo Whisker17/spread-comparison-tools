@@ -133,8 +133,10 @@ def test_expected_output_sell_and_buy_inverted() -> None:
     buy_q = sell_q.model_copy(
         update={"side": "buy", "effective_price": Decimal("100044")}
     )
-    # Buying: expected base out is qty_base.
-    assert expected_output_from_quote(buy_q, side="buy") == Decimal("0.1")
+    # Buying: base out = notional / effective_price (not mid-sized qty_base).
+    assert expected_output_from_quote(buy_q, side="buy") == (
+        Decimal("10000") / Decimal("100044")
+    )
 
 
 def test_rank_gas_unknown_high_output_not_best() -> None:
@@ -210,9 +212,9 @@ async def test_simulate_both_directions_mock() -> None:
     assert buy_pkg.notional_usd == Decimal("10000")
     buy_row = next(r for r in buy_pkg.rows if r.venue == "mock")
     assert buy_row.status == "ok"
-    assert buy_row.expected_output == Decimal("0.1")  # qty_base
-    # Price semantics inverted vs sell.
     assert buy_row.effective_price is not None
+    assert buy_row.expected_output == Decimal("10000") / buy_row.effective_price
+    # Price semantics inverted vs sell.
     assert sell_row.effective_price is not None
     assert buy_row.effective_price > sell_row.effective_price
 
