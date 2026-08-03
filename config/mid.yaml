@@ -1,0 +1,13 @@
+# Reference-mid service (WHI-799 §3.2 / WHI-807).
+# Defaults are **unvalidated** pending docs/DESIGN.md §2 — engineering starting points only.
+
+force_pyth: false
+stale_threshold_sec: 5
+cache_max_age_sec: 30
+
+# Pyth price-feed IDs (Hermes). Used for P3 and when force_pyth is true.
+# https://pyth.network/developers/price-feed-ids
+pyth_feed_ids:
+  BTC: "e62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43"
+  ETH: "ff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace"
+  SOL: "ef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d"

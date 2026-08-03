@@ -19,39 +19,56 @@ class VenueInfo:
     slug: str
     display_name: str
     venue_class: VenueClass
+    # Settlement / deployment chain when single-chain; None for multi-chain CEX/perp.
+    chain: str | None = None
     notes: str = ""
 
 
-# Exact table from docs/research/WHI-799-spread-fee-data-model.md §6.5.
+# Exact table from docs/research/WHI-799-spread-fee-data-model.md §6.5 (+ chain for FE).
 _VENUE_ROWS: Final[tuple[VenueInfo, ...]] = (
-    VenueInfo("binance", "Binance", "cex"),
-    VenueInfo("bybit", "Bybit", "cex"),
-    VenueInfo("hyperliquid", "Hyperliquid", "perp_dex"),
-    VenueInfo("lighter", "Lighter", "perp_dex"),
-    VenueInfo("apex", "ApeX", "perp_dex"),
-    VenueInfo("uniswap_eth", "Uniswap (Ethereum)", "amm_dex"),
-    VenueInfo("aerodrome_base", "Aerodrome (Base)", "amm_dex"),
-    VenueInfo("pancakeswap_bsc", "PancakeSwap (BSC)", "amm_dex"),
-    VenueInfo("humidifi", "HumidiFi", "prop_amm", "Solana-only; Jupiter dexes=HumidiFi"),
+    VenueInfo("binance", "Binance", "cex", chain=None),
+    VenueInfo("bybit", "Bybit", "cex", chain=None),
+    VenueInfo("hyperliquid", "Hyperliquid", "perp_dex", chain="hyperliquid"),
+    VenueInfo("lighter", "Lighter", "perp_dex", chain="lighter"),
+    VenueInfo("apex", "ApeX", "perp_dex", chain="apex"),
+    VenueInfo("uniswap_eth", "Uniswap (Ethereum)", "amm_dex", chain="ethereum"),
+    VenueInfo("aerodrome_base", "Aerodrome (Base)", "amm_dex", chain="base"),
+    VenueInfo("pancakeswap_bsc", "PancakeSwap (BSC)", "amm_dex", chain="bsc"),
+    VenueInfo(
+        "humidifi",
+        "HumidiFi",
+        "prop_amm",
+        chain="solana",
+        notes="Solana-only; Jupiter dexes=HumidiFi",
+    ),
     VenueInfo(
         "tessera_solana",
         "Tessera (Solana)",
         "prop_amm",
-        "Jupiter dexes=TesseraV (label ≠ slug)",
+        chain="solana",
+        notes="Jupiter dexes=TesseraV (label ≠ slug)",
     ),
     VenueInfo(
         "tessera_base",
         "Tessera (Base)",
         "prop_amm",
-        "KyberSwap includedSources=tessera, chain base",
+        chain="base",
+        notes="KyberSwap includedSources=tessera, chain base",
     ),
     VenueInfo(
         "tessera_bsc",
         "Tessera (BSC)",
         "prop_amm",
-        "KyberSwap includedSources=tessera, chain bsc",
+        chain="bsc",
+        notes="KyberSwap includedSources=tessera, chain bsc",
     ),
-    VenueInfo("bisonfi", "BisonFi", "prop_amm", "Solana-only; Jupiter dexes=BisonFi"),
+    VenueInfo(
+        "bisonfi",
+        "BisonFi",
+        "prop_amm",
+        chain="solana",
+        notes="Solana-only; Jupiter dexes=BisonFi",
+    ),
 )
 
 VENUES: Final[dict[str, VenueInfo]] = {v.slug: v for v in _VENUE_ROWS}

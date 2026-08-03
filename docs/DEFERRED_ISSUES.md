@@ -32,13 +32,6 @@ defines none: `docs/GIT_WORKFLOW.md` § High-risk paths), **Medium**
 
 ## Open
 
-- **`mid_stale` is never computed by adapters** (Low, WHI-801).
-  `spread_compare/models.py::Quote.mid_stale` — WHI-799 §3.2 defines
-  `mid_stale = abs(quote.timestamp - mid_timestamp) > mid.stale_threshold_sec`, but
-  computing it needs `config/mid.yaml` (still unvalidated / WHI-807). Mock leaves the
-  default `False`. Fix in WHI-807 (or a shared helper once the threshold lives in
-  typed config).
-
 - **Shared Quote assembly helper not extracted** (Low, WHI-801).
   `spread_compare/adapters/mock.py::_quote_shell` — mapping `ReferenceMid` + status
   into a §6.2-valid `Quote` is private to the mock. Real adapters (WHI-802…806) risk
@@ -64,4 +57,9 @@ defines none: `docs/GIT_WORKFLOW.md` § High-risk paths), **Medium**
 
 ## Resolved
 
-_(none yet)_
+- **`mid_stale` is never computed by adapters** (Low, WHI-801 → fixed in WHI-807).
+  Aggregator stamps `mid_stale` via `spread_compare.mids.is_mid_stale` /
+  `apply_mid_stale` using `config/mid.yaml` `stale_threshold_sec` after each
+  adapter quote is collected. Adapters may still leave the default `False`; the
+  aggregator is the SSOT for the flag on the assembled package.
+

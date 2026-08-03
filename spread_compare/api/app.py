@@ -1,4 +1,4 @@
-"""FastAPI application factory with adapter lifecycle (WHI-823)."""
+"""FastAPI application factory with adapter lifecycle (WHI-823) and quotes API (WHI-807)."""
 
 from __future__ import annotations
 
@@ -9,6 +9,10 @@ from fastapi import FastAPI
 from pydantic import BaseModel, Field
 
 from spread_compare.adapters import aclose_all, initialized_count, startup_all
+from spread_compare.aggregator import QuoteAggregator
+from spread_compare.api.quotes import router as quotes_router
+from spread_compare.mids import MidService
+from spread_compare.settings import load_aggregator_settings, load_mid_settings
 
 
 class HealthResponse(BaseModel):
@@ -21,17 +25,28 @@ class HealthResponse(BaseModel):
 
 
 @asynccontextmanager
-async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-    """Start all venue adapters on boot; close them on shutdown."""
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """Start mid service + venue adapters on boot; close them on shutdown."""
+    mid_settings = load_mid_settings()
+    agg_settings = load_aggregator_settings()
+    mid_service = MidService(mid_settings)
+    aggregator = QuoteAggregator(
+        mid_service,
+        aggregator_settings=agg_settings,
+        mid_settings=mid_settings,
+    )
+    app.state.mid_service = mid_service
+    app.state.aggregator = aggregator
     try:
         await startup_all()
         yield
     finally:
         await aclose_all()
+        await mid_service.aclose()
 
 
 def create_app() -> FastAPI:
-    """Build the ASGI app. Endpoints beyond /health land in later M2 issues."""
+    """Build the ASGI app."""
     app = FastAPI(
         title="spread-comparison-tools",
         version="0.1.0",
@@ -46,4 +61,5 @@ def create_app() -> FastAPI:
             adapters_initialized=initialized_count(),
         )
 
+    app.include_router(quotes_router)
     return app
