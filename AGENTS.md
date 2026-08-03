@@ -51,14 +51,19 @@ EVM AMM rows. M3 stocks section (WHI-810): `/stocks` P0-A bStocks BSC three-way
 (QQQB/SPCXB/NVDAB/NVDAON × Binance spot × Pancake × Tessera) + P0-B equity perps
 (TSLA/NVDA/AAPL/MSFT × five orderbook venues); US market-hours badge, mid-source
 emphasis, bStocks rebase footnote; reuses AssetSpreadBlock + summary engine.
+M3 others section (WHI-811): `/others` P0 (DOGE/WIF/XRP/SUI/LINK/AVAX/ADA/BNB)
++ P1 scaled memes (PEPE/BONK with `venue_symbol` 1× note) + P2 collapsed
+watchlist (JUP/AERO/VIRTUAL/EURC); CEX+perp only (no prop AMM requests).
 M4 fee schedules (WHI-812): `config/fees/*.yaml` + `fees.py` loader, adapters'
 `get_fees` config-backed, `GET /fees`. M3 asset catalog expansion (WHI-826): Phase 1
 stocks / equity perps / others in `assets.py`; instrument-aware `cex_symbols.CexSymbol`
 + contract multipliers; HL HIP-3 `xyz:` meta + `kPEPE`/`kBONK` scaling; PancakeSwap BSC
-bStocks tokens; `perp_symbols` shared maps.
+bStocks tokens; `perp_symbols` shared maps. M4 fees page (WHI-813): `/fees` fee-structure
+table + live cost-composition stacked bars (`costComposition` / `feesTable` pure lib +
+fixture tests).
 
-**Not implemented:** remaining venue adapters (WHI-805), collector, Others section
-page (WHI-811), fees/simulate UI. Do not assume a module exists until its issue lands.
+**Not implemented:** remaining venue adapters (WHI-805), collector, simulate UI.
+Do not assume a module exists until its issue lands.
 
 **Blocking gap:** `docs/DESIGN.md` is still mostly the empty template stub (§4.2 module
 layout is filled by WHI-801). Produce the rest via `/grill-me` + `/to-spec` — the PR
