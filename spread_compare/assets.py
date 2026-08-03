@@ -277,11 +277,6 @@ USD_STABLES: Final[frozenset[str]] = frozenset({"USDC", "USDT", "USD"})
 # Crypto blue chips use the §3.2 mid priority chain — must NOT absorb stocks/others.
 CRYPTO_BLUE_CHIPS: Final[frozenset[str]] = frozenset(a.id for a in _BLUE_CHIP_ROWS)
 
-
-def is_usd_stable(asset_id: str) -> bool:
-    """True when the symbol is a recognized USD stablecoin (case-insensitive)."""
-    return asset_id.upper() in USD_STABLES
-
 # Tokenized stocks with a CEX spot book use that book's TOB as mid (WHI-799 §3.3).
 TOKENIZED_CEX_SPOT: Final[dict[str, str]] = {
     # asset -> preferred mid source venue for spot TOB
@@ -327,3 +322,8 @@ def list_assets() -> list[AssetInfo]:
 def get_asset(asset_id: str) -> AssetInfo | None:
     """Lookup by logical id (case-insensitive)."""
     return ASSETS.get(asset_id.upper())
+
+
+def is_usd_stable(asset_id: str) -> bool:
+    """True when the symbol is a recognized USD stablecoin (case-insensitive)."""
+    return asset_id.upper() in USD_STABLES

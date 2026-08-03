@@ -334,9 +334,6 @@ class TradeSimulator:
         """
         pair = resolve_simulate_pair(sell_asset, buy_asset)
         amount_d = Decimal(amount)
-        if amount_d <= 0:
-            raise InvalidSimulateAmountError(f"amount must be positive, got {amount_d}")
-
         venue_slugs = self._resolve_venues(venues)
         snap = snapshot_id or str(uuid.uuid4())
         mid = await resolve_mid_with_budget(
@@ -345,6 +342,7 @@ class TradeSimulator:
             snapshot_id=snap,
             venue_timeout_sec=self._agg.venue_timeout_sec,
         )
+        # amount_to_notional_usd enforces amount > 0 (InvalidSimulateAmountError).
         notional = amount_to_notional_usd(amount_d, pair=pair, mid=mid.mid)
 
         raw_rows = await asyncio.gather(

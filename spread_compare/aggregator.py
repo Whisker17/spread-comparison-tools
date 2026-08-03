@@ -453,7 +453,7 @@ class QuoteAggregator:
         # Concurrent legs + TOB within a venue (each call bounded by venue_timeout).
         side_order: list[Side] = list(sides)
         quote_coros = [
-            self._quote_with_timeout(
+            quote_with_timeout(
                 adapter,
                 asset=asset,
                 side=side,
@@ -516,27 +516,6 @@ class QuoteAggregator:
             sell=sell,
             top_of_book=top_of_book,
             stale_threshold_sec=stale_threshold,
-        )
-
-    async def _quote_with_timeout(
-        self,
-        adapter: VenueAdapter,
-        *,
-        asset: str,
-        side: Side,
-        notional_usd: Decimal,
-        mid: ReferenceMid,
-        instrument_type: InstrumentType,
-        timeout: float,
-    ) -> Quote:
-        return await quote_with_timeout(
-            adapter,
-            asset=asset,
-            side=side,
-            notional_usd=notional_usd,
-            mid=mid,
-            instrument_type=instrument_type,
-            timeout=timeout,
         )
 
     async def _tob_with_timeout(

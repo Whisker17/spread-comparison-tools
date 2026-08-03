@@ -118,7 +118,7 @@ load-bearing interfaces other modules may depend on.
 - **`spread_compare/settings.py`** — typed YAML config loader (`config/mid.yaml`, `config/aggregator.yaml`, `config/api.yaml`).
 - **`spread_compare/fees.py`** — typed `config/fees/*.yaml` → `FeeSchedule` catalog; adapters + `GET /fees`.
 - **`spread_compare/mids.py`** — reference-mid service (WHI-799 §3 priority chain + cache).
-- **`spread_compare/aggregator.py`** — concurrent adapter fan-out, per-venue timeout, SizeQuotePair assembly, response cache; never recomputes bps.
+- **`spread_compare/aggregator.py`** — concurrent adapter fan-out, per-venue timeout, SizeQuotePair assembly, response cache; also hosts shared fan-out helpers (`quote_with_timeout`, `resolve_mid_with_budget`, `effective_instrument_type`) used by the simulator; never recomputes bps.
 - **`spread_compare/simulator.py`** — `POST /simulate` fan-out (WHI-814): pair validation, free-form notional, expected_output derivation, §5.2 best ranking; no response cache; never recomputes bps.
 - **`spread_compare/adapters/`** — async `VenueAdapter` + `BaseAdapter`, auto-discovery, `@register_adapter` registry with `startup_all`/`aclose_all`, `mock` + CEX (`binance`/`bybit`) + perp DEX (`perp_hyperliquid`/`perp_lighter`/`perp_apex`) + AMM DEX (`amm_uniswap`/`amm_aerodrome`/`amm_pancakeswap`) + prop AMM (`prop_jupiter`/`prop_kyberswap`), shared `_cex_common` / `_perp_common` / `_amm_common` / `_prop_common`; one module per real venue (no hand-import list).
 - **`spread_compare/api/`** — FastAPI app factory with lifespan; `/health`, `/quotes`, `/venues`, `/assets`, `/fees`, `POST /simulate`; CORS for local FE.
