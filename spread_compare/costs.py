@@ -133,3 +133,14 @@ def round_trip_total_cost_bps(
     if buy_total_cost_bps is None or sell_total_cost_bps is None:
         return None
     return _quantize_bps(buy_total_cost_bps + sell_total_cost_bps)
+
+
+def basis_bps(venue_mark: Decimal, mid: Decimal) -> Decimal:
+    """Venue mark vs reference mid in bps (WHI-799 §3.4).
+
+    ``(venue_mark - mid) / mid * 10_000``. Never fold into ``spread_bps``.
+    """
+    if mid == 0:
+        raise ValueError("mid must be non-zero")
+    return _quantize_bps((venue_mark - mid) / mid * _BPS)
+

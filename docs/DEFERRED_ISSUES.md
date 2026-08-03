@@ -37,6 +37,33 @@ defines none: `docs/GIT_WORKFLOW.md` § High-risk paths), **Medium**
   mid-routing seeds (`TOKENIZED_*`, `EQUITY_PERP_ASSETS`) but not returned by
   `/assets`. Expand with WHI-810.
 
+- **Perp adapter rate/depth/taker constants live in source, not `config/`** (Low, WHI-803).
+  `spread_compare/adapters/_perp_common.py`, `perp_*.py` — placeholders and rate floors
+  (`PLACEHOLDER_TAKER_BPS`, min intervals, depth limits) cite WHI-800 / TODO(WHI-812)
+  until `docs/DESIGN.md` §2 exists. Move into typed `config/` once that section is
+  written (same blocking gap called out in AGENTS.md Status).
+
+- **Perp `venue_mark` / funding cached at startup, not per-quote** (Medium, WHI-803).
+  HL/Lighter marks (and ApeX mark via blue-chip ticker warm-up) are populated in
+  `startup()` only. Fine for short-lived smoke processes; a long-running collector
+  (WHI-816) should refresh mark/funding on a timer or alongside each book fetch so
+  `basis_bps` stays same-snapshot (WHI-799 §3.4).
+
+- **Perp adapters do not apply lot/tick rounding** (Low, WHI-803).
+  WHI-799 §8 mentions lot/tick for perp DEX; Phase 1 walks `q_star = N/mid` raw.
+  Fix when fee/size config lands (WHI-812) or when a size-precision matrix is added.
+
+- **ApeX `funding_rate_8h` left null** (Low, WHI-803).
+  WHI-800 §4.3 documents the ticker field but not the funding period (hourly vs 8h).
+  Adapter omits the field rather than invent a conversion; WHI-812 should fill it
+  with a cited period.
+
+- **Shared Quote assembly helper not extracted** (Low, WHI-801).
+  `spread_compare/adapters/mock.py::_quote_shell` — mapping `ReferenceMid` + status
+  into a §6.2-valid `Quote` is private to the mock. Real adapters (WHI-802…806) risk
+  copy-paste drift. Promote a `build_quote(...)` (and optional mid/asset guard) into
+  `adapters/base.py` with the first real adapter PR if duplication appears.
+
 - **SizeQuotePair has no first-class TOB-error field** (Low, WHI-807).
   `spread_compare/aggregator.py::_collect_venue` — WHI-799 §6.3 says orderbook
   TOB fetch failure must not look like AMM `None`, but §6.4's `SizeQuotePair`
@@ -49,6 +76,7 @@ defines none: `docs/GIT_WORKFLOW.md` § High-risk paths), **Medium**
   TradFi index; we reuse USDT-M `premiumIndex` when the equity symbol is listed,
   else fall through to mark median. A dedicated TradFi feed (when productized)
   should replace this probe.
+
 
 - **Default HTTP timeout hardcoded on BaseAdapter** (Low, WHI-823).
   `spread_compare/adapters/base.py::_DEFAULT_HTTP_TIMEOUT` — AGENTS.md requires

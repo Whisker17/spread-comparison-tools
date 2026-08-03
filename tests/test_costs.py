@@ -75,6 +75,12 @@ def test_top_of_book_spread_bps() -> None:
     ) == Decimal("2.0000")
 
 
+def test_basis_bps() -> None:
+    from spread_compare.costs import basis_bps
+
+    assert basis_bps(Decimal("100100"), Decimal("100000")) == Decimal("10")
+
+
 def test_round_trip_helpers() -> None:
     assert round_trip_spread_bps(Decimal("4.4"), Decimal("4.4")) == Decimal("8.8000")
     assert half_spread_bps(Decimal("4.4"), Decimal("4.4")) == Decimal("4.4000")
