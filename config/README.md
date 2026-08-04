@@ -17,12 +17,16 @@ loaded into a typed, validated model at startup.
 
 Loaders:
 - `spread_compare/settings.py` — `load_mid_settings`, `load_aggregator_settings`,
-  `load_jupiter_settings`, `load_api_settings`
+  `load_jupiter_settings`, `load_api_settings`, `load_venue_settings`
 - `spread_compare/fees.py` — `get_fee_catalog` / `get_fee_schedule` (one YAML per venue)
 
 Checked-in files:
-- `mid.yaml`, `aggregator.yaml`, `jupiter.yaml`, `api.yaml` (defaults flagged
-  unvalidated pending DESIGN.md §2)
+- `mid.yaml`, `aggregator.yaml`, `jupiter.yaml`, `api.yaml`, `venues.yaml` (defaults
+  flagged unvalidated pending DESIGN.md §2)
+- `venues.yaml` — per-host venue disable list + startup-retry backoff (WHI-840).
+  Disabled slugs are omitted from `GET /venues` and never started; use this for
+  geo-blocked hosts (e.g. Binance/Bybit 451 from US IPs). Override with
+  `venues.local.yaml`.
 - `fees/<venue>.yaml` — verified venue fee schedules (WHI-812); every number cites
   `source_urls` and carries `updated_at`. Filename stem must equal `venue:`.
   Adding a slug to `venues.py` requires a matching fee file (fail-fast at startup).

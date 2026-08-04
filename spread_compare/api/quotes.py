@@ -8,6 +8,7 @@ from typing import Annotated
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
 
+from spread_compare.adapters.registry import disabled_venues
 from spread_compare.adapters.registry import get as registry_get
 from spread_compare.adapters.registry import list_venues as list_registered_adapters
 from spread_compare.aggregator import (
@@ -145,13 +146,22 @@ async def get_quotes(
 
 @router.get("/venues", response_model=list[VenueResponse])
 def get_venues() -> list[VenueResponse]:
-    """Static venue registry + whether an adapter is currently registered."""
+    """Static venue registry + whether an adapter is currently registered.
+
+    Venues disabled in ``config/venues.yaml`` are omitted entirely (WHI-840) so
+    they do not appear as quote targets and consume no fan-out budget.
+    """
     registered = set(list_registered_adapters())
+    disabled = disabled_venues()
     rows: list[VenueResponse] = []
     for info in VENUES.values():
+        if info.slug in disabled:
+            continue
         rows.append(_venue_row(info, registered))
     # Scaffold-only adapters (e.g. mock) not in WHI-799 §6.5: use adapter.venue_class.
     for slug in sorted(registered - set(VENUES)):
+        if slug in disabled:
+            continue
         adapter = registry_get(slug)
         rows.append(
             VenueResponse(

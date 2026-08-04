@@ -19,7 +19,7 @@ from typing import Literal
 
 from spread_compare.adapters.base import AdapterError, VenueAdapter, default_instrument_type
 from spread_compare.adapters.registry import get as registry_get
-from spread_compare.adapters.registry import list_venues
+from spread_compare.adapters.registry import is_available, list_venues
 from spread_compare.costs import (
     half_spread_bps,
     round_trip_spread_bps,
@@ -192,8 +192,26 @@ async def quote_with_timeout(
     """Call ``get_quote`` with a per-venue timeout; degrade to ``status=error``.
 
     Shared by :class:`QuoteAggregator` and :class:`~spread_compare.simulator.TradeSimulator`.
+    Venues that failed ``startup()`` return ``error_code=not_initialized`` (WHI-840)
+    rather than ``unsupported_asset`` from empty warm-up caches.
     """
     suffix = f" {log_tag}" if log_tag else ""
+    if not is_available(adapter.venue):
+        logger.warning(
+            "venue %s not initialized; returning not_initialized%s",
+            adapter.venue,
+            suffix,
+        )
+        return error_quote(
+            mid=mid,
+            venue=adapter.venue,
+            asset=asset,
+            side=side,
+            notional_usd=notional_usd,
+            instrument_type=instrument_type,
+            error_code="not_initialized",
+            error_message=f"{adapter.venue}: adapter startup did not complete",
+        )
     try:
         async with asyncio.timeout(timeout):
             return await adapter.get_quote(
@@ -527,6 +545,13 @@ class QuoteAggregator:
         instrument_type: InstrumentType,
         timeout: float,
     ) -> _TobOutcome:
+        if not is_available(adapter.venue):
+            return _TobOutcome(
+                book=None,
+                failed=True,
+                error_code="not_initialized",
+                error_message=f"{adapter.venue}: adapter startup did not complete",
+            )
         try:
             async with asyncio.timeout(timeout):
                 if instrument_type in ("spot", "perp"):

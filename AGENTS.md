@@ -75,6 +75,10 @@ OpenAPI client regenerated for simulate paths.
 Core timeout fix (WHI-836): shared `ratelimit.py` token bucket, config-driven
 Jupiter budget + header adaptation, concurrent AMM fee-tier probes, per-class
 venue timeouts, response-cache TTL aligned with FE poll.
+Core startup resilience (WHI-840): `startup_all` degrades transient
+`AdapterFetchError`/`AdapterTimeoutError` (keeps serving), fails fast on config
+errors; `config/venues.yaml` disable list + background retry; `/health`
+`degraded`/`unavailable_venues`; `not_initialized` quote rows for failed venues.
 
 **Not implemented:** remaining venue adapters (WHI-805), collector.
 Do not assume a module exists until its issue lands.
@@ -126,14 +130,14 @@ load-bearing interfaces other modules may depend on.
 - **`spread_compare/perp_symbols.py`** — perp-DEX logical → venue coin/base + multipliers (HL HIP-3, k-prefix, 1000×).
 - **`spread_compare/bookwalk.py`** — sole walk-the-book VWAP; CEX/perp adapters import only this.
 - **`spread_compare/costs.py`** — sole `spread_bps` / `total_cost_bps` / `basis_bps`; aggregator never recomputes.
-- **`spread_compare/settings.py`** — typed YAML config loader (`config/mid.yaml`, `config/aggregator.yaml`, `config/jupiter.yaml`, `config/api.yaml`).
+- **`spread_compare/settings.py`** — typed YAML config loader (`config/mid.yaml`, `config/aggregator.yaml`, `config/jupiter.yaml`, `config/api.yaml`, `config/venues.yaml`).
 - **`spread_compare/ratelimit.py`** — shared `AsyncRateLimiter` / `TokenBucketRateLimiter` / `RollingWindowRateLimiter` (WHI-836); adapters must not define their own.
 - **`spread_compare/fees.py`** — typed `config/fees/*.yaml` → `FeeSchedule` catalog; adapters + `GET /fees`.
 - **`spread_compare/mids.py`** — reference-mid service (WHI-799 §3 priority chain + cache).
 - **`spread_compare/aggregator.py`** — concurrent adapter fan-out, per-class timeout, SizeQuotePair assembly, response cache; also hosts shared fan-out helpers (`quote_with_timeout`, `resolve_mid_with_budget`, `effective_instrument_type`) used by the simulator; never recomputes bps.
 - **`spread_compare/simulator.py`** — `POST /simulate` fan-out (WHI-814): pair validation, free-form notional, expected_output derivation, §5.2 best ranking; no response cache; never recomputes bps.
-- **`spread_compare/adapters/`** — async `VenueAdapter` + `BaseAdapter`, auto-discovery, `@register_adapter` registry with `startup_all`/`aclose_all`, `mock` + CEX (`binance`/`bybit`) + perp DEX (`perp_hyperliquid`/`perp_lighter`/`perp_apex`) + AMM DEX (`amm_uniswap`/`amm_aerodrome`/`amm_pancakeswap`) + prop AMM (`prop_jupiter`/`prop_kyberswap`), shared `_cex_common` / `_perp_common` / `_amm_common` / `_prop_common`; one module per real venue (no hand-import list).
-- **`spread_compare/api/`** — FastAPI app factory with lifespan; `/health`, `/quotes`, `/venues`, `/assets`, `/fees`, `POST /simulate`, `GET /simulate/pairs`; CORS for local FE.
+- **`spread_compare/adapters/`** — async `VenueAdapter` + `BaseAdapter`, auto-discovery, `@register_adapter` registry with `startup_all`/`aclose_all` (WHI-840: degrade transient startup failures, disabled venues, background retry), `mock` + CEX (`binance`/`bybit`) + perp DEX (`perp_hyperliquid`/`perp_lighter`/`perp_apex`) + AMM DEX (`amm_uniswap`/`amm_aerodrome`/`amm_pancakeswap`) + prop AMM (`prop_jupiter`/`prop_kyberswap`), shared `_cex_common` / `_perp_common` / `_amm_common` / `_prop_common`; one module per real venue (no hand-import list).
+- **`spread_compare/api/`** — FastAPI app factory with lifespan; `/health` (degradation fields), `/quotes`, `/venues` (omits config-disabled), `/assets`, `/fees`, `POST /simulate`, `GET /simulate/pairs`; CORS for local FE.
 - **`frontend/`** — Next.js dashboard (WHI-808): typed API client, SpreadMatrix, section config modules, route shell; `/simulate` UI (WHI-815) via `SimulateSection` + `simulatePairs`/`simulateView` pure libs.
 - **`main.py`** — CLI: `--dry-run` validates; live serves uvicorn.
 

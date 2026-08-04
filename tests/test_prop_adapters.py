@@ -15,7 +15,7 @@ import pytest
 
 import spread_compare.adapters  # noqa: F401 — ensure self-registration
 from spread_compare.adapters import get, list_venues
-from spread_compare.adapters.base import AdapterConfigError, AdapterError
+from spread_compare.adapters.base import AdapterConfigError
 from spread_compare.adapters.prop_jupiter import (
     HumidiFiAdapter,
     JupiterPropAdapter,
@@ -133,7 +133,7 @@ async def test_jupiter_label_validation_fails_on_wrong_label() -> None:
     adapter._client = httpx.AsyncClient(
         transport=_jupiter_transport(label_map=bad_map)
     )
-    with pytest.raises(AdapterError, match="label validation failed"):
+    with pytest.raises(AdapterConfigError, match="label validation failed"):
         await adapter.startup()
     await adapter.aclose()
     _reset_jupiter_limiter_for_tests()

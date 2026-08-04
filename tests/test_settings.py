@@ -7,6 +7,7 @@ from spread_compare.settings import (
     load_api_settings,
     load_jupiter_settings,
     load_mid_settings,
+    load_venue_settings,
 )
 
 
@@ -73,3 +74,12 @@ def test_load_api_settings_cors_defaults() -> None:
     assert "http://localhost:3000" in api.cors_origins
     assert "http://127.0.0.1:3000" in api.cors_origins
     assert api.simulate_min_interval_sec == 2.0
+
+
+def test_load_venue_settings_defaults() -> None:
+    clear_settings_cache()
+    venues = load_venue_settings()
+    assert venues.disabled == []
+    assert venues.startup_retry_interval_sec == 60.0
+    assert venues.startup_retry_backoff_multiplier == 2.0
+    assert venues.startup_retry_max_interval_sec == 300.0

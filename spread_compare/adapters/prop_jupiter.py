@@ -309,7 +309,8 @@ class JupiterPropAdapter(BaseAdapter):
             return
         actual = mapping.get(self.program_id)
         if actual != self.jupiter_label:
-            raise AdapterError(
+            # Config/code bug — must fail boot, not degrade (WHI-840).
+            raise AdapterConfigError(
                 f"{self.venue}: Jupiter label validation failed — expected "
                 f"program_id={self.program_id!r} → label={self.jupiter_label!r}, "
                 f"got label={actual!r}. Wrong labels are indistinguishable from "
