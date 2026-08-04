@@ -1,6 +1,10 @@
 /**
  * Heat coloring for bps cells: lower total cost = cooler (green), higher = warmer (red).
- * Pure function of the value and the min/max among comparable cells in the same matrix.
+ *
+ * WHI-838: ranges are computed **per notional column** (not matrix-wide) so a
+ * gas-dominated $100 AMM cell (hundreds–thousands of bps) cannot flatten colour
+ * resolution on the $1k–$1M columns. Extreme values stay fully visible as numbers;
+ * only the colour mapping is local to each column.
  */
 
 import { parseDecimal } from "@/lib/format";

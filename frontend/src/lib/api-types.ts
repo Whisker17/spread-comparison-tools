@@ -676,7 +676,7 @@ export interface operations {
             query: {
                 /** @description Logical asset id, e.g. BTC */
                 asset: string;
-                /** @description USD notional; one of 1000 / 10000 / 100000 / 1000000 (WHI-799 §4.1) */
+                /** @description USD notional; one of 100 / 1000 / 10000 / 100000 / 1000000 (WHI-799 §4.1) */
                 notional: string;
                 /** @description Comma-separated venue slugs; default = all registered adapters */
                 venues?: string | null;

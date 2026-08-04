@@ -152,12 +152,37 @@ def test_non_ok_null_fields_valid() -> None:
 
 
 def test_notional_tiers_usd() -> None:
+    # Pin WHI-799 §4.1 / WHI-838 five-tier SSOT (retail $100 floor).
     assert NOTIONAL_TIERS_USD == (
+        Decimal("100"),
         Decimal("1000"),
         Decimal("10000"),
         Decimal("100000"),
         Decimal("1000000"),
     )
+
+
+def test_notional_tiers_match_frontend_mirror() -> None:
+    """Backend + frontend tier lists must stay identical (WHI-838)."""
+    import re
+    from pathlib import Path
+
+    notionals_ts = (
+        Path(__file__).resolve().parents[1]
+        / "frontend"
+        / "src"
+        / "config"
+        / "notionals.ts"
+    )
+    text = notionals_ts.read_text(encoding="utf-8")
+    # Extract string literals inside the NOTIONAL_TIERS_USD array.
+    m = re.search(
+        r"export const NOTIONAL_TIERS_USD\s*=\s*\[([\s\S]*?)\]\s*as const",
+        text,
+    )
+    assert m is not None, "could not parse frontend NOTIONAL_TIERS_USD"
+    frontend = tuple(Decimal(s) for s in re.findall(r'"(\d+)"', m.group(1)))
+    assert frontend == NOTIONAL_TIERS_USD
 
 
 def test_fee_breakdown_gas_unknown_rejects_gas_bps() -> None:

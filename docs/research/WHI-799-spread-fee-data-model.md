@@ -15,7 +15,7 @@
 
 ## 1. 结论摘要（TL;DR）
 
-1. **名义金额（notional）**固定四档：`$1_000` / `$10_000` / `$100_000` / `$1_000_000`（USD）。先用 **reference mid** 换算目标 base 数量，再 walk book / 调 quoter。
+1. **名义金额（notional）**固定五档：`$100` / `$1_000` / `$10_000` / `$100_000` / `$1_000_000`（USD）。先用 **reference mid** 换算目标 base 数量，再 walk book / 调 quoter。
 2. **Effective spread at size**（单边，bps）：
    - Buy：`spread_bps = (effective_price - mid) / mid * 10_000`
    - Sell：`spread_bps = (mid - effective_price) / mid * 10_000`
@@ -155,11 +155,12 @@ ReferenceMid {
 ### 4.1 固定 size 档位
 
 ```text
-NOTIONAL_TIERS_USD = [1_000, 10_000, 100_000, 1_000_000]
+NOTIONAL_TIERS_USD = [100, 1_000, 10_000, 100_000, 1_000_000]
 ```
 
-- API 允许子集；collector（WHI-816）必须四档都采。
+- API 允许子集；collector（WHI-816）必须五档都采。
 - `notional_usd` 与档位用 Decimal 精确相等比较。
+- `$100` is the retail-sized floor (WHI-838). At this size `gas_bps = gas_usd / notional_usd * 10_000` (§5.2) often dominates AMM total cost (e.g. $3 L1 gas → 300 bps); that is intended signal, not a formula bug. Dashboard heat colouring is **per-column** so the $100 column does not flatten resolution of larger tiers.
 
 ### 4.2 数量换算（所有 venue 统一）
 
@@ -544,6 +545,19 @@ SizeQuotePair {
 | 超时 / 上游失败 | `error` | 200 + 该 venue 错误；不整包失败 |
 | mid 不可用 | — | 整包 503/422 |
 
+#### 6.6.1 Venue minimums at the $100 tier (WHI-838)
+
+$100 sits near some venue min-order floors. **No new `QuoteStatus` value** — map honestly onto the table above:
+
+| Venue class | Expected at $100 | Status if venue refuses |
+| --- | --- | --- |
+| CEX spot/perp (`binance`, `bybit`) | Blue-chip min notional typically ≪ $100; continuous `walk_book` on L2. If depth < `q_star` (rare at this size) | `insufficient_liquidity` |
+| Perp DEX (`hyperliquid`, `lighter`, `apex`) | Min notional often ~$10; $100 generally quotable. Thin books / size filters → walk fails | `insufficient_liquidity` (or `no_quote` if market absent) |
+| AMM DEX (`uniswap_eth`, `aerodrome_base`, `pancakeswap_bsc`) | Quoter returns a price; gas dominates cost (intended). Pool missing / amount too small for pool | `no_quote` |
+| Prop AMM Solana (Jupiter) / EVM (KyberSwap) | Route-based; may return no route for illiquid wrappers or amount edge cases | `no_quote` |
+
+Adapters must **not** invent a synthetic fill for a size the venue would reject.
+
 ---
 
 ## 7. Adapter 抽象（WHI-801 直接输入）
@@ -611,7 +625,7 @@ class VenueAdapter(Protocol):
 | CEX | L2 walk `q_star`；`instrument_type` spot\|perp | 成功→`TopOfBook`；失败→raise | 默认 taker（按 instrument）；`embedded_in_price=false`；`gas_bps=0` |
 | Perp DEX | L2 walk；lot/tick；默认 `perp` | 成功→`TopOfBook`；失败→raise | 同上 + `funding_rate_8h`；可选 `venue_mark` |
 | AMM DEX | Quoter + gas | `None` | 价内嵌 LP；gas 可知则填，否则 `gas_unknown=true` |
-| Prop AMM（Solana：`humidifi` / `tessera_solana` / `bisonfi`） | Jupiter `dexes=<Label>` 净输出 | `None` | `embedded_in_price=true`；platform 0；`gas_bps=0`（Solana 交易费对四档名义均 <0.1 bps，约定忽略）；无路由 → `no_quote` |
+| Prop AMM（Solana：`humidifi` / `tessera_solana` / `bisonfi`） | Jupiter `dexes=<Label>` 净输出 | `None` | `embedded_in_price=true`；platform 0；`gas_bps=0`（Solana 交易费对五档名义均 <0.1 bps，约定忽略）；无路由 → `no_quote` |
 | Prop AMM（EVM：`tessera_base` / `tessera_bsc`，v2） | KyberSwap `includedSources=tessera` 净输出（§4.4） | `None` | `embedded_in_price=true`；platform 0；**gas 用响应 `gasUsd`**（`gas_unknown=false`）；4008→`no_quote`，4000（token 不在集）→`unsupported_asset`，40011→fail-fast |
 
 ---
@@ -632,7 +646,7 @@ bps API 保留 4 位小数；展示可再圆整到 2 位。
 
 ## 10. 验收标准（本 issue）
 
-- [x] Effective spread at size（四档、买/卖、双边汇总）
+- [x] Effective spread at size（五档、买/卖、双边汇总）
 - [x] Top-of-book（仅 orderbook；AMM 返回 `None`）
 - [x] Reference mid 优先级（可调用端点）+ spot/perp/funding 政策
 - [x] Total cost **单一**公式 + 反双计 + `gas_unknown` 不假排序
@@ -685,3 +699,4 @@ bps API 保留 4 位小数；展示可再圆整到 2 位。
 | 2026-08-03 | Review round 2：`instrument_type` 进 adapter；bps 仅 adapter 计算；TOB 失败抛错；修不变量合取；mid 配置键与 stale 语义；增 sell/gas_unknown 向量；修正 § 交叉引用 |
 | 2026-08-03 | Review round 3：修正 sell 测试向量盘口；`SizeQuotePair`/双边 key 含 `instrument_type`；非 ok 时 `explicit_fee_bps=null`；`config/mid.yaml` 标注 unvalidated |
 | 2026-08-03 | **v2 对齐 WHI-797/798 重做**：slug 拆 `tessera_solana/base/bsc`（作废 `tessera`）；§4.4/§8 增 KyberSwap 报价与错误映射（EVM gas 用 `gasUsd`）；§3.3 tokenized 现货 mid 改用自身 CEX TOB + rebase 口径 + 资产 ID 语义；新增 Q5/Q6。公式与模型字段无变化 |
+| 2026-08-04 | **WHI-838**：§4.1 增 `$100` 为第五档 → `[100, 1_000, 10_000, 100_000, 1_000_000]`；collector 改为五档都采；注明零售档 gas_bps 放大与 dashboard 按列 heat。公式与 `QuoteStatus` 词汇无变化 |

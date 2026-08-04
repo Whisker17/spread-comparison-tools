@@ -16,6 +16,7 @@ describe("formatBps", () => {
 
 describe("formatNotional", () => {
   it("uses compact USD labels", () => {
+    expect(formatNotional(100)).toBe("$100");
     expect(formatNotional(1000)).toBe("$1k");
     expect(formatNotional("10000")).toBe("$10k");
     expect(formatNotional(1_000_000)).toBe("$1M");

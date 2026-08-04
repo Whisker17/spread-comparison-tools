@@ -92,7 +92,7 @@ async def get_quotes(
     notional: Annotated[
         str,
         Query(
-            description="USD notional; one of 1000 / 10000 / 100000 / 1000000 (WHI-799 §4.1)",
+            description="USD notional; one of 100 / 1000 / 10000 / 100000 / 1000000 (WHI-799 §4.1)",
         ),
     ],
     venues: Annotated[

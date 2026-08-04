@@ -7,6 +7,9 @@
  * Orthogonal flags (not status enum values):
  *   fee_breakdown.gas_unknown → "cost incomplete"; excluded from best-venue ranking
  *   mid_stale → warning icon with mid timestamp
+ *
+ * WHI-838 venue-min at $100: venues that refuse the size use existing statuses
+ * (typically `no_quote` or `insufficient_liquidity`) — no new enum value.
  */
 
 import type { components } from "@/lib/api-types";
@@ -199,5 +202,13 @@ export const STATUS_LEGEND: ReadonlyArray<{
     description:
       "Orthogonal to status: warning icon + mid timestamp; does not change bps.",
     exampleKind: "mid_stale",
+  },
+  {
+    id: "gas_dominated_100",
+    title: "gas_dominated ($100)",
+    description:
+      "WHI-838 retail tier: L1 gas_bps = gas_usd/notional×10_000 can dominate total cost. " +
+      "Number stays fully visible; matrix heat is per-column so larger tiers stay colour-legible.",
+    exampleKind: "value",
   },
 ] as const;

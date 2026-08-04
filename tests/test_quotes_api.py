@@ -130,6 +130,38 @@ def test_quotes_invalid_notional(client: TestClient) -> None:
     )
     resp = client.get("/quotes", params={"asset": "BTC", "notional": "999"})
     assert resp.status_code == 422
+    # WHI-838: $50 is not a tier; $100 is.
+    resp50 = client.get("/quotes", params={"asset": "BTC", "notional": "50"})
+    assert resp50.status_code == 422
+
+
+def test_quotes_hundred_dollar_tier_accepted(client: TestClient) -> None:
+    """WHI-838: $100 is a valid fixed tier (WHI-799 §4.1)."""
+    mid = ReferenceMid(
+        snapshot_id="will-be-overwritten",
+        asset="BTC",
+        mid=Decimal("100000"),
+        mid_source="binance_usdm_index",
+        timestamp=datetime(2026, 8, 3, tzinfo=UTC),
+    )
+
+    async def fake_resolve(asset: str, *, snapshot_id: str) -> ReferenceMid:
+        return mid.model_copy(update={"snapshot_id": snapshot_id, "asset": asset.upper()})
+
+    client.app.state.aggregator.mid_service.resolve = fake_resolve  # type: ignore[method-assign]
+
+    resp = client.get(
+        "/quotes", params={"asset": "BTC", "notional": "100", "venues": "mock"}
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert Decimal(body["notional_usd"]) == Decimal("100")
+    pair = next(p for p in body["pairs"] if p["venue"] == "mock")
+    assert pair["buy"]["status"] == "ok"
+    assert pair["sell"]["status"] == "ok"
+    assert Decimal(pair["buy"]["notional_usd"]) == Decimal("100")
+    # q_star = 100 / 100000 = 0.001 BTC — continuous walk still ok on mock book.
+    assert Decimal(pair["buy"]["qty_base"]) == Decimal("0.001")
 
 
 def test_quotes_mid_failure_returns_503(client: TestClient) -> None:
