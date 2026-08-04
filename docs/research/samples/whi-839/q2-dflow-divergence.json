@@ -1,0 +1,281 @@
+{
+  "captured_at": "2026-08-04T10:46:00.605695+00:00",
+  "dflow_base": "https://dev-quote-api.dflow.net",
+  "jupiter_base": "https://api.jup.ag/swap/v1/quote",
+  "mid_usdc_per_sol": 73.372866,
+  "mid_source": "jup HumidiFi 1 SOL (size conversion only)",
+  "pair": "SOL/USDC",
+  "order": "Jupiter then DFlow; ~2s gap; retry 5xx",
+  "rows": [
+    {
+      "venue_slug": "humidifi",
+      "jup_label": "HumidiFi",
+      "dflow_label": "HumidiFi",
+      "notional_usd": 1000,
+      "amount_lamports": 13629016481,
+      "jup_http": 200,
+      "dflow_http": 200,
+      "jup_out": 1001056514,
+      "dflow_out": 1001484577,
+      "jup_route_labels": [
+        "HumidiFi"
+      ],
+      "dflow_route_venues": [
+        "HumidiFi"
+      ],
+      "gap_j_to_d_s": 7.946,
+      "p_jup": 73.45038546219071,
+      "p_dflow": 73.48179367133014,
+      "div_bps": 4.2761
+    },
+    {
+      "venue_slug": "humidifi",
+      "jup_label": "HumidiFi",
+      "dflow_label": "HumidiFi",
+      "notional_usd": 10000,
+      "amount_lamports": 136290164814,
+      "jup_http": 200,
+      "dflow_http": 200,
+      "jup_out": 10012620016,
+      "dflow_out": 10011831157,
+      "jup_route_labels": [
+        "HumidiFi"
+      ],
+      "dflow_route_venues": [
+        "HumidiFi"
+      ],
+      "gap_j_to_d_s": 12.52,
+      "p_jup": 73.46546267417445,
+      "p_dflow": 73.45967458960446,
+      "div_bps": -0.7879
+    },
+    {
+      "venue_slug": "humidifi",
+      "jup_label": "HumidiFi",
+      "dflow_label": "HumidiFi",
+      "notional_usd": 100000,
+      "amount_lamports": 1362901648138,
+      "jup_http": 200,
+      "dflow_http": 200,
+      "jup_out": 100039181044,
+      "dflow_out": 99991301298,
+      "jup_route_labels": [
+        "HumidiFi"
+      ],
+      "dflow_route_venues": [
+        "HumidiFi"
+      ],
+      "gap_j_to_d_s": 8.647,
+      "p_jup": 73.4016142549052,
+      "p_dflow": 73.36648351303148,
+      "div_bps": -4.7861
+    },
+    {
+      "venue_slug": "humidifi",
+      "jup_label": "HumidiFi",
+      "dflow_label": "HumidiFi",
+      "notional_usd": 1000000,
+      "amount_lamports": 13629016481379,
+      "jup_http": 400,
+      "dflow_http": 400,
+      "jup_out": null,
+      "dflow_out": null,
+      "jup_route_labels": [],
+      "dflow_route_venues": [],
+      "gap_j_to_d_s": 8.087,
+      "div_bps": null,
+      "retry": {
+        "jup_http": 400,
+        "dflow_http": 400,
+        "jup_out": null,
+        "dflow_out": null
+      }
+    },
+    {
+      "venue_slug": "tesserav",
+      "jup_label": "TesseraV",
+      "dflow_label": "Tessera V",
+      "notional_usd": 1000,
+      "amount_lamports": 13629016481,
+      "jup_http": 200,
+      "dflow_http": 200,
+      "jup_out": 1000894657,
+      "dflow_out": 1001109012,
+      "jup_route_labels": [
+        "TesseraV"
+      ],
+      "dflow_route_venues": [
+        "Tessera V"
+      ],
+      "gap_j_to_d_s": 8.136,
+      "p_jup": 73.43850955021821,
+      "p_dflow": 73.45423739091008,
+      "div_bps": 2.1416
+    },
+    {
+      "venue_slug": "tesserav",
+      "jup_label": "TesseraV",
+      "dflow_label": "Tessera V",
+      "notional_usd": 10000,
+      "amount_lamports": 136290164814,
+      "jup_http": 200,
+      "dflow_http": 200,
+      "jup_out": 10016633684,
+      "dflow_out": 10018119579,
+      "jup_route_labels": [
+        "TesseraV"
+      ],
+      "dflow_route_venues": [
+        "Tessera V"
+      ],
+      "gap_j_to_d_s": 10.09,
+      "p_jup": 73.49491210660764,
+      "p_dflow": 73.50581454408014,
+      "div_bps": 1.4834
+    },
+    {
+      "venue_slug": "tesserav",
+      "jup_label": "TesseraV",
+      "dflow_label": "Tessera V",
+      "notional_usd": 100000,
+      "amount_lamports": 1362901648138,
+      "jup_http": 200,
+      "dflow_http": 200,
+      "jup_out": 100208101436,
+      "dflow_out": 100186221419,
+      "jup_route_labels": [
+        "TesseraV"
+      ],
+      "dflow_route_venues": [
+        "Tessera V"
+      ],
+      "gap_j_to_d_s": 8.326,
+      "p_jup": 73.52555598777401,
+      "p_dflow": 73.50950199221982,
+      "div_bps": -2.1835
+    },
+    {
+      "venue_slug": "tesserav",
+      "jup_label": "TesseraV",
+      "dflow_label": "Tessera V",
+      "notional_usd": 1000000,
+      "amount_lamports": 13629016481379,
+      "jup_http": 200,
+      "dflow_http": 200,
+      "jup_out": 1001179559713,
+      "dflow_out": 1001028773763,
+      "jup_route_labels": [
+        "TesseraV"
+      ],
+      "dflow_route_venues": [
+        "Tessera V"
+      ],
+      "gap_j_to_d_s": 8.727,
+      "p_jup": 73.45941367676001,
+      "p_dflow": 73.44835007945598,
+      "div_bps": -1.5061
+    },
+    {
+      "venue_slug": "bisonfi",
+      "jup_label": "BisonFi",
+      "dflow_label": "BisonFi",
+      "notional_usd": 1000,
+      "amount_lamports": 13629016481,
+      "jup_http": 200,
+      "dflow_http": 200,
+      "jup_out": 1002059616,
+      "dflow_out": 1001482638,
+      "jup_route_labels": [
+        "BisonFi"
+      ],
+      "dflow_route_venues": [
+        "BisonFi"
+      ],
+      "gap_j_to_d_s": 7.734,
+      "p_jup": 73.52398593082309,
+      "p_dflow": 73.48165140134296,
+      "div_bps": -5.7579
+    },
+    {
+      "venue_slug": "bisonfi",
+      "jup_label": "BisonFi",
+      "dflow_label": "BisonFi",
+      "notional_usd": 10000,
+      "amount_lamports": 136290164814,
+      "jup_http": 400,
+      "dflow_http": 200,
+      "jup_out": null,
+      "dflow_out": 10015064545,
+      "jup_route_labels": [],
+      "dflow_route_venues": [
+        "BisonFi"
+      ],
+      "gap_j_to_d_s": 8.377,
+      "div_bps": null,
+      "retry": {
+        "jup_http": 200,
+        "dflow_http": 400,
+        "jup_out": 10014826549,
+        "dflow_out": null
+      }
+    },
+    {
+      "venue_slug": "bisonfi",
+      "jup_label": "BisonFi",
+      "dflow_label": "BisonFi",
+      "notional_usd": 100000,
+      "amount_lamports": 1362901648138,
+      "jup_http": 200,
+      "dflow_http": 200,
+      "jup_out": 100133162055,
+      "dflow_out": 100159315634,
+      "jup_route_labels": [
+        "BisonFi"
+      ],
+      "dflow_route_venues": [
+        "BisonFi"
+      ],
+      "gap_j_to_d_s": 8.191,
+      "div_bps": 2.6119,
+      "retry": {
+        "jup_http": 200,
+        "dflow_http": 200,
+        "jup_out": 100133162055,
+        "dflow_out": 100159315634
+      }
+    },
+    {
+      "venue_slug": "bisonfi",
+      "jup_label": "BisonFi",
+      "dflow_label": "BisonFi",
+      "notional_usd": 1000000,
+      "amount_lamports": 13629016481379,
+      "jup_http": 200,
+      "dflow_http": 200,
+      "jup_out": 994701659547,
+      "dflow_out": 994558637522,
+      "jup_route_labels": [
+        "BisonFi"
+      ],
+      "dflow_route_venues": [
+        "BisonFi"
+      ],
+      "gap_j_to_d_s": 45.658,
+      "p_jup": 72.98411157591872,
+      "p_dflow": 72.97361764004334,
+      "div_bps": -1.4378
+    }
+  ],
+  "timing_control": {
+    "amount_lamports": 136290164814,
+    "jup1_out": 10010902303,
+    "jup2_out": 10010005786,
+    "div_bps_jup_vs_jup": -0.8955
+  },
+  "reverse_order_control": {
+    "dflow_out": 10011005018,
+    "jup_out": 10011653128,
+    "amount_lamports": 136290164814,
+    "div_bps": -0.6474
+  }
+}

@@ -758,7 +758,7 @@ let url = format!(
 | lite-api 退役 | 迁移到 `api.jup.ag` |
 | Metis v1 维护状态 | 官方已指向 Swap V2；功能仍可用但需关注废弃时间表 |
 | 资产列表时效 | 本文矩阵均为单日探测快照；**BSC 侧当前单池（BTCB/USDT），池集变动风险最高** |
-| 无独立 API | Solana 完全依赖 Jupiter（**WHI-837 已结**：无第二供应商可 live 隔离 HumidiFi+TesseraV+BisonFi；Titan DART 仅 BisonFi；DFlow/OKX 待 key。决策：接受 SPOF + 显式降级，见 [WHI-837](./WHI-837-solana-prop-amm-quote-redundancy.md) / [ADR 0001](../adr/0001-solana-prop-amm-jupiter-sole-path.md)）。Base/BSC 仍依赖 KyberSwap Tessera 集成（ParaSwap 无收录；OKX/0x EVM 冗余仍未 key 验证） |
+| 无独立 API | Solana 完全依赖 Jupiter（**WHI-837 + WHI-839**：Titan DART 仅 BisonFi；DFlow **dev** 可 live 隔离三家但 Q2 分歧 ≲2 bps 未过；OKX 仍待 key。决策：接受 SPOF + 显式降级，见 [WHI-837](./WHI-837-solana-prop-amm-quote-redundancy.md) / [WHI-839](./WHI-839-dflow-okx-redundancy-rerun.md) / [ADR 0001](../adr/0001-solana-prop-amm-jupiter-sole-path.md)）。Base/BSC 仍依赖 KyberSwap Tessera 集成（ParaSwap 无收录；OKX/0x EVM 冗余仍未 key 验证） |
 | KyberSwap 限速未量化 | 官方不公布数字，仅承诺带 `x-client-id` 更宽松；实测 12 连发未限流，但生产仍需客户端限速 + 429 退避 |
 | 跨链表示差异 | 同一 logical 资产在三链是不同合约（cbBTC vs BTCB；Wormhole WETH vs 原生 WETH），价差语义须带表示标签（同 WHI-798 口径） |
 

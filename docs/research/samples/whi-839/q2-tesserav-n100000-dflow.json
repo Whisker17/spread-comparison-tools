@@ -1,0 +1,27 @@
+{
+  "inputMint": "So11111111111111111111111111111111111111112",
+  "inAmount": "1362901648138",
+  "outputMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+  "outAmount": "100186221419",
+  "otherAmountThreshold": "99685290312",
+  "minOutAmount": "99685290312",
+  "slippageBps": 50,
+  "platformFee": null,
+  "outTransferFee": null,
+  "priceImpactPct": "0",
+  "routePlan": [
+    {
+      "venue": "Tessera V",
+      "marketKey": "FLckHLGMJy5gEoXWwcE68Nprde1D4araK4TGLw4pQq2n",
+      "inputMint": "So11111111111111111111111111111111111111112",
+      "outputMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "inAmount": "1362901648138",
+      "outAmount": "100186221419",
+      "inputMintDecimals": 9,
+      "outputMintDecimals": 6
+    }
+  ],
+  "contextSlot": 437160592,
+  "requestId": "8f92d600-e6bc-41d7-b7ca-19e95b7767ea",
+  "forJitoBundle": false
+}

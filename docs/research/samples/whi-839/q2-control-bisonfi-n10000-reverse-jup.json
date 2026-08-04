@@ -1,0 +1,41 @@
+{
+  "inputMint": "So11111111111111111111111111111111111111112",
+  "inAmount": "136290164814",
+  "outputMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+  "outAmount": "10011653128",
+  "otherAmountThreshold": "9961594863",
+  "swapMode": "ExactIn",
+  "slippageBps": 50,
+  "platformFee": null,
+  "priceImpactPct": "0.0000669374445012950080554326",
+  "routePlan": [
+    {
+      "swapInfo": {
+        "ammKey": "8FnX3xo2yYw3EUE6w3nQA4GfXGS9wpK6oj3veJpbFzLo",
+        "label": "BisonFi",
+        "inputMint": "So11111111111111111111111111111111111111112",
+        "outputMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "inAmount": "136290164814",
+        "outAmount": "10011653128",
+        "updateContextSlot": "437160850"
+      },
+      "percent": 100,
+      "bps": null
+    }
+  ],
+  "contextSlot": 437160850,
+  "timeTaken": 0.000174636,
+  "swapUsdValue": "10010.2303644753110079226518",
+  "mostReliableAmmsQuoteReport": {
+    "info": {
+      "BZtgQEyS6eXUXicYPHecYQ7PybqodXQMvkjUbP4R8mUU": "Not used RG: FullLiquidIntermediate, contains ALT: true",
+      "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE": "Amm is excluded from request's dexes_selection."
+    }
+  },
+  "longtailMarketQuoteReport": null,
+  "useIncurredSlippageForQuoting": null,
+  "useRewards": null,
+  "otherRoutePlans": null,
+  "loadedLongtailToken": false,
+  "instructionVersion": null
+}

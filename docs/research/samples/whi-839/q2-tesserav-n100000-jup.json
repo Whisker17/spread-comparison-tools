@@ -1,0 +1,41 @@
+{
+  "inputMint": "So11111111111111111111111111111111111111112",
+  "inAmount": "1362901648138",
+  "outputMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+  "outAmount": "100208101436",
+  "otherAmountThreshold": "99707060929",
+  "swapMode": "ExactIn",
+  "slippageBps": 50,
+  "platformFee": null,
+  "priceImpactPct": "0.0002268893775776384099717052",
+  "routePlan": [
+    {
+      "swapInfo": {
+        "ammKey": "FLckHLGMJy5gEoXWwcE68Nprde1D4araK4TGLw4pQq2n",
+        "label": "TesseraV",
+        "inputMint": "So11111111111111111111111111111111111111112",
+        "outputMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "inAmount": "1362901648138",
+        "outAmount": "100208101436",
+        "updateContextSlot": "437160583"
+      },
+      "percent": 100,
+      "bps": null
+    }
+  ],
+  "contextSlot": 437160584,
+  "timeTaken": 0.000179439,
+  "swapUsdValue": "100203.2512466748132413362386",
+  "mostReliableAmmsQuoteReport": {
+    "info": {
+      "BZtgQEyS6eXUXicYPHecYQ7PybqodXQMvkjUbP4R8mUU": "Not used RG: FullLiquidIntermediate, contains ALT: true",
+      "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE": "Amm is excluded from request's dexes_selection."
+    }
+  },
+  "longtailMarketQuoteReport": null,
+  "useIncurredSlippageForQuoting": null,
+  "useRewards": null,
+  "otherRoutePlans": null,
+  "loadedLongtailToken": false,
+  "instructionVersion": null
+}

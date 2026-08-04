@@ -2,10 +2,10 @@
 
 | Field | Value |
 | --- | --- |
-| Status | Accepted |
+| Status | Accepted (amended 2026-08-04 by WHI-839 — **not** superseded) |
 | Date | 2026-08-04 |
-| Issue | [WHI-837](https://linear.app/whisker-personal/issue/WHI-837) |
-| Research | [WHI-837 research](../research/WHI-837-solana-prop-amm-quote-redundancy.md) |
+| Issue | [WHI-837](https://linear.app/whisker-personal/issue/WHI-837); follow-up [WHI-839](https://linear.app/whisker-personal/issue/WHI-839) |
+| Research | [WHI-837 research](../research/WHI-837-solana-prop-amm-quote-redundancy.md); [WHI-839 re-run](../research/WHI-839-dflow-okx-redundancy-rerun.md) |
 
 > **Note:** `docs/agents/domain.md` places ADRs after v1 for decisions that do not belong in the PRD. `docs/DESIGN.md` is still the empty stub, so this decision is recorded here. **When DESIGN.md §7 (rejected alternatives / open risks) is written, fold this ADR into that section and mark this file Superseded-by-PRD.**
 
@@ -26,16 +26,30 @@ WHI-837 surveyed alternative aggregators for a **redundant** path (different ven
 
 Evidence and per-candidate Q1 reasons live in **[WHI-837 research §3](../research/WHI-837-solana-prop-amm-quote-redundancy.md#3-候选总表q1-裁决)** (single SSOT — do not duplicate long tables here).
 
-Summary: Titan DART is the only live partial hit (**BisonFi only** among baseline three; ~1 bps Q2); DFlow/OKX/Titan Gateway are document-strong but key-blocked; 0x is exclude-only; 1inch has no Classic Solana swap; Jupiter V2/Ultra share Jupiter's outage domain; on-chain quote reconstruction and swap-event prints are not `Quote` substitutes.
+Summary (WHI-837 baseline): Titan DART is the only live partial hit (**BisonFi only** among baseline three; ~1 bps Q2); DFlow/OKX/Titan Gateway were document-strong but access-blocked in that run; 0x is exclude-only; 1inch has no Classic Solana swap; Jupiter V2/Ultra share Jupiter's outage domain; on-chain quote reconstruction and swap-event prints are not `Quote` substitutes.
+
+### Amendment — WHI-839 (2026-08-04)
+
+| Candidate | Q1 (three venues + include) | Q2 (≲ ~2 bps vs Jupiter) | Effect on this ADR |
+| --- | --- | --- | --- |
+| **DFlow** (dev Trade API `dev-quote-api.dflow.net`, keyless) | **PASS** — live isolate HumidiFi / `Tessera V` / BisonFi | **FAIL** — paired cells ≈ **−5.8 … +4.3 bps**, sign unstable | **Does not** justify superseding; still not drop-in dual-source |
+| **OKX** | Still **OUT (key)** — unauth 401 reconfirmed | n/a | unchanged |
+| DFlow production `quote-api.dflow.net` | Still empty **403** without `x-api-key` | n/a | any future work needs prod key, not dev |
+
+Full tables and samples: [WHI-839 research](../research/WHI-839-dflow-okx-redundancy-rerun.md), `docs/research/samples/whi-839/`.
+
+**Adopt-redundancy bar from the original follow-up (Q1 all three ∧ Q2 ≲ ~2 bps) is not met.** No implementation issue filed.
 
 ## Consequences
 
 - **Positive:** Matrix comparisons stay **single-aggregator**, so observed bps gaps remain venue-driven (within Jupiter's routing/fee semantics).
 - **Positive:** Outages fail **honestly** instead of mixing incomparable numbers.
 - **Negative:** Solana prop columns go dark if Jupiter is down or drops `dexes` / a venue.
-- **Follow-up:** [WHI-839](https://linear.app/whisker-personal/issue/WHI-839) re-runs Q1/Q2 with DFlow + OKX keys. If either proves all three venues **and** Q2 stays ≲ ~2 bps, supersede this ADR with an adopt-redundancy decision and a separate implementation issue. Throughput remains WHI-836's concern, not this ADR's.
+- **Updated knowledge (WHI-839):** A non-Jupiter aggregator (**DFlow**) can now **live-isolate all three** prop venues, so the previous “no full second source exists” statement is obsolete — but **comparability still fails**, so product behavior (sole Jupiter + explicit unavailable) is unchanged.
+- **Not in scope of this ADR:** optional future “explicit secondary aggregator” failover UX (must label non-comparable quotes). Requires a new product decision + implementation issue if desired. Throughput remains WHI-836's concern.
 
 ## References
 
 - Research evidence and live samples: `docs/research/WHI-837-solana-prop-amm-quote-redundancy.md`, `docs/research/samples/whi-837/`
+- WHI-839 re-run: `docs/research/WHI-839-dflow-okx-redundancy-rerun.md`, `docs/research/samples/whi-839/`
 - Baseline Jupiter path: `docs/research/WHI-797-prop-amm-jupiter-quote-api.md`

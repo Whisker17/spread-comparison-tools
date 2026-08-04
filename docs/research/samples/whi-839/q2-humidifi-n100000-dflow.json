@@ -1,0 +1,27 @@
+{
+  "inputMint": "So11111111111111111111111111111111111111112",
+  "inAmount": "1362901648138",
+  "outputMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+  "outAmount": "99991301298",
+  "otherAmountThreshold": "99491344792",
+  "minOutAmount": "99491344792",
+  "slippageBps": 50,
+  "platformFee": null,
+  "outTransferFee": null,
+  "priceImpactPct": "0.0001160679654995037080077002",
+  "routePlan": [
+    {
+      "venue": "HumidiFi",
+      "marketKey": "FksffEqnBRixYGR791Qw2MgdU7zNCpHVFYBL4Fa4qVuH",
+      "inputMint": "So11111111111111111111111111111111111111112",
+      "outputMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "inAmount": "1362901648138",
+      "outAmount": "99991301298",
+      "inputMintDecimals": 9,
+      "outputMintDecimals": 6
+    }
+  ],
+  "contextSlot": 437160481,
+  "requestId": "594c2a00-3e30-4fb4-b6c0-863f64569b7d",
+  "forJitoBundle": false
+}

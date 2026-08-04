@@ -1,0 +1,27 @@
+{
+  "inputMint": "So11111111111111111111111111111111111111112",
+  "inAmount": "13629016481379",
+  "outputMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+  "outAmount": "994558637522",
+  "otherAmountThreshold": "989585844335",
+  "minOutAmount": "989585844335",
+  "slippageBps": 50,
+  "platformFee": null,
+  "outTransferFee": null,
+  "priceImpactPct": "0.0063166959653672925996451459",
+  "routePlan": [
+    {
+      "venue": "BisonFi",
+      "marketKey": "8FnX3xo2yYw3EUE6w3nQA4GfXGS9wpK6oj3veJpbFzLo",
+      "inputMint": "So11111111111111111111111111111111111111112",
+      "outputMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "inAmount": "13629016481379",
+      "outAmount": "994558637522",
+      "inputMintDecimals": 9,
+      "outputMintDecimals": 6
+    }
+  ],
+  "contextSlot": 437160803,
+  "requestId": "07643900-52e1-42a8-8ddc-e752d2d00ade",
+  "forJitoBundle": false
+}
