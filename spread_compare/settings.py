@@ -4,8 +4,7 @@ Secrets stay in ``.env``; non-secret tunables live here. Values marked unvalidat
 in WHI-799 §3.2 / WHI-807 are engineering defaults pending DESIGN.md §2.
 
 YAML is authoritative — pydantic fields have **no** Python-side default values so a
-missing key fails at startup instead of silently diverging from the file
-(optional maps may use empty defaults when the file is allowed to omit them).
+missing key fails at startup instead of silently diverging from the file.
 """
 
 from __future__ import annotations
@@ -48,9 +47,9 @@ class AggregatorSettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     venue_timeout_sec: float = Field(gt=0)
-    # Optional per-class overrides; empty map = always use venue_timeout_sec.
-    # Default empty so unit tests constructing AggregatorSettings(...) stay terse.
-    venue_timeout_by_class: dict[VenueClass, float] = Field(default_factory=dict)
+    # Per-class overrides; empty map = always use venue_timeout_sec. Required key
+    # (may be {}) so a missing YAML entry fails at load, not at first fan-out.
+    venue_timeout_by_class: dict[VenueClass, float]
     response_cache_ttl_sec: float = Field(ge=0)
 
     @field_validator("venue_timeout_by_class")

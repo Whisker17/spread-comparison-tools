@@ -109,7 +109,8 @@ async def test_collect_happy_path_mock() -> None:
     agg = QuoteAggregator(
         FixedMid(),
         aggregator_settings=AggregatorSettings(
-            venue_timeout_sec=3.0, response_cache_ttl_sec=0
+            venue_timeout_sec=3.0,
+            venue_timeout_by_class={}, response_cache_ttl_sec=0
         ),
     )
     package = await agg.collect(
@@ -138,7 +139,8 @@ async def test_collect_invalid_notional() -> None:
     agg = QuoteAggregator(
         FixedMid(),
         aggregator_settings=AggregatorSettings(
-            venue_timeout_sec=3.0, response_cache_ttl_sec=0
+            venue_timeout_sec=3.0,
+            venue_timeout_by_class={}, response_cache_ttl_sec=0
         ),
     )
     with pytest.raises(InvalidNotionalError):
@@ -150,7 +152,8 @@ async def test_collect_mid_failure_propagates() -> None:
     agg = QuoteAggregator(
         FixedMid(fail=True),
         aggregator_settings=AggregatorSettings(
-            venue_timeout_sec=3.0, response_cache_ttl_sec=0
+            venue_timeout_sec=3.0,
+            venue_timeout_by_class={}, response_cache_ttl_sec=0
         ),
     )
     with pytest.raises(MidResolutionError):
@@ -183,7 +186,8 @@ async def test_single_venue_timeout_degrades_to_error(
     agg = QuoteAggregator(
         FixedMid(),
         aggregator_settings=AggregatorSettings(
-            venue_timeout_sec=0.05, response_cache_ttl_sec=0.0
+            venue_timeout_sec=0.05,
+            venue_timeout_by_class={}, response_cache_ttl_sec=0.0
         ),
     )
     package = await agg.collect(
@@ -281,7 +285,8 @@ async def test_orderbook_tob_failure_stamps_raw_ref(
     agg = QuoteAggregator(
         FixedMid(),
         aggregator_settings=AggregatorSettings(
-            venue_timeout_sec=3.0, response_cache_ttl_sec=0.0
+            venue_timeout_sec=3.0,
+            venue_timeout_by_class={}, response_cache_ttl_sec=0.0
         ),
     )
     package = await agg.collect(
@@ -307,7 +312,8 @@ async def test_response_cache_hits() -> None:
     agg = QuoteAggregator(
         CountingMid(),
         aggregator_settings=AggregatorSettings(
-            venue_timeout_sec=3.0, response_cache_ttl_sec=2.0
+            venue_timeout_sec=3.0,
+            venue_timeout_by_class={}, response_cache_ttl_sec=2.0
         ),
         clock=lambda: clock["t"],
     )

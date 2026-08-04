@@ -43,9 +43,6 @@ DEFAULT_FEE_TIER: str = "default_taker"
 
 OrderbookLevels = list[tuple[Decimal, Decimal]]
 
-# AsyncRateLimiter / RollingWindowRateLimiter are re-exported from
-# spread_compare.ratelimit for historical import paths.
-
 
 def parse_levels(raw: Sequence[Sequence[object]]) -> OrderbookLevels:
     """Parse ``[[price, size], ...]`` string/number rows into Decimal levels."""

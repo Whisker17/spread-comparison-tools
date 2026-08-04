@@ -385,10 +385,10 @@ async def probe_quoter_v2(
 
     # Outcome of one tier probe: success payload or a failure classification.
     # Using return values (not shared counters) keeps concurrent probes race-free.
-    Outcome = tuple[str, QuoterResult | None]
-    # ("ok", result) | ("transport", None) | ("revert", None)
+    ProbeKind = Literal["ok", "transport", "revert"]
+    ProbeOutcome = tuple[ProbeKind, QuoterResult | None]
 
-    async def _probe_tier(fee: int) -> Outcome:
+    async def _probe_tier(fee: int) -> ProbeOutcome:
         if side == "sell":
             data = encode_quote_exact_input_single(
                 token_base, token_quote, amount_base_raw, fee

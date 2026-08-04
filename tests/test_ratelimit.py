@@ -85,6 +85,13 @@ async def test_token_bucket_observe_window_adapts_capacity() -> None:
     assert time.monotonic() - t1 >= 0.15
 
 
+def test_token_bucket_observe_window_never_exceeds_ceiling() -> None:
+    limiter = TokenBucketRateLimiter(capacity=10, window_s=1.0)
+    # Headers claim a larger window than the configured plan.
+    limiter.observe_window(remaining=50, current=50)
+    assert limiter.capacity == 10
+
+
 @pytest.mark.asyncio
 async def test_async_rate_limiter_min_interval() -> None:
     limiter = AsyncRateLimiter(0.05)
