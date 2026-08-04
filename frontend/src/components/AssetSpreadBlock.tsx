@@ -172,8 +172,8 @@ export function AssetSpreadBlock({
     subtitle ??
     `All venue classes · size ${sizeLabel} · ${sideView.replace("_", " ")}`;
 
-  // Cold size: full skeleton. Warm (cached) size: keep matrix, spin refresh.
-  const showSkeleton = query.isLoading && !query.data;
+  // Cold size (no cache): isLoading. Warm size: cached data shows immediately.
+  const showSkeleton = query.isLoading;
 
   return (
     <section

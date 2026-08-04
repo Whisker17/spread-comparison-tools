@@ -212,8 +212,9 @@ export async function fetchQuotes(
 }
 
 /**
- * Fan out `/quotes` across notional tiers (matrix needs every WHI-799 §4.1 tier).
- * Failures on individual tiers surface as rejected Promise (caller handles).
+ * Fan out `/quotes` across notional tiers.
+ * Section pages use a single tier (WHI-841); this helper remains for multi-tier
+ * callers. Failures on individual tiers surface as rejected Promise.
  */
 export async function fetchQuotesMultiNotional(
   params: {
