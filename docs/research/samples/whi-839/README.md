@@ -8,10 +8,12 @@ Captured 2026-08-04 (UTC). Follow-up to WHI-837: DFlow (keyless **dev** endpoint
 - `dflow-q1-humidifi-sol-usdc-1sol.json` — `dexes=HumidiFi` → single-leg HumidiFi
 - `dflow-q1-tessera_v-sol-usdc-1sol.json` — `dexes=Tessera%20V` → single-leg Tessera V
 - `dflow-q1-bisonfi-sol-usdc-1sol.json` — `dexes=BisonFi` → single-leg BisonFi
-- `dflow-q1-notavenue-sol-usdc-1sol.json` — invalid label → 400 `Invalid DEX 'NotAVenue'…`
-- `dflow-q1-tesserav_nospace-sol-usdc-1sol.json` — `TesseraV` (Jupiter spelling) → 400 invalid
+- `dflow-q1-notavenue-sol-usdc-1sol.json` — invalid label → 400 `invalid_dex`
+- `dflow-q1-tesserav_nospace-sol-usdc-1sol.json` — `TesseraV` (Jupiter spelling) → 400 `invalid_dex`
+- `dflow-q1-noroute-bisonfi_predictions.json` — valid label, no SOL/USDC route → 400 `route_not_found`
 - `dflow-q1-nofilter-sol-usdc-1sol.json` — unfiltered control
 - `dflow-prod-venues-403.*` — production `quote-api.dflow.net` still empty **403** without `x-api-key`
+- Each Q1 capture has a matching `.meta.txt` (http status + label)
 
 ## Q2 divergence (DFlow vs Jupiter, WHI-799 notionals)
 

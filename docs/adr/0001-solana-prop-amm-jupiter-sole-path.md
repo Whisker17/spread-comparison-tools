@@ -30,13 +30,7 @@ Summary (WHI-837 baseline): Titan DART is the only live partial hit (**BisonFi o
 
 ### Amendment — WHI-839 (2026-08-04)
 
-| Candidate | Q1 (three venues + include) | Q2 (≲ ~2 bps vs Jupiter) | Effect on this ADR |
-| --- | --- | --- | --- |
-| **DFlow** (dev Trade API `dev-quote-api.dflow.net`, keyless) | **PASS** — live isolate HumidiFi / `Tessera V` / BisonFi | **FAIL** — paired cells ≈ **−5.8 … +4.3 bps**, sign unstable | **Does not** justify superseding; still not drop-in dual-source |
-| **OKX** | Still **OUT (key)** — unauth 401 reconfirmed | n/a | unchanged |
-| DFlow production `quote-api.dflow.net` | Still empty **403** without `x-api-key` | n/a | any future work needs prod key, not dev |
-
-Full tables and samples: [WHI-839 research](../research/WHI-839-dflow-okx-redundancy-rerun.md), `docs/research/samples/whi-839/`.
+**Verdict (SSOT in research, not restated as a long table here):** DFlow **Q1 PASS** on keyless **dev** Trade API for HumidiFi / `Tessera V` / BisonFi; **Q2 FAIL** the ≲ ~2 bps drop-in bar (same-pass cells about −5.8…+4.3 bps). OKX still **OUT (key)** — credentials not obtained this run. Production DFlow still **403** without `x-api-key`. Full tables/samples: [WHI-839 research](../research/WHI-839-dflow-okx-redundancy-rerun.md), `docs/research/samples/whi-839/`.
 
 **Adopt-redundancy bar from the original follow-up (Q1 all three ∧ Q2 ≲ ~2 bps) is not met.** No implementation issue filed.
 
