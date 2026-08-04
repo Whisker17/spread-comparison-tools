@@ -3,6 +3,11 @@
 /**
  * Parameter-complete venues × notional-tiers matrix.
  *
+ * WHI-841: section pages pass a single notional column; freed horizontal
+ * space surfaces effective price + fee-breakdown summary that previously
+ * lived only in tooltips. Multi-notional still works for status fixtures /
+ * multi-tier callers.
+ *
  * Section agents drive venue sets, hidden columns, side view, and metric via
  * props/config — they must not edit this file (WHI-808 parallel-safety).
  */
@@ -14,6 +19,7 @@ import type { Quote, SizeQuotePair } from "@/lib/api";
 import {
   formatBps,
   formatNotional,
+  formatPrice,
   parseDecimal,
   sortNotionals,
 } from "@/lib/format";
@@ -79,6 +85,9 @@ export function SpreadMatrix({
       ...new Set(pairs.map((p) => String(p.notional_usd))),
     ]);
   }, [notionalsProp, pairs]);
+
+  /** Single-tier view (WHI-841): expand per-venue detail columns. */
+  const detailMode = notionals.length === 1;
 
   const venues = useMemo(() => {
     if (venuesProp && venuesProp.length > 0) {
@@ -154,8 +163,13 @@ export function SpreadMatrix({
   }
 
   return (
-    <div className={cn("overflow-x-auto", className)} data-testid="spread-matrix">
-      <table className="w-full min-w-[36rem] border-collapse text-sm">
+    <div className={cn("overflow-x-auto", className)} data-testid="spread-matrix" data-detail-mode={detailMode ? "true" : "false"}>
+      <table
+        className={cn(
+          "w-full border-collapse text-sm",
+          detailMode ? "min-w-[28rem]" : "min-w-[36rem]",
+        )}
+      >
         <thead>
           <tr className="border-b border-zinc-200 dark:border-zinc-800">
             <th className="sticky left-0 bg-white py-2 pr-3 text-left text-xs font-medium uppercase tracking-wide text-zinc-500 dark:bg-zinc-950">
@@ -169,6 +183,16 @@ export function SpreadMatrix({
                 {formatNotional(n)}
               </th>
             ))}
+            {detailMode ? (
+              <>
+                <th className="px-2 py-2 text-right text-xs font-medium uppercase tracking-wide text-zinc-500">
+                  Effective
+                </th>
+                <th className="px-2 py-2 text-right text-xs font-medium uppercase tracking-wide text-zinc-500">
+                  Fees
+                </th>
+              </>
+            ) : null}
           </tr>
         </thead>
         <tbody>
@@ -217,6 +241,30 @@ export function SpreadMatrix({
                     </td>
                   );
                 })}
+                {detailMode
+                  ? (() => {
+                      const n = notionals[0]!;
+                      const pair = index.get(`${venue}::${n}`);
+                      const detail = detailFromPair(pair, sideView);
+                      return (
+                        <>
+                          <td
+                            className="px-2 py-1 text-right text-xs tabular-nums text-zinc-600 dark:text-zinc-300"
+                            data-testid={`effective-${venue}`}
+                          >
+                            {detail.effective}
+                          </td>
+                          <td
+                            className="px-2 py-1 text-right text-xs tabular-nums text-zinc-500"
+                            data-testid={`fees-${venue}`}
+                            title={detail.feesTitle}
+                          >
+                            {detail.fees}
+                          </td>
+                        </>
+                      );
+                    })()
+                  : null}
               </tr>
             );
           })}
@@ -225,9 +273,11 @@ export function SpreadMatrix({
       <p className="mt-2 text-[11px] text-zinc-500">
         Cells: {metric.replace(/_/g, " ")} · view: {sideView.replace("_", " ")} ·
         best highlight excludes gas_unknown / non-ok (WHI-799 §5.2)
-        {heat
-          ? " · heat colour is per notional column (WHI-838), so a gas-heavy $100 cell does not flatten larger tiers — compare intensity only within a column"
-          : ""}
+        {detailMode
+          ? " · single size — effective price and fee breakdown shown as columns"
+          : heat
+            ? " · heat colour is per notional column (WHI-838), so a gas-heavy $100 cell does not flatten larger tiers — compare intensity only within a column"
+            : ""}
       </p>
     </div>
   );
@@ -333,4 +383,66 @@ function includeInHeat(
   if (!quote || quote.status !== "ok") return false;
   if (metric === "total_cost_bps") return isEligibleForBest(quote);
   return true;
+}
+
+type DetailModel = {
+  effective: string;
+  fees: string;
+  feesTitle: string | undefined;
+};
+
+/** Inline columns for single-notional mode (was tooltip-only). */
+function detailFromPair(
+  pair: SizeQuotePair | undefined,
+  sideView: SideView,
+): DetailModel {
+  if (!pair) {
+    return { effective: "—", fees: "—", feesTitle: undefined };
+  }
+  if (sideView === "round_trip") {
+    // Round-trip has no single effective price; surface leg fees if both ok.
+    const buy = pair.buy;
+    const sell = pair.sell;
+    if (!buy || !sell || buy.status !== "ok" || sell.status !== "ok") {
+      return { effective: "—", fees: "—", feesTitle: undefined };
+    }
+    const buyFee = feeSummary(buy);
+    const sellFee = feeSummary(sell);
+    return {
+      effective: "—",
+      fees: `B ${buyFee.short} / S ${sellFee.short}`,
+      feesTitle: `buy: ${buyFee.title}; sell: ${sellFee.title}`,
+    };
+  }
+  const quote = sideView === "buy" ? pair.buy : pair.sell;
+  if (!quote || quote.status !== "ok") {
+    return { effective: "—", fees: "—", feesTitle: undefined };
+  }
+  const fee = feeSummary(quote);
+  return {
+    effective: formatPrice(quote.effective_price),
+    fees: fee.short,
+    feesTitle: fee.title,
+  };
+}
+
+function feeSummary(quote: Quote): { short: string; title: string } {
+  const fb = quote.fee_breakdown;
+  const trading = formatBps(fb.trading_fee_bps);
+  const gas = fb.gas_unknown ? "gas?" : `${formatBps(fb.gas_bps)}g`;
+  const embedded = fb.embedded_in_price ? " · in price" : "";
+  const short = `${trading}f · ${gas}${embedded}`;
+  const title = [
+    `trading fee ${formatBps(fb.trading_fee_bps)} bps`,
+    fb.embedded_in_price ? "embedded in price" : null,
+    fb.gas_unknown
+      ? "gas unknown"
+      : `gas ${formatBps(fb.gas_bps)} bps`,
+    fb.platform_fee_bps != null && fb.platform_fee_bps !== "0"
+      ? `platform ${formatBps(fb.platform_fee_bps)} bps`
+      : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  return { short, title };
 }

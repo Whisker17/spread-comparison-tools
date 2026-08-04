@@ -1,9 +1,12 @@
 "use client";
 
 /**
- * One logical asset: live multi-notional matrix + TOB + snapshot summary.
- * Section-agnostic — callers pass venue order, labels, and orderbook rows
- * so WHI-809/810/811 do not share section-config imports (parallel-safety).
+ * One logical asset: live single-notional matrix + TOB + snapshot summary.
+ * Section-agnostic — callers pass venue order, labels, selected notional, and
+ * orderbook rows so WHI-809/810/811 do not share section-config imports.
+ *
+ * WHI-841: fetches exactly one notional tier (the size selector selection)
+ * so a page issues one `/quotes` request per asset, not per asset × tier.
  */
 
 import { Info, RefreshCw } from "lucide-react";
@@ -17,7 +20,7 @@ import { Tooltip } from "@/components/ui/tooltip";
 import type { SectionConfig } from "@/config/sections/types";
 import { useQuotesMatrix } from "@/hooks/useQuotes";
 import type { InstrumentType, TopOfBook } from "@/lib/api";
-import { formatTimestamp } from "@/lib/format";
+import { formatNotional, formatTimestamp } from "@/lib/format";
 import type { SideView } from "@/lib/summary";
 import { cn } from "@/lib/utils";
 import {
@@ -34,6 +37,11 @@ const SIDE_OPTIONS: { id: SideView; label: string }[] = [
 export type AssetSpreadBlockProps = {
   section: SectionConfig;
   asset: string;
+  /**
+   * Selected notional tier (USD string). Parent owns size selection via the
+   * shared SizeSelector + `?size=` URL (WHI-841) — one request per asset.
+   */
+  notional: string;
   /** Visible venue row order (already filtered for this asset). */
   venues: readonly string[];
   /** Matrix / TOB row labels keyed by venue slug. */
@@ -51,7 +59,7 @@ export type AssetSpreadBlockProps = {
   assetSubtitle?: string;
   /**
    * Short meta line under the title (e.g. "CEX + perp DEX").
-   * Defaults to a generic multi-venue + notional + side line.
+   * Defaults to a generic multi-venue + selected size + side line.
    */
   subtitle?: string;
   /**
@@ -84,6 +92,7 @@ export type AssetSpreadBlockProps = {
 export function AssetSpreadBlock({
   section,
   asset,
+  notional,
   venues,
   venueLabels,
   summaryVenueLabels,
@@ -99,9 +108,12 @@ export function AssetSpreadBlock({
 }: AssetSpreadBlockProps) {
   const [sideView, setSideView] = useState<SideView>(section.defaultSideView);
 
+  // Single tier only — never fan out across section.notionals (WHI-841).
+  const notionals = useMemo(() => [notional], [notional]);
+
   const query = useQuotesMatrix({
     asset,
-    notionals: section.notionals,
+    notionals,
     // Pin to the section venue set so we don't surface mock/other adapters.
     venues: venues.length > 0 ? venues : undefined,
     instrument_type: instrumentType ?? section.instrumentType,
@@ -118,11 +130,7 @@ export function AssetSpreadBlock({
   const tobByVenue = useMemo(() => {
     const map: Record<string, TopOfBook | null> = {};
     for (const v of orderbookVenues) map[v] = null;
-    // Prefer TOB from the smallest notional row (same book snapshot per venue).
-    const ordered = [...pairs].sort(
-      (a, b) => Number(a.notional_usd) - Number(b.notional_usd),
-    );
-    for (const pair of ordered) {
+    for (const pair of pairs) {
       if (
         pair.top_of_book &&
         Object.prototype.hasOwnProperty.call(map, pair.venue) &&
@@ -159,15 +167,20 @@ export function AssetSpreadBlock({
 
   const proseLabels = summaryVenueLabels ?? venueLabels;
   const pollMs = section.pollIntervalMs;
+  const sizeLabel = formatNotional(notional);
   const subtitleText =
     subtitle ??
-    `All venue classes · ${section.notionals.length} notional tiers · ${sideView.replace("_", " ")}`;
+    `All venue classes · size ${sizeLabel} · ${sideView.replace("_", " ")}`;
+
+  // Cold size: full skeleton. Warm (cached) size: keep matrix, spin refresh.
+  const showSkeleton = query.isLoading && !query.data;
 
   return (
     <section
       className="space-y-4 rounded-xl border border-zinc-200 p-4 dark:border-zinc-800"
       data-testid={`asset-block-${asset}`}
       data-asset={asset}
+      data-notional={notional}
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
@@ -294,8 +307,10 @@ export function AssetSpreadBlock({
         ) : null}
       </div>
 
-      {query.isLoading && (
-        <p className="text-sm text-zinc-500">Loading {asset} quotes…</p>
+      {showSkeleton && (
+        <p className="text-sm text-zinc-500">
+          Loading {asset} quotes at {sizeLabel}…
+        </p>
       )}
       {query.isError && (
         <div className="rounded-md border border-rose-300 bg-rose-50 px-3 py-2 text-sm text-rose-800 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-200">
@@ -316,7 +331,7 @@ export function AssetSpreadBlock({
         </div>
       )}
 
-      {!query.isLoading && !query.isError && (
+      {!showSkeleton && !query.isError && (
         <>
           <SnapshotSummary
             pairs={pairs}
@@ -328,7 +343,7 @@ export function AssetSpreadBlock({
           />
           <SpreadMatrix
             pairs={pairs}
-            notionals={section.notionals}
+            notionals={notionals}
             venues={venues}
             sideView={sideView}
             metric={section.cellMetric}

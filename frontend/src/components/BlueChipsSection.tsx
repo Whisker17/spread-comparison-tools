@@ -1,9 +1,10 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { useMemo } from "react";
+import { Suspense, useMemo } from "react";
 
 import { AssetSpreadBlock } from "@/components/AssetSpreadBlock";
+import { SizeSelector } from "@/components/SizeSelector";
 import {
   blueChipsSection,
   buildVenueLabels,
@@ -11,15 +12,32 @@ import {
   venueSummaryLabel,
 } from "@/config/sections/blue-chips";
 import { venuesForAsset } from "@/config/sections/helpers";
+import { useNotionalSize } from "@/hooks/useNotionalSize";
 import { fetchAssets } from "@/lib/api";
+import { formatNotional } from "@/lib/format";
 
 /**
  * Full `/blue-chips` content: BTC / ETH / SOL blocks with live data (WHI-809).
  * Owns section-config helpers so AssetSpreadBlock stays section-agnostic.
  * Representation labels prefer GET /assets (backend SSOT) with static fallback.
+ *
+ * WHI-841: page-level size selector → one `/quotes` per asset (not × tiers).
  */
 export function BlueChipsSection() {
+  // useSearchParams requires a Suspense boundary in the App Router.
+  return (
+    <Suspense fallback={<SectionShellLoading title={blueChipsSection.title} />}>
+      <BlueChipsSectionInner />
+    </Suspense>
+  );
+}
+
+function BlueChipsSectionInner() {
   const section = blueChipsSection;
+  const { notional, setNotional } = useNotionalSize({
+    allowed: section.notionals,
+    defaultNotional: section.defaultNotional,
+  });
 
   const assetsQuery = useQuery({
     queryKey: ["assets"],
@@ -37,10 +55,29 @@ export function BlueChipsSection() {
 
   return (
     <div className="space-y-6">
-      <header>
-        <h1 className="text-2xl font-semibold tracking-tight">{section.title}</h1>
-        <p className="mt-1 max-w-3xl text-sm text-zinc-600 dark:text-zinc-400">
-          {section.description}
+      <header className="space-y-3">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight">
+              {section.title}
+            </h1>
+            <p className="mt-1 max-w-3xl text-sm text-zinc-600 dark:text-zinc-400">
+              {section.description}
+            </p>
+          </div>
+          <SizeSelector
+            tiers={section.notionals}
+            value={notional}
+            onChange={setNotional}
+          />
+        </div>
+        <p className="text-xs text-zinc-500">
+          Showing size{" "}
+          <strong className="font-medium text-zinc-700 dark:text-zinc-300">
+            {formatNotional(notional)}
+          </strong>{" "}
+          — one <code className="text-[11px]">/quotes</code> request per asset
+          (not per tier) so venue rate limiters stay inside their timeout budget.
         </p>
       </header>
 
@@ -49,6 +86,7 @@ export function BlueChipsSection() {
           <BlueChipAssetBlock
             key={asset}
             asset={asset}
+            notional={notional}
             representationOverrides={repsByAsset.get(asset)}
           />
         ))}
@@ -84,9 +122,9 @@ export function BlueChipsSection() {
           <strong className="font-medium text-zinc-700 dark:text-zinc-300">
             Summary.
           </strong>{" "}
-          Best-venue sentences are point-in-time only (status=ok and complete
-          total_cost_bps; gas_unknown never wins — WHI-799 §5.2). Historical
-          stats land in WHI-818.
+          Best-venue sentences are point-in-time only at the selected size
+          (status=ok and complete total_cost_bps; gas_unknown never wins —
+          WHI-799 §5.2). Historical stats land in WHI-818.
         </p>
       </footer>
     </div>
@@ -95,9 +133,11 @@ export function BlueChipsSection() {
 
 function BlueChipAssetBlock({
   asset,
+  notional,
   representationOverrides,
 }: {
   asset: string;
+  notional: string;
   representationOverrides?: Readonly<Record<string, string>>;
 }) {
   const section = blueChipsSection;
@@ -134,10 +174,22 @@ function BlueChipAssetBlock({
     <AssetSpreadBlock
       section={section}
       asset={asset}
+      notional={notional}
       venues={venues}
       venueLabels={venueLabels}
       summaryVenueLabels={summaryVenueLabels}
       orderbookVenues={orderbookVenues}
     />
+  );
+}
+
+function SectionShellLoading({ title }: { title: string }) {
+  return (
+    <div className="space-y-6">
+      <header>
+        <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
+        <p className="mt-2 text-sm text-zinc-500">Loading size selector…</p>
+      </header>
+    </div>
   );
 }

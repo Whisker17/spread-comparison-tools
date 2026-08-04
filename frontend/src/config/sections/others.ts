@@ -164,6 +164,7 @@ export const othersSection: SectionConfig = {
   assets: expandedOtherAssets(),
   venues: [...OTHER_VENUES],
   notionals: [...NOTIONAL_TIERS_USD],
+  defaultNotional: "1000",
   defaultSideView: "buy",
   cellMetric: "total_cost_bps",
   showTopOfBook: true,

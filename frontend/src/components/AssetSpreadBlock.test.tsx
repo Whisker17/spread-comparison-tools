@@ -4,6 +4,8 @@
  * Render contract for the shared asset block (WHI-808) as used by the stocks
  * boards (WHI-810): the emphasized mid-source badge is opt-in and its tooltip
  * copy comes from the section, never hardcoded in the component.
+ *
+ * WHI-841: block fetches exactly one notional (the selected size).
  */
 
 import { cleanup, render, screen } from "@testing-library/react";
@@ -55,12 +57,15 @@ function withProviders(children: ReactNode) {
   return <TooltipProvider>{children}</TooltipProvider>;
 }
 
-function renderBlock(props: { emphasizeMidSource?: boolean } = {}) {
+function renderBlock(
+  props: { emphasizeMidSource?: boolean; notional?: string } = {},
+) {
   return render(
     withProviders(
       <AssetSpreadBlock
         section={tokenizedStocksBoard}
         asset="QQQB"
+        notional={props.notional ?? "1000"}
         venues={["binance", "pancakeswap_bsc", "tessera_bsc"]}
         venueLabels={{
           binance: "Binance · spot · QQQBUSDT",
@@ -69,7 +74,7 @@ function renderBlock(props: { emphasizeMidSource?: boolean } = {}) {
         }}
         orderbookVenues={["binance"]}
         midSourceHint={STOCKS_MID_SOURCE_HINT}
-        {...props}
+        emphasizeMidSource={props.emphasizeMidSource}
       />,
     ),
   );
@@ -119,5 +124,30 @@ describe("AssetSpreadBlock mid-source rendering (WHI-810)", () => {
         instrument_type: tokenizedStocksBoard.instrumentType,
       }),
     );
+  });
+});
+
+describe("AssetSpreadBlock single-notional fetch (WHI-841)", () => {
+  it("requests exactly the selected notional (not the full tier list)", () => {
+    renderBlock({ notional: "10000" });
+
+    expect(useQuotesMatrixMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        asset: "QQQB",
+        notionals: ["10000"],
+      }),
+    );
+    // Must not fan out across section.notionals (5 tiers).
+    const call = useQuotesMatrixMock.mock.calls[0]?.[0] as {
+      notionals: string[];
+    };
+    expect(call.notionals).toHaveLength(1);
+  });
+
+  it("tags the block with the active notional for network/debug inspection", () => {
+    renderBlock({ notional: "100000" });
+    expect(
+      screen.getByTestId("asset-block-QQQB").getAttribute("data-notional"),
+    ).toBe("100000");
   });
 });

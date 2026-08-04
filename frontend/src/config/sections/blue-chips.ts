@@ -130,6 +130,7 @@ export const blueChipsSection: SectionConfig = {
     ETH: ["tessera_bsc"],
   },
   notionals: [...NOTIONAL_TIERS_USD],
+  defaultNotional: "1000",
   defaultSideView: "buy",
   cellMetric: "total_cost_bps",
   showTopOfBook: true,

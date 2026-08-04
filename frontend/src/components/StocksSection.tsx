@@ -1,9 +1,10 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { useMemo } from "react";
+import { Suspense, useMemo } from "react";
 
 import { AssetSpreadBlock } from "@/components/AssetSpreadBlock";
+import { SizeSelector } from "@/components/SizeSelector";
 import { UsMarketHoursIndicator } from "@/components/UsMarketHoursIndicator";
 import {
   BSTOCKS_REBASE_FOOTNOTE,
@@ -23,13 +24,33 @@ import {
   venuesForAsset,
 } from "@/config/sections/helpers";
 import type { SectionConfig } from "@/config/sections/types";
+import { useNotionalSize } from "@/hooks/useNotionalSize";
 import { fetchAssets } from "@/lib/api";
+import { formatNotional } from "@/lib/format";
 
 /**
  * Full `/stocks` content (WHI-810): P0-A tokenized three-way + P0-B equity perps.
  * Owns section-config helpers so AssetSpreadBlock stays section-agnostic.
+ *
+ * WHI-841: one page-level size selector shared by both boards.
  */
 export function StocksSection() {
+  return (
+    <Suspense
+      fallback={<SectionShellLoading title={stocksPageHeader.title} />}
+    >
+      <StocksSectionInner />
+    </Suspense>
+  );
+}
+
+function StocksSectionInner() {
+  // Both boards share the same tier list + default — one URL size for the page.
+  const { notional, setNotional } = useNotionalSize({
+    allowed: tokenizedStocksBoard.notionals,
+    defaultNotional: tokenizedStocksBoard.defaultNotional,
+  });
+
   const assetsQuery = useQuery({
     queryKey: ["assets"],
     queryFn: ({ signal }) => fetchAssets({ signal }),
@@ -56,19 +77,32 @@ export function StocksSection() {
               {stocksPageHeader.description}
             </p>
           </div>
-          <UsMarketHoursIndicator />
+          <div className="flex flex-wrap items-start gap-3">
+            <SizeSelector
+              tiers={tokenizedStocksBoard.notionals}
+              value={notional}
+              onChange={setNotional}
+            />
+            <UsMarketHoursIndicator />
+          </div>
         </div>
         <p className="max-w-3xl text-xs text-zinc-500">
           Reference mids for stocks use a weaker chain than crypto P0 (
           <code className="text-[11px]">cex_tradfi_index</code>,{" "}
           <code className="text-[11px]">proxy_perp_mark_median</code>, or CEX
           spot TOB — WHI-799 §3.3). Each asset block highlights its mid source.
+          Size{" "}
+          <strong className="font-medium text-zinc-700 dark:text-zinc-300">
+            {formatNotional(notional)}
+          </strong>{" "}
+          applies to both boards.
         </p>
       </header>
 
       <Board
         board={tokenizedStocksBoard}
         kind="tokenized"
+        notional={notional}
         repsByAsset={repsByAsset}
         footnote={BSTOCKS_REBASE_FOOTNOTE}
       />
@@ -76,6 +110,7 @@ export function StocksSection() {
       <Board
         board={equityPerpsBoard}
         kind="equity_perp"
+        notional={notional}
         repsByAsset={repsByAsset}
       />
 
@@ -101,8 +136,9 @@ export function StocksSection() {
           <strong className="font-medium text-zinc-700 dark:text-zinc-300">
             Summary.
           </strong>{" "}
-          Best-venue sentences are point-in-time only (status=ok and complete
-          total_cost_bps; gas_unknown never wins — WHI-799 §5.2).
+          Best-venue sentences are point-in-time only at the selected size
+          (status=ok and complete total_cost_bps; gas_unknown never wins —
+          WHI-799 §5.2).
         </p>
       </footer>
     </div>
@@ -112,11 +148,13 @@ export function StocksSection() {
 function Board({
   board,
   kind,
+  notional,
   repsByAsset,
   footnote,
 }: {
   board: SectionConfig;
   kind: StocksBoardKind;
+  notional: string;
   repsByAsset: Map<string, Readonly<Record<string, string>>>;
   footnote?: string;
 }) {
@@ -154,6 +192,7 @@ function Board({
             board={board}
             kind={kind}
             asset={asset}
+            notional={notional}
             representationOverrides={repsByAsset.get(asset)}
           />
         ))}
@@ -166,11 +205,13 @@ function StocksAssetBlock({
   board,
   kind,
   asset,
+  notional,
   representationOverrides,
 }: {
   board: SectionConfig;
   kind: StocksBoardKind;
   asset: string;
+  notional: string;
   representationOverrides?: Readonly<Record<string, string>>;
 }) {
   const venues = useMemo(
@@ -210,6 +251,7 @@ function StocksAssetBlock({
     <AssetSpreadBlock
       section={board}
       asset={asset}
+      notional={notional}
       assetTitle={STOCK_ASSET_TITLES[asset] ?? asset}
       assetSubtitle={STOCK_ASSET_SUBTITLES[asset]}
       venues={venues}
@@ -219,5 +261,16 @@ function StocksAssetBlock({
       emphasizeMidSource
       midSourceHint={STOCKS_MID_SOURCE_HINT}
     />
+  );
+}
+
+function SectionShellLoading({ title }: { title: string }) {
+  return (
+    <div className="space-y-6">
+      <header>
+        <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
+        <p className="mt-2 text-sm text-zinc-500">Loading size selector…</p>
+      </header>
+    </div>
   );
 }

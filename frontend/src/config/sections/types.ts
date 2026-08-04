@@ -25,8 +25,16 @@ export type SectionConfig = {
    * Used e.g. to drop EVM AMM rows for SOL (WHI-798 §3.1 / WHI-809).
    */
   hiddenVenuesByAsset?: Readonly<Record<string, readonly string[]>>;
-  /** Notional tiers to show as columns. */
+  /**
+   * Selectable notional tiers for the size selector (WHI-841).
+   * Historically matrix columns; the matrix now shows one tier at a time.
+   */
   notionals: readonly string[];
+  /**
+   * Default size when `?size=` is absent or invalid (WHI-841).
+   * Suggested product default: `"1000"`.
+   */
+  defaultNotional: string;
   /** Default side / round-trip view. */
   defaultSideView: SideView;
   /**
