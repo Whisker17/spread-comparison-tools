@@ -13,7 +13,6 @@ from typing import Any, Literal
 
 from spread_compare.adapters._perp_common import (
     DEFAULT_FEE_TIER,
-    AsyncRateLimiter,
     OrderbookLevels,
     build_quote_from_book,
     build_top_of_book,
@@ -41,6 +40,7 @@ from spread_compare.models import (
     VenueClass,
 )
 from spread_compare.perp_symbols import resolve_apex_base, scaled_1000_logical_id
+from spread_compare.ratelimit import AsyncRateLimiter
 
 logger = logging.getLogger(__name__)
 

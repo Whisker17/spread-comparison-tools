@@ -228,14 +228,13 @@ async def test_jupiter_buy_qty_method_is_quote_exact_in_approx() -> None:
 
 
 @pytest.mark.asyncio
-async def test_jupiter_keyless_respects_min_interval() -> None:
-    """Shared limiter enforces ≥2s spacing when keyless (acceptance criterion)."""
+async def test_jupiter_keyless_uses_token_bucket_capacity() -> None:
+    """Shared Jupiter limiter is a keyless-capacity token bucket (WHI-836)."""
     _reset_jupiter_limiter_for_tests()
     call_log: list[float] = []
     transport = _jupiter_transport(call_log=call_log)
-    # Force keyless interval.
     limiter = await _get_jupiter_limiter(has_api_key=False)
-    assert limiter._min_interval_s >= 2.0  # type: ignore[attr-defined]
+    assert limiter.capacity == 5  # config/jupiter.yaml keyless_capacity
 
     a1 = HumidiFiAdapter()
     a1._client = httpx.AsyncClient(transport=transport)
@@ -246,21 +245,27 @@ async def test_jupiter_keyless_respects_min_interval() -> None:
 
     try:
         t0 = time.monotonic()
+        # Five acquires should burst (within capacity).
+        for _ in range(5):
+            await a1._fetch_quote(
+                "So11111111111111111111111111111111111111112",
+                "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+                1_000_000_000,
+            )
+        burst_elapsed = time.monotonic() - t0
+        assert len(call_log) == 5
+        assert burst_elapsed < 0.5, f"keyless burst of 5 took {burst_elapsed:.3f}s"
+
+        # Sixth waits for refill (~0.2s at 5/s).
+        t1 = time.monotonic()
         await a1._fetch_quote(
             "So11111111111111111111111111111111111111112",
             "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
             1_000_000_000,
         )
-        await a1._fetch_quote(
-            "So11111111111111111111111111111111111111112",
-            "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
-            1_000_000_000,
-        )
-        elapsed = time.monotonic() - t0
-        assert len(call_log) == 2
-        spacing = call_log[1] - call_log[0]
-        assert spacing >= 1.9, f"spacing {spacing:.3f}s < 2s"
-        assert elapsed >= 1.9
+        wait_elapsed = time.monotonic() - t1
+        assert len(call_log) == 6
+        assert wait_elapsed >= 0.15, f"6th keyless call waited only {wait_elapsed:.3f}s"
     finally:
         await a1.aclose()
         _reset_jupiter_limiter_for_tests()

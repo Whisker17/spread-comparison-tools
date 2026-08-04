@@ -36,7 +36,8 @@ from tests.adapter_fakes import DEFAULT_TEST_MID, FixedMid, SlowAdapter
 
 _MID = DEFAULT_TEST_MID.model_copy(update={"snapshot_id": "snap-sim"})
 
-_TEST_AGG = AggregatorSettings(venue_timeout_sec=3.0, response_cache_ttl_sec=0.0)
+_TEST_AGG = AggregatorSettings(venue_timeout_sec=3.0,
+            venue_timeout_by_class={}, response_cache_ttl_sec=0.0)
 
 
 def test_resolve_pair_sell_non_stable() -> None:
@@ -355,7 +356,8 @@ async def test_simulate_single_venue_timeout_degrades(
     sim = TradeSimulator(
         FixedMid(_MID),
         aggregator_settings=AggregatorSettings(
-            venue_timeout_sec=0.05, response_cache_ttl_sec=0.0
+            venue_timeout_sec=0.05,
+            venue_timeout_by_class={}, response_cache_ttl_sec=0.0
         ),
     )
     pkg = await sim.simulate(

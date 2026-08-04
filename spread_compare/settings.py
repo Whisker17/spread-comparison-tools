@@ -1,4 +1,4 @@
-"""Typed runtime config loaded from ``config/*.yaml`` (WHI-807).
+"""Typed runtime config loaded from ``config/*.yaml`` (WHI-807 / WHI-836).
 
 Secrets stay in ``.env``; non-secret tunables live here. Values marked unvalidated
 in WHI-799 §3.2 / WHI-807 are engineering defaults pending DESIGN.md §2.
@@ -14,7 +14,9 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from spread_compare.models import VenueClass
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _CONFIG_DIR = _REPO_ROOT / "config"
@@ -45,7 +47,47 @@ class AggregatorSettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     venue_timeout_sec: float = Field(gt=0)
+    # Per-class overrides; empty map = always use venue_timeout_sec. Required key
+    # (may be {}) so a missing YAML entry fails at load, not at first fan-out.
+    venue_timeout_by_class: dict[VenueClass, float]
     response_cache_ttl_sec: float = Field(ge=0)
+
+    @field_validator("venue_timeout_by_class")
+    @classmethod
+    def _positive_class_timeouts(
+        cls, value: dict[VenueClass, float]
+    ) -> dict[VenueClass, float]:
+        for key, timeout in value.items():
+            if timeout <= 0:
+                raise ValueError(
+                    f"venue_timeout_by_class[{key!r}] must be > 0, got {timeout}"
+                )
+        return value
+
+    def timeout_for(self, venue_class: VenueClass) -> float:
+        """Per-venue-class timeout, falling back to the global default."""
+        return self.venue_timeout_by_class.get(venue_class, self.venue_timeout_sec)
+
+
+class JupiterSettings(BaseModel):
+    """``config/jupiter.yaml`` — Quote API rate budget (WHI-836)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    keyless_capacity: int = Field(ge=1)
+    keyed_capacity: int = Field(ge=1)
+    window_sec: float = Field(gt=0)
+    adapt_from_headers: bool
+
+    @model_validator(mode="after")
+    def _keyless_not_above_keyed(self) -> JupiterSettings:
+        # prop_jupiter "strictest mode wins" assumes keyless is the tighter budget.
+        if self.keyless_capacity > self.keyed_capacity:
+            raise ValueError(
+                "keyless_capacity must be <= keyed_capacity "
+                f"(got keyless={self.keyless_capacity}, keyed={self.keyed_capacity})"
+            )
+        return self
 
 
 class ApiSettings(BaseModel):
@@ -99,6 +141,12 @@ def load_aggregator_settings() -> AggregatorSettings:
 
 
 @lru_cache(maxsize=1)
+def load_jupiter_settings() -> JupiterSettings:
+    """Parse Jupiter rate-budget settings once; fail fast on invalid config."""
+    return JupiterSettings.model_validate(_merge_local("jupiter"))
+
+
+@lru_cache(maxsize=1)
 def load_api_settings() -> ApiSettings:
     """Parse API settings once; fail fast on invalid config."""
     return ApiSettings.model_validate(_merge_local("api"))
@@ -108,4 +156,5 @@ def clear_settings_cache() -> None:
     """Drop cached settings (tests that rewrite YAML)."""
     load_mid_settings.cache_clear()
     load_aggregator_settings.cache_clear()
+    load_jupiter_settings.cache_clear()
     load_api_settings.cache_clear()

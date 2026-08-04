@@ -408,7 +408,7 @@ class TradeSimulator:
             notional_usd=notional_usd,
             mid=mid,
             instrument_type=itype,
-            timeout=self._agg.venue_timeout_sec,
+            timeout=self._agg.timeout_for(adapter.venue_class),
             log_tag="[simulate]",
         )
         quote = apply_mid_stale(quote, stale_threshold_sec=self._mid_settings.stale_threshold_sec)
