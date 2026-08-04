@@ -42,6 +42,21 @@ def test_load_jupiter_settings_defaults() -> None:
     assert jup.adapt_from_headers is True
 
 
+def test_jupiter_keyless_cannot_exceed_keyed() -> None:
+    import pytest
+    from pydantic import ValidationError
+
+    from spread_compare.settings import JupiterSettings
+
+    with pytest.raises(ValidationError, match="keyless_capacity"):
+        JupiterSettings(
+            keyless_capacity=20,
+            keyed_capacity=10,
+            window_sec=1.0,
+            adapt_from_headers=True,
+        )
+
+
 def test_aggregator_timeout_for_fallback() -> None:
     agg = AggregatorSettings(
         venue_timeout_sec=2.5,

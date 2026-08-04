@@ -11,29 +11,26 @@ from __future__ import annotations
 
 import asyncio
 from decimal import Decimal
-from typing import Literal
 
 from spread_compare.adapters._amm_common import (
     AERO_TICK_SPACINGS,
     AmmDexAdapter,
     JsonRpcError,
+    ProbeOutcome,
     QuoterResult,
     TokenInfo,
+    classify_json_rpc_error,
     decode_aero_v2_amount,
     decode_get_amounts_out,
     decode_quoter_v2_result,
     encode_aero_exact_in_v2,
     encode_aero_exact_in_v3,
     encode_get_amounts_out,
-    prefer_quoter_result,
+    reduce_probe_outcomes,
     to_raw,
 )
-from spread_compare.adapters.base import AdapterFetchError
 from spread_compare.adapters.registry import register_adapter
 from spread_compare.models import ReferenceMid, Side
-
-_ProbeKind = Literal["ok", "transport", "revert"]
-_ProbeOutcome = tuple[_ProbeKind, QuoterResult | None]
 
 # MixedQuoter (Base) — covers volatile / stable / CL.
 # Doc-sourced 2026-08-03 from https://aerodrome.finance/security
@@ -111,17 +108,16 @@ class AerodromeBaseAdapter(AmmDexAdapter):
         """Probe CL + V2 + router paths concurrently (WHI-836)."""
         rpc = self._require_rpc()
 
-        async def _probe_cl(tick: int) -> _ProbeOutcome:
+        async def _probe_cl(tick: int) -> ProbeOutcome:
             data = encode_aero_exact_in_v3(token_in, token_out, amount_in, tick)
             try:
                 raw = await rpc.eth_call(_MIXED_QUOTER, data)
-                amount_out, _, _, gas_est = decode_quoter_v2_result(raw)
             except JsonRpcError as exc:
-                if exc.transport or not exc.revert:
-                    return "transport", None
-                return "revert", None
+                return classify_json_rpc_error(exc), None
+            try:
+                amount_out, _, _, gas_est = decode_quoter_v2_result(raw)
             except ValueError:
-                return "revert", None
+                return "ok", None
             if amount_out <= 0:
                 return "ok", None
             return "ok", QuoterResult(
@@ -134,17 +130,16 @@ class AerodromeBaseAdapter(AmmDexAdapter):
                 exact_out=False,
             )
 
-        async def _probe_v2(stable: bool, label: str) -> _ProbeOutcome:
+        async def _probe_v2(stable: bool, label: str) -> ProbeOutcome:
             data = encode_aero_exact_in_v2(token_in, token_out, stable, amount_in)
             try:
                 raw = await rpc.eth_call(_MIXED_QUOTER, data)
-                amount_out = decode_aero_v2_amount(raw)
             except JsonRpcError as exc:
-                if exc.transport or not exc.revert:
-                    return "transport", None
-                return "revert", None
+                return classify_json_rpc_error(exc), None
+            try:
+                amount_out = decode_aero_v2_amount(raw)
             except ValueError:
-                return "revert", None
+                return "ok", None
             if amount_out <= 0:
                 return "ok", None
             return "ok", QuoterResult(
@@ -156,20 +151,19 @@ class AerodromeBaseAdapter(AmmDexAdapter):
                 exact_out=False,
             )
 
-        async def _probe_router(stable: bool, label: str) -> _ProbeOutcome:
+        async def _probe_router(stable: bool, label: str) -> ProbeOutcome:
             data = encode_get_amounts_out(
                 amount_in,
                 [(token_in, token_out, stable, _POOL_FACTORY)],
             )
             try:
                 raw = await rpc.eth_call(_ROUTER, data)
-                amounts = decode_get_amounts_out(raw)
             except JsonRpcError as exc:
-                if exc.transport or not exc.revert:
-                    return "transport", None
-                return "revert", None
+                return classify_json_rpc_error(exc), None
+            try:
+                amounts = decode_get_amounts_out(raw)
             except ValueError:
-                return "revert", None
+                return "ok", None
             if len(amounts) < 2 or amounts[-1] <= 0:
                 return "ok", None
             return "ok", QuoterResult(
@@ -188,21 +182,8 @@ class AerodromeBaseAdapter(AmmDexAdapter):
             _probe_router(False, "router_volatile"),
             _probe_router(True, "router_stable"),
         )
-
-        best: QuoterResult | None = None
-        saw_success = False
-        transport_failures = 0
-        for kind, candidate in outcomes:
-            if kind == "ok":
-                saw_success = True
-                if candidate is not None:
-                    best = prefer_quoter_result(best, candidate, prefer_min_in=False)
-            elif kind == "transport":
-                transport_failures += 1
-
-        if best is None and not saw_success and transport_failures > 0:
-            raise AdapterFetchError(
-                f"RPC transport failed for all Aerodrome quote paths "
-                f"(transport={transport_failures})"
-            )
-        return best
+        return reduce_probe_outcomes(
+            outcomes,
+            prefer_min_in=False,
+            error_label="Aerodrome quote paths",
+        )

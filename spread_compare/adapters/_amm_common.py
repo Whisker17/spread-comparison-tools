@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -363,6 +364,53 @@ class RpcClient:
         return int(result, 16)
 
 
+# Concurrent probe outcome tags (WHI-836). "ok" means the RPC round-trip
+# succeeded (even if amount was zero or decode failed after transport OK).
+ProbeKind = Literal["ok", "transport", "revert"]
+ProbeOutcome = tuple[ProbeKind, QuoterResult | None]
+
+
+def classify_json_rpc_error(exc: JsonRpcError) -> ProbeKind:
+    """Map a JsonRpcError to a probe outcome tag."""
+    if exc.transport or not exc.revert:
+        return "transport"
+    return "revert"
+
+
+def reduce_probe_outcomes(
+    outcomes: Sequence[ProbeOutcome],
+    *,
+    prefer_min_in: bool,
+    error_label: str,
+) -> QuoterResult | None:
+    """Fold concurrent probe outcomes into best quote or AdapterFetchError.
+
+    Transport-only total failure raises; any successful RPC path (even with
+    zero/empty decode) degrades to ``no_quote`` (``None``) per WHI-799 §6.6.
+    """
+    best: QuoterResult | None = None
+    saw_success = False
+    transport_failures = 0
+    revert_failures = 0
+    for kind, candidate in outcomes:
+        if kind == "ok":
+            saw_success = True
+            if candidate is not None:
+                best = prefer_quoter_result(
+                    best, candidate, prefer_min_in=prefer_min_in
+                )
+        elif kind == "transport":
+            transport_failures += 1
+        else:
+            revert_failures += 1
+    if best is None and not saw_success and transport_failures > 0:
+        raise AdapterFetchError(
+            f"RPC transport failed for all {error_label} "
+            f"(transport={transport_failures}, reverts={revert_failures})"
+        )
+    return best
+
+
 async def probe_quoter_v2(
     rpc: RpcClient,
     quoter: str,
@@ -383,11 +431,6 @@ async def probe_quoter_v2(
     if amount_base_raw is None or amount_base_raw <= 0:
         return None
 
-    # Outcome of one tier probe: success payload or a failure classification.
-    # Using return values (not shared counters) keeps concurrent probes race-free.
-    ProbeKind = Literal["ok", "transport", "revert"]
-    ProbeOutcome = tuple[ProbeKind, QuoterResult | None]
-
     async def _probe_tier(fee: int) -> ProbeOutcome:
         if side == "sell":
             data = encode_quote_exact_input_single(
@@ -399,13 +442,13 @@ async def probe_quoter_v2(
             )
         try:
             raw = await rpc.eth_call(quoter, data)
-            amount, _, _, gas_est = decode_quoter_v2_result(raw)
         except JsonRpcError as exc:
-            if exc.transport or not exc.revert:
-                return "transport", None
-            return "revert", None
+            return classify_json_rpc_error(exc), None
+        # eth_call succeeded — count as success even if decode fails (pre-WHI-836).
+        try:
+            amount, _, _, gas_est = decode_quoter_v2_result(raw)
         except ValueError:
-            return "revert", None
+            return "ok", None
 
         if side == "sell":
             if amount <= 0:
@@ -433,30 +476,11 @@ async def probe_quoter_v2(
         return "ok", candidate
 
     outcomes = await asyncio.gather(*(_probe_tier(fee) for fee in fee_tiers))
-
-    best: QuoterResult | None = None
-    saw_success = False
-    transport_failures = 0
-    revert_failures = 0
-    prefer_min_in = side != "sell"
-    for kind, candidate in outcomes:
-        if kind == "ok":
-            saw_success = True
-            if candidate is not None:
-                best = prefer_quoter_result(
-                    best, candidate, prefer_min_in=prefer_min_in
-                )
-        elif kind == "transport":
-            transport_failures += 1
-        else:
-            revert_failures += 1
-
-    if best is None and not saw_success and transport_failures > 0:
-        raise AdapterFetchError(
-            f"RPC transport failed for all fee tiers on {quoter} "
-            f"(transport={transport_failures}, reverts={revert_failures})"
-        )
-    return best
+    return reduce_probe_outcomes(
+        outcomes,
+        prefer_min_in=side != "sell",
+        error_label=f"fee tiers on {quoter}",
+    )
 
 
 async def fetch_binance_mid(

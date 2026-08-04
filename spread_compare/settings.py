@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from spread_compare.models import VenueClass
 
@@ -78,6 +78,16 @@ class JupiterSettings(BaseModel):
     keyed_capacity: int = Field(ge=1)
     window_sec: float = Field(gt=0)
     adapt_from_headers: bool
+
+    @model_validator(mode="after")
+    def _keyless_not_above_keyed(self) -> JupiterSettings:
+        # prop_jupiter "strictest mode wins" assumes keyless is the tighter budget.
+        if self.keyless_capacity > self.keyed_capacity:
+            raise ValueError(
+                "keyless_capacity must be <= keyed_capacity "
+                f"(got keyless={self.keyless_capacity}, keyed={self.keyed_capacity})"
+            )
+        return self
 
 
 class ApiSettings(BaseModel):
