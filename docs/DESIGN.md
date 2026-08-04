@@ -64,8 +64,10 @@ renaming these responsibilities. `AGENTS.md` §Architecture mirrors this list.
 | `spread_compare/bookwalk.py` | **Sole** walk-the-book → VWAP implementation (WHI-799 §4.3). CEX/perp adapters import this; no per-adapter copies. |
 | `spread_compare/costs.py` | **Sole** `spread_bps` / `total_cost_bps` formulas (WHI-799 §4.5 / §5.2). Aggregator never recomputes. |
 | `spread_compare/settings.py` | Typed loaders for `config/mid.yaml`, `config/aggregator.yaml`, `config/api.yaml` (fail-fast pydantic). |
+| `spread_compare/ratelimit.py` | Shared async rate limiters (`AsyncRateLimiter` / token-bucket / rolling-window); `max_wait_s` for fail-fast (WHI-836 / WHI-844). |
+| `spread_compare/budget.py` | Per-call quote deadline context + `acquire_within_budget` / `sleep_within_budget` (WHI-844). |
 | `spread_compare/mids.py` | Reference-mid service (WHI-799 §3): P0–P3 chain, stocks median marks, short cache. |
-| `spread_compare/aggregator.py` | Concurrent adapter fan-out, per-venue timeout → `status=error`, SizeQuotePair assembly, response cache. |
+| `spread_compare/aggregator.py` | Concurrent adapter fan-out, per-class timeout → degrade, SizeQuotePair assembly, response cache + single-flight (WHI-807 / WHI-844). |
 | `spread_compare/adapters/__init__.py` | Auto-discovers adapter modules via `pkgutil` (no hand-maintained import list). |
 | `spread_compare/adapters/base.py` | `VenueAdapter` Protocol (async I/O + lifecycle), `BaseAdapter` (no-op lifecycle + shared `httpx.AsyncClient`), `AdapterError` hierarchy (WHI-799 §7 / WHI-823). |
 | `spread_compare/adapters/registry.py` | `@register_adapter` self-registration; `get` / `list_venues`; `startup_all` / `aclose_all`. |

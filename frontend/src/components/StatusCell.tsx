@@ -66,12 +66,16 @@ export function StatusCell({
         <span className="text-zinc-400">—</span>
       ) : null}
 
-      {decision.kind === "insufficient_liquidity" && (
-        <Badge variant="warning">{decision.badge}</Badge>
+      {decision.kind === "insufficient_liquidity" && decision.badge && (
+        <Badge variant={decision.badgeVariant ?? "warning"}>
+          {decision.badge}
+        </Badge>
       )}
-      {decision.kind === "error" && (
+      {(decision.kind === "error" || decision.kind === "rate_limited") && (
         <div className="flex flex-col items-center gap-0.5">
-          <Badge variant="danger">{decision.badge ?? "error"}</Badge>
+          <Badge variant={decision.badgeVariant ?? "danger"}>
+            {decision.badge ?? "error"}
+          </Badge>
           {onRetry ? (
             <Button
               type="button"
@@ -93,7 +97,7 @@ export function StatusCell({
         </div>
       )}
       {decision.kind === "cost_incomplete" && decision.badge && (
-        <Badge variant="muted">{decision.badge}</Badge>
+        <Badge variant={decision.badgeVariant ?? "muted"}>{decision.badge}</Badge>
       )}
 
       {decision.midStale && (

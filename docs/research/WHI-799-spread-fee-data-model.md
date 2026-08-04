@@ -411,6 +411,7 @@ QuoteStatus =
   | "insufficient_liquidity"   # 深度不够 q_star
   | "unsupported_asset"
   | "error"
+  | "rate_limited"             # WHI-844：限流等待会超过本 call 剩余 budget（非 timeout）
 ```
 
 （`TopOfBook` 不复用该枚举——orderbook 适配器用返回值 `None` 表示「本 venue 无 TOB 概念」，见 §6.3 / §7。）
@@ -544,6 +545,7 @@ SizeQuotePair {
 | 深度 < `q_star` | `insufficient_liquidity` | 200 |
 | 资产不支持 | `unsupported_asset` | 200 |
 | 超时 / 上游失败 | `error` | 200 + 该 venue 错误；不整包失败 |
+| 限流等待会超过本 call 剩余 budget（本地 limiter 或上游 429） | `rate_limited` | 200 + 该 venue 错误；**不得**与 `timeout` 混淆；不参与 §5.2 best（WHI-844） |
 | mid 不可用 | — | 整包 503/422 |
 
 #### 6.6.1 Venue minimums at the $100 tier (WHI-838)
@@ -703,3 +705,4 @@ bps API 保留 4 位小数；展示可再圆整到 2 位。
 | 2026-08-03 | Review round 3：修正 sell 测试向量盘口；`SizeQuotePair`/双边 key 含 `instrument_type`；非 ok 时 `explicit_fee_bps=null`；`config/mid.yaml` 标注 unvalidated |
 | 2026-08-03 | **v2 对齐 WHI-797/798 重做**：slug 拆 `tessera_solana/base/bsc`（作废 `tessera`）；§4.4/§8 增 KyberSwap 报价与错误映射（EVM gas 用 `gasUsd`）；§3.3 tokenized 现货 mid 改用自身 CEX TOB + rebase 口径 + 资产 ID 语义；新增 Q5/Q6。公式与模型字段无变化 |
 | 2026-08-04 | **WHI-838**：§4.1 增 `$100` 为第五档 → `[100, 1_000, 10_000, 100_000, 1_000_000]`；collector 改为五档都采；注明零售档 gas_bps 放大与 dashboard 按列 heat。公式与 `QuoteStatus` 词汇无变化 |
+| 2026-08-04 | **WHI-844**：§6.1 / §6.6 增 `rate_limited`（限流等待会超过本 call 剩余 budget，fail-fast，与 `timeout` 区分）；§5.2 best 规则不变（仅 `status=ok` 且 `total_cost_bps` 非 null） |

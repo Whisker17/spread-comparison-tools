@@ -27,11 +27,13 @@ from spread_compare.adapters.base import (
     AdapterConfigError,
     AdapterError,
     AdapterFetchError,
+    AdapterRateLimitedError,
     AdapterTimeoutError,
     BaseAdapter,
     default_instrument_type,
 )
 from spread_compare.adapters.registry import register_adapter
+from spread_compare.budget import acquire_within_budget, sleep_within_budget
 from spread_compare.models import (
     InstrumentType,
     Quote,
@@ -246,7 +248,7 @@ class KyberSwapPropAdapter(BaseAdapter):
 
         last_err: Exception | None = None
         for attempt in range(_MAX_RETRIES):
-            await _kyber_limiter.acquire()
+            await acquire_within_budget(_kyber_limiter, venue=self.venue)
             try:
                 resp = await self.http.get(url, params=params, headers=headers)
             except httpx.TimeoutException as exc:
@@ -266,8 +268,13 @@ class KyberSwapPropAdapter(BaseAdapter):
                     attempt + 1,
                     wait,
                 )
-                await asyncio.sleep(wait)
-                last_err = AdapterFetchError(f"{self.venue}: KyberSwap rate limited")
+                await sleep_within_budget(
+                    wait, venue=self.venue, reason="KyberSwap rate limited"
+                )
+                last_err = AdapterRateLimitedError(
+                    f"{self.venue}: KyberSwap rate limited",
+                    retry_after_s=wait,
+                )
                 continue
 
             try:
@@ -316,6 +323,7 @@ class KyberSwapPropAdapter(BaseAdapter):
 
             if resp.status_code >= 500:
                 wait = min(2.0 * (2**attempt), 8.0)
+                # 5xx is not rate_limited (WHI-844) — keep ordinary backoff.
                 await asyncio.sleep(wait)
                 last_err = AdapterFetchError(
                     f"{self.venue}: KyberSwap HTTP {resp.status_code}"

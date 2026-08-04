@@ -31,11 +31,13 @@ from spread_compare.adapters.base import (
     AdapterConfigError,
     AdapterError,
     AdapterFetchError,
+    AdapterRateLimitedError,
     AdapterTimeoutError,
     BaseAdapter,
     default_instrument_type,
 )
 from spread_compare.adapters.registry import register_adapter
+from spread_compare.budget import acquire_within_budget, sleep_within_budget
 from spread_compare.models import (
     InstrumentType,
     Quote,
@@ -331,7 +333,7 @@ class JupiterPropAdapter(BaseAdapter):
 
             url = f"{jupiter_base_url().rstrip('/')}/program-id-to-label"
             headers = self._headers()
-            await limiter.acquire()
+            await acquire_within_budget(limiter, venue=self.venue)
             try:
                 resp = await self.http.get(url, headers=headers)
                 _observe_rate_limit_headers(
@@ -340,16 +342,20 @@ class JupiterPropAdapter(BaseAdapter):
                 if resp.status_code == 429:
                     wait = _retry_after_seconds(resp, 0)
                     logger.warning(
-                        "%s label-map rate limited; sleeping %.2fs", self.venue, wait
+                        "%s label-map rate limited; sleep=%.2fs", self.venue, wait
                     )
-                    await asyncio.sleep(wait)
-                    await limiter.acquire()
+                    await sleep_within_budget(
+                        wait, venue=self.venue, reason="Jupiter rate limited"
+                    )
+                    await acquire_within_budget(limiter, venue=self.venue)
                     resp = await self.http.get(url, headers=headers)
                     _observe_rate_limit_headers(
                         resp, limiter, venue=self.venue, has_api_key=bool(self._api_key)
                     )
                 resp.raise_for_status()
                 raw: Any = resp.json()
+            except AdapterRateLimitedError:
+                raise
             except (httpx.HTTPError, ValueError, TypeError) as exc:
                 raise AdapterFetchError(
                     f"{self.venue}: failed to fetch Jupiter program-id-to-label: {exc}"
@@ -386,7 +392,7 @@ class JupiterPropAdapter(BaseAdapter):
 
         last_err: Exception | None = None
         for attempt in range(_MAX_RETRIES):
-            await limiter.acquire()
+            await acquire_within_budget(limiter, venue=self.venue)
             try:
                 resp = await self.http.get(url, params=params, headers=headers)
             except httpx.TimeoutException as exc:
@@ -400,15 +406,21 @@ class JupiterPropAdapter(BaseAdapter):
 
             if resp.status_code == 429:
                 wait = _retry_after_seconds(resp, attempt)
+                remaining_hdr = resp.headers.get("x-ratelimit-remaining")
                 logger.warning(
                     "%s rate limited (429) attempt=%s sleep=%.2fs remaining=%s",
                     self.venue,
                     attempt + 1,
                     wait,
-                    resp.headers.get("x-ratelimit-remaining"),
+                    remaining_hdr,
                 )
-                await asyncio.sleep(wait)
-                last_err = AdapterFetchError(f"{self.venue}: Jupiter rate limited")
+                await sleep_within_budget(
+                    wait, venue=self.venue, reason="Jupiter rate limited"
+                )
+                last_err = AdapterRateLimitedError(
+                    f"{self.venue}: Jupiter rate limited",
+                    retry_after_s=wait,
+                )
                 continue
 
             if resp.status_code == 400:
@@ -423,6 +435,8 @@ class JupiterPropAdapter(BaseAdapter):
                     attempt + 1,
                     wait,
                 )
+                # 5xx is not rate_limited (WHI-799 §6.6 / WHI-844) — keep sleeping
+                # under asyncio.timeout; do not reclassify as rate_limited.
                 await asyncio.sleep(wait)
                 last_err = AdapterFetchError(
                     f"{self.venue}: Jupiter HTTP {resp.status_code}"

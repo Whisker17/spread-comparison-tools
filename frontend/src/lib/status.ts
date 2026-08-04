@@ -2,7 +2,7 @@
  * Single source of truth for quote status rendering (WHI-808 / WHI-799 §5.2 / §6.2).
  *
  * Status values on Quote.status:
- *   ok | no_quote | insufficient_liquidity | unsupported_asset | error
+ *   ok | no_quote | insufficient_liquidity | unsupported_asset | error | rate_limited
  *
  * Orthogonal flags (not status enum values):
  *   fee_breakdown.gas_unknown → "cost incomplete"; excluded from best-venue ranking
@@ -23,7 +23,11 @@ export type CellRenderKind =
   | "dash" // no_quote / unsupported_asset
   | "insufficient_liquidity"
   | "error"
+  | "rate_limited" // WHI-844: distinguishable from timeout/error
   | "cost_incomplete"; // gas_unknown (may still show spread_bps)
+
+/** Badge color variant owned by the status SSOT (StatusCell must not re-derive). */
+export type StatusBadgeVariant = "warning" | "danger" | "muted";
 
 export type CellRenderDecision = {
   kind: CellRenderKind;
@@ -31,6 +35,8 @@ export type CellRenderDecision = {
   label: string;
   /** Secondary badge / aria description. */
   badge?: string;
+  /** Badge color when `badge` is set. */
+  badgeVariant?: StatusBadgeVariant;
   /** Retry / action hint for error cells. */
   hint?: string;
   /** mid_stale warning (independent of status). */
@@ -81,6 +87,7 @@ export function decideCellRender(
         kind: "insufficient_liquidity",
         label: "illiquid",
         badge: "insufficient liquidity",
+        badgeVariant: "warning",
         midStale,
         midTimestamp,
         eligibleForBest: false,
@@ -90,7 +97,19 @@ export function decideCellRender(
         kind: "error",
         label: "error",
         badge: quote.error_code ?? "error",
+        badgeVariant: "danger",
         hint: "Retry refresh",
+        midStale,
+        midTimestamp,
+        eligibleForBest: false,
+      };
+    case "rate_limited":
+      return {
+        kind: "rate_limited",
+        label: "RATE LIMITED",
+        badge: "RATE LIMITED",
+        badgeVariant: "warning",
+        hint: "Retry later",
         midStale,
         midTimestamp,
         eligibleForBest: false,
@@ -107,6 +126,7 @@ export function decideCellRender(
             kind: "cost_incomplete",
             label: options.formattedMetric ?? "—",
             badge: "cost incomplete",
+            badgeVariant: "muted",
             midStale,
             midTimestamp,
             eligibleForBest: false,
@@ -185,6 +205,13 @@ export const STATUS_LEGEND: ReadonlyArray<{
     title: "error",
     description: "Adapter/transport failure — badge with retry hint.",
     exampleKind: "error",
+  },
+  {
+    id: "rate_limited",
+    title: "rate_limited",
+    description:
+      'Venue rate limit would exceed remaining quote budget (WHI-844) — "RATE LIMITED", distinct from timeout. Never best-venue eligible.',
+    exampleKind: "rate_limited",
   },
   {
     id: "gas_unknown",

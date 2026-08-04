@@ -22,6 +22,7 @@ from spread_compare.adapters._amm_common import (
 from spread_compare.adapters.base import (
     AdapterConfigError,
     AdapterError,
+    AdapterRateLimitedError,
 )
 from spread_compare.models import (
     InstrumentType,
@@ -153,6 +154,20 @@ async def exact_in_prop_quote(
         )
     except AdapterConfigError:
         raise
+    except AdapterRateLimitedError as exc:
+        return build_non_ok_quote(
+            venue=venue,
+            mid=mid,
+            asset=asset,
+            side=side,
+            notional_usd=notional_usd,
+            instrument_type=instrument_type,
+            status="rate_limited",
+            error_code="rate_limited",
+            error_message=str(exc),
+            venue_symbol=venue_symbol,
+            qty_method=qty_method,
+        )
     except AdapterError as exc:
         return build_non_ok_quote(
             venue=venue,

@@ -18,9 +18,11 @@ import httpx
 from spread_compare.adapters.base import (
     AdapterError,
     AdapterFetchError,
+    AdapterRateLimitedError,
     AdapterTimeoutError,
 )
 from spread_compare.bookwalk import scale_book_to_canonical, walk_book
+from spread_compare.budget import acquire_within_budget, sleep_within_budget
 from spread_compare.costs import (
     basis_bps,
     spread_bps,
@@ -305,15 +307,21 @@ async def request_json(
     params: dict[str, str] | None = None,
     json_body: dict[str, Any] | None = None,
     retry_statuses: frozenset[int] = frozenset({429}),
+    rate_limit_statuses: frozenset[int] = frozenset({429}),
     max_retries: int = 4,
     backoff_start_s: float = 0.5,
     ok_codes: frozenset[int | None] | None = None,
 ) -> Any:
-    """Shared GET/POST JSON helper with rate-limit backoff for perp adapters."""
+    """Shared GET/POST JSON helper with rate-limit backoff for perp adapters.
+
+    ``rate_limit_statuses`` (default ``{429}``) are the only codes that map to
+    :class:`AdapterRateLimitedError` / Quote ``rate_limited``. Other members of
+    ``retry_statuses`` (e.g. Lighter 405) stay :class:`AdapterFetchError`.
+    """
     delay = backoff_start_s
     last_error: Exception | None = None
     for attempt in range(max_retries):
-        await limiter.acquire()
+        await acquire_within_budget(limiter, venue=venue)
         try:
             resp = await client.request(method, url, params=params, json=json_body)
         except httpx.TimeoutException as exc:
@@ -322,11 +330,25 @@ async def request_json(
             raise AdapterFetchError(f"{venue} HTTP error: {exc}") from exc
 
         if resp.status_code in retry_statuses:
-            last_error = AdapterFetchError(
-                f"{venue} rate limited (HTTP {resp.status_code}) attempt={attempt + 1}"
-            )
-            await asyncio.sleep(delay)
-            delay *= 2
+            is_throttle = resp.status_code in rate_limit_statuses
+            if is_throttle:
+                last_error = AdapterRateLimitedError(
+                    f"{venue} rate limited (HTTP {resp.status_code}) "
+                    f"attempt={attempt + 1}",
+                    retry_after_s=delay,
+                )
+            else:
+                last_error = AdapterFetchError(
+                    f"{venue} HTTP {resp.status_code} retryable attempt={attempt + 1}"
+                )
+            if attempt + 1 < max_retries:
+                if is_throttle:
+                    await sleep_within_budget(
+                        delay, venue=venue, reason="rate limited"
+                    )
+                else:
+                    await asyncio.sleep(delay)
+                delay *= 2
             continue
 
         if resp.status_code >= 400:

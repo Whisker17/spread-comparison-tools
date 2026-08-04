@@ -325,3 +325,237 @@ async def test_response_cache_hits() -> None:
     p3 = await agg.collect("BTC", Decimal("10000"), venues=["mock"])
     assert calls["n"] == 2
     assert p3.snapshot_id != p1.snapshot_id
+
+
+@pytest.mark.asyncio
+async def test_response_cache_second_request_zero_upstream_within_ttl() -> None:
+    """WHI-844: within TTL, a second identical collect issues zero mid/upstream work."""
+    mid_calls = {"n": 0}
+    quote_calls = {"n": 0}
+
+    class CountingMid(FixedMid):
+        async def resolve(self, asset: str, *, snapshot_id: str) -> ReferenceMid:
+            mid_calls["n"] += 1
+            return await super().resolve(asset, snapshot_id=snapshot_id)
+
+    class CountingMock(BaseAdapter):
+        venue: str = "mock"
+        venue_class: VenueClass = "cex"
+
+        async def get_quote(
+            self,
+            asset: str,
+            side: Side,
+            notional_usd: Decimal,
+            *,
+            mid: ReferenceMid,
+            instrument_type: InstrumentType | None = None,
+            fee_tier: str | None = None,
+        ) -> Quote:
+            quote_calls["n"] += 1
+            fees = FeeBreakdown(
+                embedded_in_price=False,
+                trading_fee_bps=Decimal("10"),
+                platform_fee_bps=Decimal("0"),
+                gas_unknown=False,
+                explicit_fee_bps=Decimal("10"),
+            )
+            return Quote(
+                snapshot_id=mid.snapshot_id,
+                venue=self.venue,
+                asset=asset.upper(),
+                instrument_type=instrument_type or "spot",
+                side=side,
+                notional_usd=notional_usd,
+                mid=mid.mid,
+                mid_source=mid.mid_source,
+                mid_timestamp=mid.timestamp,
+                effective_price=mid.mid,
+                spread_bps=Decimal("0"),
+                fee_breakdown=fees,
+                total_cost_bps=Decimal("10"),
+                timestamp=mid.timestamp,
+                status="ok",
+                qty_base=notional_usd / mid.mid,
+                qty_method="base_from_mid",
+            )
+
+        async def get_orderbook_spread(
+            self,
+            asset: str,
+            *,
+            mid: ReferenceMid,
+            instrument_type: Literal["spot", "perp"] | None = None,
+        ) -> TopOfBook | None:
+            return None
+
+        def get_fees(
+            self,
+            asset: str | None = None,
+            *,
+            instrument_type: InstrumentType | None = None,
+        ) -> FeeSchedule:
+            raise NotImplementedError
+
+        def supported_assets(
+            self,
+            *,
+            instrument_type: InstrumentType | None = None,
+        ) -> list[str]:
+            return ["BTC"]
+
+    previous = _REGISTRY.get("mock")
+    _REGISTRY["mock"] = CountingMock()
+    try:
+        clock = {"t": 0.0}
+        agg = QuoteAggregator(
+            CountingMid(),
+            aggregator_settings=AggregatorSettings(
+                venue_timeout_sec=3.0,
+                venue_timeout_by_class={},
+                response_cache_ttl_sec=35.0,
+            ),
+            clock=lambda: clock["t"],
+        )
+        await agg.collect("BTC", Decimal("10000"), venues=["mock"])
+        mid_after_first = mid_calls["n"]
+        quote_after_first = quote_calls["n"]
+        assert mid_after_first == 1
+        assert quote_after_first >= 1
+        clock["t"] = 30.0  # still inside 35s TTL (matches FE poll interval)
+        await agg.collect("BTC", Decimal("10000"), venues=["mock"])
+        assert mid_calls["n"] == mid_after_first
+        assert quote_calls["n"] == quote_after_first
+    finally:
+        if previous is None:
+            _REGISTRY.pop("mock", None)
+        else:
+            _REGISTRY["mock"] = previous
+
+
+@pytest.mark.asyncio
+async def test_concurrent_identical_collect_single_flight() -> None:
+    """WHI-844: two concurrent identical requests share one upstream fan-out."""
+    import asyncio
+
+    mid_calls = {"n": 0}
+    gate = asyncio.Event()
+    entered = asyncio.Event()
+
+    class SlowMid(FixedMid):
+        async def resolve(self, asset: str, *, snapshot_id: str) -> ReferenceMid:
+            mid_calls["n"] += 1
+            entered.set()
+            await gate.wait()
+            return await super().resolve(asset, snapshot_id=snapshot_id)
+
+    agg = QuoteAggregator(
+        SlowMid(),
+        aggregator_settings=AggregatorSettings(
+            venue_timeout_sec=3.0,
+            venue_timeout_by_class={},
+            response_cache_ttl_sec=35.0,
+        ),
+    )
+
+    t1 = asyncio.create_task(agg.collect("BTC", Decimal("10000"), venues=["mock"]))
+    await entered.wait()
+    t2 = asyncio.create_task(agg.collect("BTC", Decimal("10000"), venues=["mock"]))
+    # Second caller should attach to in-flight, not start another mid resolve.
+    await asyncio.sleep(0.05)
+    assert mid_calls["n"] == 1
+    gate.set()
+    p1, p2 = await asyncio.gather(t1, t2)
+    assert p1.snapshot_id == p2.snapshot_id
+    assert mid_calls["n"] == 1
+
+
+@pytest.mark.asyncio
+async def test_rate_limited_fail_fast_under_budget() -> None:
+    """WHI-844: real limiter wait that exceeds budget returns rate_limited under timeout."""
+    import time
+
+    from spread_compare.budget import acquire_within_budget
+    from spread_compare.ratelimit import TokenBucketRateLimiter
+
+    class LimiterBlockedAdapter(BaseAdapter):
+        venue: str = _TIMEOUT_SLUG
+        venue_class: VenueClass = "cex"
+
+        def __init__(self) -> None:
+            super().__init__()
+            # Capacity 1, 10s window; empty the bucket so acquire waits ~10s.
+            self._limiter = TokenBucketRateLimiter(capacity=1, window_s=10.0)
+            self._limiter.observe_remaining(0)
+
+        async def get_quote(
+            self,
+            asset: str,
+            side: Side,
+            notional_usd: Decimal,
+            *,
+            mid: ReferenceMid,
+            instrument_type: InstrumentType | None = None,
+            fee_tier: str | None = None,
+        ) -> Quote:
+            # Budget-aware acquire only — must not sleep past the quote deadline.
+            await acquire_within_budget(self._limiter, venue=self.venue)
+            raise AssertionError("should have failed on acquire_within_budget")
+
+        async def get_orderbook_spread(
+            self,
+            asset: str,
+            *,
+            mid: ReferenceMid,
+            instrument_type: Literal["spot", "perp"] | None = None,
+        ) -> TopOfBook | None:
+            return None
+
+        def get_fees(
+            self,
+            asset: str | None = None,
+            *,
+            instrument_type: InstrumentType | None = None,
+        ) -> FeeSchedule:
+            raise NotImplementedError
+
+        def supported_assets(
+            self,
+            *,
+            instrument_type: InstrumentType | None = None,
+        ) -> list[str]:
+            return ["BTC"]
+
+    previous = _REGISTRY.get(_TIMEOUT_SLUG)
+    _REGISTRY[_TIMEOUT_SLUG] = LimiterBlockedAdapter()
+    try:
+        budget = 0.25
+        agg = QuoteAggregator(
+            FixedMid(),
+            aggregator_settings=AggregatorSettings(
+                venue_timeout_sec=budget,
+                venue_timeout_by_class={},
+                response_cache_ttl_sec=0.0,
+            ),
+        )
+        t0 = time.monotonic()
+        package = await agg.collect(
+            "BTC",
+            Decimal("10000"),
+            venues=[_TIMEOUT_SLUG],
+            use_cache=False,
+        )
+        elapsed = time.monotonic() - t0
+        pair = package.pairs[0]
+        assert pair.buy is not None
+        assert pair.buy.status == "rate_limited"
+        assert pair.buy.error_code == "rate_limited"
+        assert pair.sell is not None
+        assert pair.sell.status == "rate_limited"
+        # Must finish well under the budget (fail-fast, not sleep-to-timeout).
+        assert elapsed < budget * 0.9, f"elapsed {elapsed:.3f}s not fail-fast"
+    finally:
+        if previous is None:
+            _REGISTRY.pop(_TIMEOUT_SLUG, None)
+        else:
+            _REGISTRY[_TIMEOUT_SLUG] = previous

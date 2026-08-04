@@ -250,6 +250,13 @@ function StatusInline({ row }: { row: SimulateRowResponse }) {
       </Badge>
     );
   }
+  if (row.status === "rate_limited") {
+    return (
+      <Badge variant="warning" data-testid={`status-${row.venue}`}>
+        RATE LIMITED
+      </Badge>
+    );
+  }
   if (row.status === "insufficient_liquidity") {
     return <Badge variant="warning">insufficient liquidity</Badge>;
   }

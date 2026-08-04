@@ -20,6 +20,7 @@ import httpx
 from spread_compare.adapters.base import (
     AdapterError,
     AdapterFetchError,
+    AdapterRateLimitedError,
     AdapterTimeoutError,
     BaseAdapter,
     UnsupportedAssetError,
@@ -27,6 +28,7 @@ from spread_compare.adapters.base import (
     require_taker_bps,
 )
 from spread_compare.bookwalk import scale_book_to_canonical, walk_book
+from spread_compare.budget import acquire_within_budget, sleep_within_budget
 from spread_compare.cex_symbols import (
     resolve_cex_multiplier,
     resolve_cex_symbol,
@@ -263,6 +265,9 @@ class CexBaseAdapter(BaseAdapter, ABC):
     _max_retries: int = 4
     _backoff_start_s: float = 0.5
     _retry_http_statuses: frozenset[int] = frozenset({429})
+    # Only true throttle codes become status=rate_limited (WHI-844). Other
+    # retryable statuses (e.g. Bybit 403 WAF) stay AdapterFetchError.
+    _rate_limit_http_statuses: frozenset[int] = frozenset({429})
     # Primary + optional alternate response headers to log for rate-limit hygiene.
     _rate_limit_log_headers: tuple[str, ...] = ()
 
@@ -302,7 +307,7 @@ class CexBaseAdapter(BaseAdapter, ABC):
         delay = self._backoff_start_s
         last_error: Exception | None = None
         for attempt in range(self._max_retries):
-            await self._limiter.acquire()
+            await acquire_within_budget(self._limiter, venue=self.venue)
             try:
                 resp = await self.http.get(url, params=params)
             except httpx.TimeoutException as exc:
@@ -313,13 +318,26 @@ class CexBaseAdapter(BaseAdapter, ABC):
             self._log_rate_limit_headers(resp, url)
 
             if resp.status_code in self._retry_http_statuses:
-                last_error = AdapterFetchError(
-                    f"{self.venue} rate limited (HTTP {resp.status_code}) "
-                    f"attempt={attempt + 1}"
-                )
+                is_throttle = resp.status_code in self._rate_limit_http_statuses
+                if is_throttle:
+                    last_error = AdapterRateLimitedError(
+                        f"{self.venue} rate limited (HTTP {resp.status_code}) "
+                        f"attempt={attempt + 1}",
+                        retry_after_s=delay,
+                    )
+                else:
+                    last_error = AdapterFetchError(
+                        f"{self.venue} HTTP {resp.status_code} retryable "
+                        f"attempt={attempt + 1}"
+                    )
                 logger.warning("%s", last_error)
                 if attempt + 1 < self._max_retries:
-                    await asyncio.sleep(delay)
+                    if is_throttle:
+                        await sleep_within_budget(
+                            delay, venue=self.venue, reason="rate limited"
+                        )
+                    else:
+                        await asyncio.sleep(delay)
                     delay *= 2
                 continue
 
@@ -338,12 +356,15 @@ class CexBaseAdapter(BaseAdapter, ABC):
                 )
 
             if self._payload_is_rate_limited(payload):
-                last_error = AdapterFetchError(
-                    f"{self.venue} body rate-limit attempt={attempt + 1}"
+                last_error = AdapterRateLimitedError(
+                    f"{self.venue} body rate-limit attempt={attempt + 1}",
+                    retry_after_s=delay,
                 )
                 logger.warning("%s", last_error)
                 if attempt + 1 < self._max_retries:
-                    await asyncio.sleep(delay)
+                    await sleep_within_budget(
+                        delay, venue=self.venue, reason="body rate-limit"
+                    )
                     delay *= 2
                 continue
 

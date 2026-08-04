@@ -1,8 +1,12 @@
-"""Shared async rate limiters (WHI-836).
+"""Shared async rate limiters (WHI-836 / WHI-844).
 
 One module for all adapters — no per-module copies of ``AsyncRateLimiter``.
 Limiters re-bind their lock when the running event loop changes so module-level
 instances survive pytest-asyncio loop swaps and Starlette TestClient.
+
+WHI-844: every limiter exposes :meth:`expected_wait_s` and accepts optional
+``max_wait_s`` on :meth:`acquire` so callers can fail fast when a sleep would
+exceed the remaining quote budget (see :mod:`spread_compare.budget`).
 """
 
 from __future__ import annotations
@@ -10,6 +14,17 @@ from __future__ import annotations
 import asyncio
 import time
 from collections import deque
+
+
+class RateLimitWaitExceeded(Exception):
+    """Acquire would sleep longer than ``max_wait_s`` (WHI-844)."""
+
+    def __init__(self, wait_s: float, *, max_wait_s: float) -> None:
+        super().__init__(
+            f"rate limiter wait {wait_s:.3f}s exceeds max_wait_s={max_wait_s:.3f}s"
+        )
+        self.wait_s = wait_s
+        self.max_wait_s = max_wait_s
 
 
 class _LoopBoundLock:
@@ -46,11 +61,19 @@ class AsyncRateLimiter(_LoopBoundLock):
         self._min_interval_s = min_interval_s
         self._last_mono = 0.0
 
-    async def acquire(self) -> None:
+    def expected_wait_s(self) -> float:
+        """Seconds until the next slot is free (0 if immediately available)."""
+        now = time.monotonic()
+        wait = self._min_interval_s - (now - self._last_mono)
+        return wait if wait > 0 else 0.0
+
+    async def acquire(self, *, max_wait_s: float | None = None) -> None:
         async with self._get_lock():
             now = time.monotonic()
             wait = self._min_interval_s - (now - self._last_mono)
             if wait > 0:
+                if max_wait_s is not None and wait > max_wait_s:
+                    raise RateLimitWaitExceeded(wait, max_wait_s=max_wait_s)
                 await asyncio.sleep(wait)
             self._last_mono = time.monotonic()
 
@@ -143,19 +166,44 @@ class TokenBucketRateLimiter(_LoopBoundLock):
         self._tokens = min(self._capacity, self._tokens + elapsed * self._refill_per_s)
         self._last_refill_mono = now
 
-    async def acquire(self) -> None:
+    def _wait_for_one_token(self, now: float) -> float:
+        self._refill(now)
+        if self._tokens >= 1.0:
+            return 0.0
+        deficit = 1.0 - self._tokens
+        if self._refill_per_s <= 0:
+            return self._window_s
+        return deficit / self._refill_per_s
+
+    def expected_wait_s(self) -> float:
+        """Seconds until one token is available (0 if a token is free now).
+
+        Lock-free and non-mutating (advisory snapshot for budget checks /
+        telemetry). Concurrent with :meth:`acquire` the value is approximate.
+        """
+        now = time.monotonic()
+        elapsed = now - self._last_refill_mono
+        tokens = self._tokens
+        if elapsed > 0:
+            tokens = min(self._capacity, tokens + elapsed * self._refill_per_s)
+        if tokens >= 1.0:
+            return 0.0
+        deficit = 1.0 - tokens
+        if self._refill_per_s <= 0:
+            return self._window_s
+        return deficit / self._refill_per_s
+
+    async def acquire(self, *, max_wait_s: float | None = None) -> None:
         async with self._get_lock():
             while True:
                 now = time.monotonic()
-                self._refill(now)
-                if self._tokens >= 1.0:
+                wait = self._wait_for_one_token(now)
+                if wait <= 0:
                     self._tokens -= 1.0
                     return
-                # Time until one full token is available.
-                deficit = 1.0 - self._tokens
-                wait = deficit / self._refill_per_s if self._refill_per_s > 0 else self._window_s
-                if wait > 0:
-                    await asyncio.sleep(wait)
+                if max_wait_s is not None and wait > max_wait_s:
+                    raise RateLimitWaitExceeded(wait, max_wait_s=max_wait_s)
+                await asyncio.sleep(wait)
 
 
 class RollingWindowRateLimiter(_LoopBoundLock):
@@ -184,7 +232,28 @@ class RollingWindowRateLimiter(_LoopBoundLock):
         while self._timestamps and self._timestamps[0] <= cutoff:
             self._timestamps.popleft()
 
-    async def acquire(self) -> None:
+    def expected_wait_s(self) -> float:
+        """Seconds until a slot frees in the rolling window (0 if under cap).
+
+        Lock-free and non-mutating (does not prune the deque). Concurrent with
+        :meth:`acquire` the value is approximate.
+        """
+        now = time.monotonic()
+        cutoff = now - self._window_s
+        # Count entries still inside the window without mutating the deque.
+        in_window = 0
+        oldest_in_window: float | None = None
+        for ts in self._timestamps:
+            if ts > cutoff:
+                in_window += 1
+                if oldest_in_window is None:
+                    oldest_in_window = ts
+        if in_window < self._max_requests or oldest_in_window is None:
+            return 0.0
+        wait = oldest_in_window + self._window_s - now
+        return wait if wait > 0 else 0.0
+
+    async def acquire(self, *, max_wait_s: float | None = None) -> None:
         async with self._get_lock():
             while True:
                 now = time.monotonic()
@@ -193,5 +262,10 @@ class RollingWindowRateLimiter(_LoopBoundLock):
                     self._timestamps.append(now)
                     return
                 wait = self._timestamps[0] + self._window_s - now
-                if wait > 0:
-                    await asyncio.sleep(wait)
+                if wait <= 0:
+                    continue
+                if max_wait_s is not None and wait > max_wait_s:
+                    raise RateLimitWaitExceeded(wait, max_wait_s=max_wait_s)
+                await asyncio.sleep(wait)
+
+

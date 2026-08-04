@@ -117,3 +117,61 @@ def test_token_bucket_rejects_invalid_args() -> None:
         TokenBucketRateLimiter(capacity=0, window_s=1.0)
     with pytest.raises(ValueError):
         TokenBucketRateLimiter(capacity=1, window_s=0.0)
+
+
+def test_expected_wait_s_non_mutating_snapshot() -> None:
+    """WHI-844: expected_wait_s is advisory and must not mutate limiter state."""
+    bucket = TokenBucketRateLimiter(capacity=1, window_s=2.0)
+    # Drain via observe so a token is owed.
+    bucket.observe_remaining(0)
+    wait1 = bucket.expected_wait_s()
+    wait2 = bucket.expected_wait_s()
+    assert wait1 > 0
+    assert abs(wait1 - wait2) < 0.05  # second call did not advance refill clock
+
+    rolling = RollingWindowRateLimiter(max_requests=1, window_s=1.0)
+    # Manually plant a timestamp (avoid async acquire).
+    rolling._timestamps.append(time.monotonic())  # noqa: SLF001 — unit probe
+    assert rolling.expected_wait_s() > 0
+    assert len(rolling._timestamps) == 1  # noqa: SLF001 — prune must not run
+
+
+@pytest.mark.asyncio
+async def test_token_bucket_max_wait_raises_when_exceeded() -> None:
+    """WHI-844: acquire(max_wait_s=...) fails fast instead of long sleep."""
+    from spread_compare.ratelimit import RateLimitWaitExceeded
+
+    limiter = TokenBucketRateLimiter(capacity=1, window_s=10.0)
+    await limiter.acquire()
+    # Next token needs ~10s; max_wait 0.05 must raise.
+    t0 = time.monotonic()
+    with pytest.raises(RateLimitWaitExceeded) as exc_info:
+        await limiter.acquire(max_wait_s=0.05)
+    assert time.monotonic() - t0 < 0.2
+    assert exc_info.value.wait_s > 0.05
+
+
+@pytest.mark.asyncio
+async def test_acquire_within_budget_maps_to_adapter_error() -> None:
+    from spread_compare.adapters.base import AdapterRateLimitedError
+    from spread_compare.budget import acquire_within_budget, quote_deadline
+
+    limiter = TokenBucketRateLimiter(capacity=1, window_s=5.0)
+    await limiter.acquire()
+    with quote_deadline(0.05):
+        t0 = time.monotonic()
+        with pytest.raises(AdapterRateLimitedError):
+            await acquire_within_budget(limiter, venue="humidifi")
+        assert time.monotonic() - t0 < 0.15
+
+
+@pytest.mark.asyncio
+async def test_sleep_within_budget_fail_fast() -> None:
+    from spread_compare.adapters.base import AdapterRateLimitedError
+    from spread_compare.budget import quote_deadline, sleep_within_budget
+
+    with quote_deadline(0.05):
+        t0 = time.monotonic()
+        with pytest.raises(AdapterRateLimitedError):
+            await sleep_within_budget(5.0, venue="binance", reason="rate limited")
+        assert time.monotonic() - t0 < 0.15

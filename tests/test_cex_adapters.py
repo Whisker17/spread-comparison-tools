@@ -411,5 +411,5 @@ async def test_request_json_retries_on_429_then_succeeds(
     await adapter.aclose()
 
 
-async def _async_noop() -> None:
+async def _async_noop(**_kwargs: object) -> None:
     return None

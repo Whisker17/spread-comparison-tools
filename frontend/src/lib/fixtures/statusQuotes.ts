@@ -132,6 +132,26 @@ export const STATUS_FIXTURES: FixtureCase[] = [
     },
   },
   {
+    id: "rate_limited",
+    title: "rate_limited",
+    description:
+      "Rate-limit wait would exceed budget → RATE LIMITED (WHI-844), not timeout.",
+    quote: {
+      ...base,
+      venue: "humidifi",
+      instrument_type: "prop_amm",
+      mid_stale: false,
+      effective_price: null,
+      spread_bps: null,
+      total_cost_bps: null,
+      fee_breakdown: emptyFees,
+      status: "rate_limited",
+      qty_base: null,
+      error_code: "rate_limited",
+      error_message: "Jupiter rate limited; retry_after=8.00s exceeds remaining budget",
+    },
+  },
+  {
     id: "gas_unknown",
     title: "gas_unknown",
     description:

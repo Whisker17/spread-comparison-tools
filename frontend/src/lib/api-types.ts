@@ -360,7 +360,7 @@ export interface components {
              * Status
              * @enum {string}
              */
-            status: "ok" | "no_quote" | "insufficient_liquidity" | "unsupported_asset" | "error";
+            status: "ok" | "no_quote" | "insufficient_liquidity" | "unsupported_asset" | "error" | "rate_limited";
             /** Qty Base */
             qty_base?: string | null;
             /** Qty Method */
@@ -538,7 +538,7 @@ export interface components {
              */
             timestamp: string;
             /** Status */
-            status: ("ok" | "no_quote" | "insufficient_liquidity" | "unsupported_asset" | "error") | "not_supported";
+            status: ("ok" | "no_quote" | "insufficient_liquidity" | "unsupported_asset" | "error" | "rate_limited") | "not_supported";
             /**
              * Best
              * @default false

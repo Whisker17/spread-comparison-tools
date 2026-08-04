@@ -15,7 +15,11 @@ venue_timeout_by_class:
   prop_amm: 12.0
   amm_dex: 6.0
 
-# Response cache TTL. Frontend section poll interval is 30s; keep this below
-# that so repeated dashboard loads reuse a snapshot without freezing data
-# across a full poll cycle. Raised from 2s (WHI-836) so cache can actually hit.
-response_cache_ttl_sec: 20.0
+# Response cache TTL. Frontend section poll interval is 30s (see
+# frontend/src/config/sections/* pollIntervalMs). TTL must exceed the poll
+# interval so a second viewer or a re-render within a poll cycle reuses a
+# snapshot (WHI-844; raised from 20s which was always a cold miss at 30s poll).
+# Trade-off: displayed data can be up to TTL seconds old — UI must keep
+# showing snapshot_id / timestamp prominently. Do not raise so far that the
+# dashboard stops feeling "live" (stay near one poll + small headroom).
+response_cache_ttl_sec: 35.0
