@@ -19,7 +19,7 @@
    - `includeDexes=["BisonFi"]` → **200**，指令账户含 BisonFi program `BiSoNHVpsVZW2F7rx2eQ59yQwKxzU5NvBcmKshCSUypi`（隔离旁证）。
    - `includeDexes=["HumidiFi"]` / `["TesseraV"]` → **400** `No routes found for request`（与错误 label 同形）。
    - **Q1 对三家基线：FAIL**（仅 BisonFi 通）。
-3. **Q2（BisonFi only）**：四档 WHI-799 notional 上 Titan vs Jupiter 有效价差 **约 −1.0 ～ −1.8 bps**（Titan 略差），远小于「个位数 bps 价差」量级里我们要分辨的噪声上限 → **BisonFi 单家可比**，但不能撑起矩阵 failover。
+3. **Q2（BisonFi only）**：四档 WHI-799 notional 上 Titan vs Jupiter 有效价差 **约 −1.0 ～ −1.8 bps**（Titan 略差）— 与 ~3–4 s 间隔的 timing noise 同量级，§5 标为 **indicative** 可比，**不能** 撑起矩阵 failover。
 4. **文档上最接近的完整候选（DFlow、OKX、Titan Gateway）均因鉴权/网络门禁无法在本调研完成 Q1 live 隔离证明**：
    - DFlow：`dexes` include + 明确 prop AMM 集成（Helius 一作、官方 venues 文案）；`quote-api.dflow.net` 对本环境返回 **空 body 403**。
    - OKX：`dexIds` include + 文档点名 HumidiFi/BisonFi（`forJitoBundle`）；**无 key 401**。
