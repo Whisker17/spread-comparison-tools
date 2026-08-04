@@ -118,6 +118,15 @@ class ImpactSettings(BaseModel):
     max_price_impact_bps: Decimal = Field(gt=0)
 
 
+class OrderbookCacheSettings(BaseModel):
+    """``config/orderbook_cache.yaml`` — short-TTL book snapshot reuse (WHI-843)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    # Seconds a fetched book remains reusable for multi-tier / TOB walks.
+    ttl_sec: float = Field(ge=0)
+
+
 # Known AMM adapter ``rpc_env`` names (must stay aligned with amm_*.py).
 _KNOWN_RPC_ENVS: frozenset[str] = frozenset(
     {"ETH_RPC_URL", "BASE_RPC_URL", "BSC_RPC_URL"}
@@ -321,6 +330,12 @@ def load_impact_settings() -> ImpactSettings:
     return ImpactSettings.model_validate(_merge_local("impact"))
 
 
+@lru_cache(maxsize=1)
+def load_orderbook_cache_settings() -> OrderbookCacheSettings:
+    """Parse orderbook snapshot-cache TTL once; fail fast on invalid config."""
+    return OrderbookCacheSettings.model_validate(_merge_local("orderbook_cache"))
+
+
 def clear_settings_cache() -> None:
     """Drop cached settings (tests that rewrite YAML)."""
     load_mid_settings.cache_clear()
@@ -330,3 +345,4 @@ def clear_settings_cache() -> None:
     load_venue_settings.cache_clear()
     load_rpc_settings.cache_clear()
     load_impact_settings.cache_clear()
+    load_orderbook_cache_settings.cache_clear()

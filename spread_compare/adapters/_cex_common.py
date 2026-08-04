@@ -45,6 +45,7 @@ from spread_compare.models import (
     VenueClass,
 )
 from spread_compare.orderbook_cache import (
+    BookSnapshot,
     OrderbookSnapshotCache,
     book_cache_key,
     default_orderbook_cache,
@@ -308,11 +309,10 @@ class CexBaseAdapter(BaseAdapter, ABC):
         *,
         depth: Hashable,
         fetch: Callable[[], Awaitable[tuple[OrderbookLevels, OrderbookLevels]]],
-    ) -> tuple[OrderbookLevels, OrderbookLevels]:
+    ) -> BookSnapshot:
         """Fetch via the short-TTL book cache (depth is part of the key — WHI-843)."""
         key = book_cache_key(self.venue, symbol, book_side, depth)
-        snap = await self._book_cache.get_or_fetch(key, fetch, depth=depth)
-        return snap.bids, snap.asks
+        return await self._book_cache.get_or_fetch(key, fetch, depth=depth)
 
     def _log_rate_limit_headers(self, resp: httpx.Response, url: str) -> None:
         for name in self._rate_limit_log_headers:
@@ -581,14 +581,21 @@ class CexBaseAdapter(BaseAdapter, ABC):
         trading_fee = require_taker_bps(self.venue, schedule)
         multiplier = resolve_cex_multiplier(asset_key, book_side)
 
-        # Depth for the largest tier — smaller tiers walk the same snapshot.
+        # Depth for the largest tier — escalate until *every* requested side fills
+        # q_max (or max depth). One-sided escalation would leave the opposite
+        # side under-depth on asymmetric books (WHI-843 / §4.7 parity).
         max_notional = max(notionals)
         q_max = max_notional / mid.mid
-        # Prefer buy side for escalation when both present (asks deepen with size).
-        escalate_side: Side = "buy" if "buy" in sides else sides[0]
+        side_order = list(sides)
         bids, asks = await self._fetch_book(
-            symbol, book_side, side=escalate_side, q_star=q_max
+            symbol, book_side, side=side_order[0], q_star=q_max
         )
+        for extra_side in side_order[1:]:
+            levels = asks if extra_side == "buy" else bids
+            if walk_book(levels, q_max) is None:
+                bids, asks = await self._fetch_book(
+                    symbol, book_side, side=extra_side, q_star=q_max
+                )
         shared_ts = datetime.now(tz=UTC)
 
         out: list[Quote] = []

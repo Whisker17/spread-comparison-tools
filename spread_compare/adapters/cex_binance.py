@@ -100,6 +100,7 @@ class BinanceAdapter(CexBaseAdapter):
             return bids, asks
 
         # Depth is part of the cache key — a limit=100 book never answers limit=1000.
-        return await self._cached_depth_fetch(
+        snap = await self._cached_depth_fetch(
             symbol, book_side, depth=limit, fetch=_raw
         )
+        return snap.bids, snap.asks

@@ -51,7 +51,7 @@ class QuotesResponse(BaseModel):
     mid: ReferenceMid
     pairs: list[SizeQuotePair]
     notionals: list[Decimal] = Field(
-        default_factory=list,
+        min_length=1,
         description="Requested notional tiers (USD); always non-empty.",
     )
 

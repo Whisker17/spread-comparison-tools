@@ -401,7 +401,7 @@ export interface components {
              * Notionals
              * @description Requested notional tiers (USD); always non-empty.
              */
-            notionals?: string[];
+            notionals: string[];
         };
         /**
          * ReferenceMid

@@ -17,12 +17,10 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from typing import TypeVar
 
+from spread_compare.settings import load_orderbook_cache_settings
+
 OrderbookLevels = list[tuple[Decimal, Decimal]]
 T = TypeVar("T")
-
-# 2–3s window covers one multi-tier fan-out + TOB without serving a stale book
-# across poll intervals (FE polls at 15–30s).
-DEFAULT_ORDERBOOK_CACHE_TTL_S = 2.5
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,9 +50,11 @@ class OrderbookSnapshotCache:
     def __init__(
         self,
         *,
-        ttl_s: float = DEFAULT_ORDERBOOK_CACHE_TTL_S,
+        ttl_s: float | None = None,
         clock: Callable[[], float] | None = None,
     ) -> None:
+        if ttl_s is None:
+            ttl_s = load_orderbook_cache_settings().ttl_sec
         if ttl_s < 0:
             raise ValueError(f"ttl_s must be >= 0, got {ttl_s}")
         self._ttl_s = ttl_s

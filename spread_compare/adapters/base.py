@@ -5,6 +5,7 @@ WHI-823: I/O methods are async; metadata reads stay sync (state cached at startu
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from decimal import Decimal
 from typing import Literal, Protocol
 
@@ -90,6 +91,23 @@ class VenueAdapter(Protocol):
         """Return a size-aware quote. Computes spread/total bps via shared formulas."""
         ...
 
+    async def get_quotes_batch(
+        self,
+        asset: str,
+        sides: Sequence[Side],
+        notionals: Sequence[Decimal],
+        *,
+        mid: ReferenceMid,
+        instrument_type: InstrumentType | None = None,
+        fee_tier: str | None = None,
+    ) -> list[Quote]:
+        """Price many notionals × sides (WHI-843).
+
+        Orderbook venues override to fetch one book and walk every size.
+        Default implementations may fan out to :meth:`get_quote`.
+        """
+        ...
+
     async def get_orderbook_spread(
         self,
         asset: str,
@@ -167,6 +185,43 @@ class BaseAdapter:
         """Config-backed fee schedule (WHI-812). Override for scaffold-only adapters."""
         itype = instrument_type or default_instrument_type(self.venue_class)
         return get_fee_schedule(self.venue, itype, asset=asset)
+
+    async def get_quotes_batch(
+        self,
+        asset: str,
+        sides: Sequence[Side],
+        notionals: Sequence[Decimal],
+        *,
+        mid: ReferenceMid,
+        instrument_type: InstrumentType | None = None,
+        fee_tier: str | None = None,
+    ) -> list[Quote]:
+        """Default multi-tier path: sequential :meth:`get_quote` (no book reuse).
+
+        Orderbook subclasses override to walk one snapshot at every size.
+        """
+        if not notionals or not sides:
+            raise AdapterError("get_quotes_batch requires notionals and sides")
+        out: list[Quote] = []
+        for n in notionals:
+            for side in sides:
+                # BaseAdapter is not a full VenueAdapter; subclasses implement get_quote.
+                get_quote = getattr(self, "get_quote", None)
+                if get_quote is None:
+                    raise AdapterError(
+                        f"{self.venue}: get_quotes_batch requires get_quote"
+                    )
+                out.append(
+                    await get_quote(
+                        asset,
+                        side,
+                        n,
+                        mid=mid,
+                        instrument_type=instrument_type,
+                        fee_tier=fee_tier,
+                    )
+                )
+        return out
 
 
 def default_instrument_type(venue_class: VenueClass) -> InstrumentType:

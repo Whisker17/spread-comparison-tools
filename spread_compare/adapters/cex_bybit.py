@@ -77,9 +77,10 @@ class BybitAdapter(CexBaseAdapter):
                 ) from exc
             return bids, asks
 
-        return await self._cached_depth_fetch(
+        snap = await self._cached_depth_fetch(
             symbol, book_side, depth=_ORDERBOOK_LIMIT, fetch=_raw
         )
+        return snap.bids, snap.asks
 
     def _payload_is_rate_limited(self, payload: dict[str, Any]) -> bool:
         return payload.get("retCode") == 10006

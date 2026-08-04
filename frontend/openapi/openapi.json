@@ -990,6 +990,7 @@
               "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
             },
             "type": "array",
+            "minItems": 1,
             "title": "Notionals",
             "description": "Requested notional tiers (USD); always non-empty."
           }
@@ -1001,7 +1002,8 @@
           "asset",
           "notional_usd",
           "mid",
-          "pairs"
+          "pairs",
+          "notionals"
         ],
         "title": "QuotesResponse",
         "description": "``GET /quotes`` payload.\n\nSingle-tier calls set ``notional_usd`` to that tier and ``notionals`` to a\none-element list. Multi-tier calls (``?notionals=\u2026``) return every tier's\npairs under one ``snapshot_id`` / mid; ``notional_usd`` is the first\n(sorted) tier for back-compat (WHI-843)."

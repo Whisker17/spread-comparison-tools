@@ -154,8 +154,8 @@ def test_mixed_statuses_partial_depth(monkeypatch: pytest.MonkeyPatch) -> None:
         assert (
             by_n[Decimal("1000000")]["buy"]["status"] == "insufficient_liquidity"
         )
-        # Batch walk + optional TOB (≤2); never one fetch per tier (would be 2+).
-        assert fetch_count["n"] <= 2
+        # Batch walk (+ optional dual-side escalate) + TOB; far below per-tier.
+        assert fetch_count["n"] <= 4
 
 
 @pytest.mark.asyncio
@@ -264,25 +264,33 @@ async def test_depth_key_shallow_not_reused_for_deeper(
 def test_orderbook_call_count_multi_asset_multi_tier(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """3 assets × 5 tiers → 3 book fetches per venue (not 15 or 45)."""
+    """3 assets × 5 tiers → ~9 upstream depth calls, not 45 (WHI-843 table).
+
+    Counts Binance ``_fetch_depth`` HTTP layer (the real cost). Uses a book deep
+    enough for $1M so escalation stops at the first limit (happy path).
+    """
     adapter = get("binance")
-    assert isinstance(adapter, CexBaseAdapter)
-    fetch_count = {"n": 0}
+    assert isinstance(adapter, BinanceAdapter)
+    depth_calls = {"n": 0}
+    # Deep book: fills q*=10 ($1M at mid 100k) without climbing limit ladder.
+    deep_asks: OrderbookLevels = [(Decimal("100010"), Decimal("20"))]
+    deep_bids: OrderbookLevels = [(Decimal("99990"), Decimal("20"))]
 
-    async def fake_book(
-        *args: Any, **kwargs: Any
+    async def counting_depth(
+        symbol: str,
+        book_side: str,
+        *,
+        limit: int,
     ) -> tuple[OrderbookLevels, OrderbookLevels]:
-        fetch_count["n"] += 1
-        return _BIDS, _ASKS
+        depth_calls["n"] += 1
+        return deep_bids, deep_asks
 
-    monkeypatch.setattr(adapter, "_fetch_book", fake_book)
+    monkeypatch.setattr(adapter, "_fetch_depth", counting_depth)
 
-    # CEX symbol map uses same book for BTC/ETH/SOL in tests via monkeypatch.
     with TestClient(create_app()) as client:
         _inject_mid(client)
         tiers = ",".join(str(t) for t in NOTIONAL_TIERS_USD)
         for asset in ("BTC", "ETH", "SOL"):
-            # Mid must match asset for adapter validation.
             async def fake_resolve(
                 a: str, *, snapshot_id: str, _asset: str = asset
             ) -> ReferenceMid:
@@ -304,10 +312,8 @@ def test_orderbook_call_count_multi_asset_multi_tier(
                 },
             )
             assert resp.status_code == 200, resp.text
-            # 5 tiers × 1 venue present
             assert len(resp.json()["pairs"]) == 5
 
-    # One book fetch per asset for the batch path (+ optional TOB fetch).
-    # Upper bound: 3 assets × 2 (batch + tob) = 6; never 3×5×2 = 30.
-    assert fetch_count["n"] <= 6
-    assert fetch_count["n"] >= 3
+    # Spec target: 45 → 9. Allow small headroom for TOB + dual-side escalate.
+    assert depth_calls["n"] <= 12, depth_calls["n"]
+    assert depth_calls["n"] >= 3, depth_calls["n"]

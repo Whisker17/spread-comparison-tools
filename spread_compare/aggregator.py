@@ -103,7 +103,7 @@ class QuotesPackage:
     notional_usd: Decimal
     mid: ReferenceMid
     pairs: list[SizeQuotePair]
-    notionals: tuple[Decimal, ...] = ()
+    notionals: tuple[Decimal, ...]
 
 
 @dataclass(slots=True)
@@ -793,17 +793,13 @@ class QuoteAggregator:
                 for n in notionals
             ]
 
-        batch_fn = getattr(adapter, "get_quotes_batch", None)
-        use_batch = (
-            callable(batch_fn) and adapter.venue_class in _ORDERBOOK_CLASSES
-        )
+        use_batch = adapter.venue_class in _ORDERBOOK_CLASSES
 
         if use_batch:
-            assert batch_fn is not None
             try:
                 with quote_deadline(timeout):
                     async with asyncio.timeout(timeout):
-                        batch_quotes: list[Quote] = await batch_fn(
+                        batch_quotes: list[Quote] = await adapter.get_quotes_batch(
                             asset,
                             side_order,
                             notionals,
