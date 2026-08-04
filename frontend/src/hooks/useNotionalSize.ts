@@ -12,6 +12,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import {
   resolveNotionalSize,
+  SIZE_ALL,
   SIZE_QUERY_PARAM,
 } from "@/lib/notionalSize";
 
@@ -59,7 +60,7 @@ export function useNotionalSize(
 
   const setNotional = useCallback(
     (next: string) => {
-      if (next === "all") {
+      if (next === SIZE_ALL) {
         if (!allowAll) return;
       } else if (!options.allowed.includes(next)) {
         return;

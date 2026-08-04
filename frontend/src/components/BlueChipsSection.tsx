@@ -16,6 +16,7 @@ import { venuesForAsset } from "@/config/sections/helpers";
 import { useNotionalSize } from "@/hooks/useNotionalSize";
 import { fetchAssets } from "@/lib/api";
 import { formatNotional } from "@/lib/format";
+import { isSizeAll } from "@/lib/notionalSize";
 
 /**
  * Full `/blue-chips` content: BTC / ETH / SOL blocks with live data (WHI-809).
@@ -74,7 +75,7 @@ function BlueChipsSectionInner() {
           />
         </div>
         <p className="text-xs text-zinc-500">
-          {notional === "all" ? (
+          {isSizeAll(notional) ? (
             <>
               Showing{" "}
               <strong className="font-medium text-zinc-700 dark:text-zinc-300">

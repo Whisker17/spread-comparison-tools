@@ -592,10 +592,25 @@ class CexBaseAdapter(BaseAdapter, ABC):
         )
         for extra_side in side_order[1:]:
             levels = asks if extra_side == "buy" else bids
-            if walk_book(levels, q_max) is None:
-                bids, asks = await self._fetch_book(
-                    symbol, book_side, side=extra_side, q_star=q_max
-                )
+            if walk_book(levels, q_max) is not None:
+                continue
+            # Re-escalate for the under-filled side; only adopt the new book if
+            # it still fills every side that already filled on the prior book.
+            new_bids, new_asks = await self._fetch_book(
+                symbol, book_side, side=extra_side, q_star=q_max
+            )
+            ok_to_swap = True
+            for prior in side_order:
+                prior_levels = asks if prior == "buy" else bids
+                new_levels = new_asks if prior == "buy" else new_bids
+                if (
+                    walk_book(prior_levels, q_max) is not None
+                    and walk_book(new_levels, q_max) is None
+                ):
+                    ok_to_swap = False
+                    break
+            if ok_to_swap:
+                bids, asks = new_bids, new_asks
         shared_ts = datetime.now(tz=UTC)
 
         out: list[Quote] = []

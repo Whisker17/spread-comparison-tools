@@ -61,4 +61,8 @@ describe("notionalsForSizeView", () => {
   it("returns a single focus tier", () => {
     expect(notionalsForSizeView("10000", tiers)).toEqual(["10000"]);
   });
+
+  it("falls back to the first section tier on unknown size (not all columns)", () => {
+    expect(notionalsForSizeView("999", tiers)).toEqual([tiers[0]]);
+  });
 });

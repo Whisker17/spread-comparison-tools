@@ -202,17 +202,13 @@ class BaseAdapter:
         """
         if not notionals or not sides:
             raise AdapterError("get_quotes_batch requires notionals and sides")
+        # Subclasses implement get_quote; orderbook venues override this method.
+        quote_fn = self.get_quote  # type: ignore[attr-defined]
         out: list[Quote] = []
         for n in notionals:
             for side in sides:
-                # BaseAdapter is not a full VenueAdapter; subclasses implement get_quote.
-                get_quote = getattr(self, "get_quote", None)
-                if get_quote is None:
-                    raise AdapterError(
-                        f"{self.venue}: get_quotes_batch requires get_quote"
-                    )
                 out.append(
-                    await get_quote(
+                    await quote_fn(
                         asset,
                         side,
                         n,

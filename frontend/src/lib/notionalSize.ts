@@ -49,6 +49,7 @@ export function isSizeAll(size: string): boolean {
 
 /**
  * Matrix columns for the current size view: all section tiers, or one focus.
+ * Unknown sizes fall back to the first section tier (never silently expand to all).
  */
 export function notionalsForSizeView(
   size: string,
@@ -57,5 +58,8 @@ export function notionalsForSizeView(
   if (isSizeAll(size)) {
     return [...sectionNotionals];
   }
-  return sectionNotionals.includes(size) ? [size] : [...sectionNotionals];
+  if (sectionNotionals.includes(size)) {
+    return [size];
+  }
+  return sectionNotionals[0] != null ? [sectionNotionals[0]] : [];
 }

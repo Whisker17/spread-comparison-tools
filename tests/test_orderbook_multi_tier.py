@@ -314,6 +314,7 @@ def test_orderbook_call_count_multi_asset_multi_tier(
             assert resp.status_code == 200, resp.text
             assert len(resp.json()["pairs"]) == 5
 
-    # Spec target: 45 → 9. Allow small headroom for TOB + dual-side escalate.
-    assert depth_calls["n"] <= 12, depth_calls["n"]
+    # Spec target: 45 → 9 per venue for 3 assets (one depth per asset when
+    # the first limit fills; TOB reuses the depth-keyed cache).
+    assert depth_calls["n"] <= 9, depth_calls["n"]
     assert depth_calls["n"] >= 3, depth_calls["n"]
