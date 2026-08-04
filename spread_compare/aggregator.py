@@ -411,6 +411,8 @@ class QuoteAggregator:
         self._cache: dict[str, _CacheEntry] = {}
         # Single-flight: concurrent collect() for the same cache key share one fan-out.
         self._inflight: dict[str, asyncio.Future[QuotesPackage]] = {}
+        # Strong refs so detached fan-out tasks are not GC'd mid-flight (WHI-844).
+        self._inflight_tasks: set[asyncio.Task[None]] = set()
 
     @property
     def mid_service(self) -> MidService:
@@ -491,14 +493,21 @@ class QuoteAggregator:
                     )
                     if not future.done():
                         future.set_result(package)
-                except BaseException as exc:
+                except Exception as exc:
                     if not future.done():
                         future.set_exception(exc)
+                except BaseException as exc:
+                    # CancelledError etc.: still unblock waiters, then re-raise.
+                    if not future.done():
+                        future.set_exception(exc)
+                    raise
                 finally:
                     if self._inflight.get(cache_key) is future:
                         del self._inflight[cache_key]
 
-            asyncio.create_task(_run())
+            task = asyncio.create_task(_run())
+            self._inflight_tasks.add(task)
+            task.add_done_callback(self._inflight_tasks.discard)
             return await asyncio.shield(future)
 
         return await self._collect_uncached(

@@ -176,8 +176,22 @@ class TokenBucketRateLimiter(_LoopBoundLock):
         return deficit / self._refill_per_s
 
     def expected_wait_s(self) -> float:
-        """Seconds until one token is available (0 if a token is free now)."""
-        return self._wait_for_one_token(time.monotonic())
+        """Seconds until one token is available (0 if a token is free now).
+
+        Lock-free and non-mutating (advisory snapshot for budget checks /
+        telemetry). Concurrent with :meth:`acquire` the value is approximate.
+        """
+        now = time.monotonic()
+        elapsed = now - self._last_refill_mono
+        tokens = self._tokens
+        if elapsed > 0:
+            tokens = min(self._capacity, tokens + elapsed * self._refill_per_s)
+        if tokens >= 1.0:
+            return 0.0
+        deficit = 1.0 - tokens
+        if self._refill_per_s <= 0:
+            return self._window_s
+        return deficit / self._refill_per_s
 
     async def acquire(self, *, max_wait_s: float | None = None) -> None:
         async with self._get_lock():
@@ -219,12 +233,24 @@ class RollingWindowRateLimiter(_LoopBoundLock):
             self._timestamps.popleft()
 
     def expected_wait_s(self) -> float:
-        """Seconds until a slot frees in the rolling window (0 if under cap)."""
+        """Seconds until a slot frees in the rolling window (0 if under cap).
+
+        Lock-free and non-mutating (does not prune the deque). Concurrent with
+        :meth:`acquire` the value is approximate.
+        """
         now = time.monotonic()
-        self._prune(now)
-        if len(self._timestamps) < self._max_requests:
+        cutoff = now - self._window_s
+        # Count entries still inside the window without mutating the deque.
+        in_window = 0
+        oldest_in_window: float | None = None
+        for ts in self._timestamps:
+            if ts > cutoff:
+                in_window += 1
+                if oldest_in_window is None:
+                    oldest_in_window = ts
+        if in_window < self._max_requests or oldest_in_window is None:
             return 0.0
-        wait = self._timestamps[0] + self._window_s - now
+        wait = oldest_in_window + self._window_s - now
         return wait if wait > 0 else 0.0
 
     async def acquire(self, *, max_wait_s: float | None = None) -> None:

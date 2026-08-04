@@ -119,6 +119,23 @@ def test_token_bucket_rejects_invalid_args() -> None:
         TokenBucketRateLimiter(capacity=1, window_s=0.0)
 
 
+def test_expected_wait_s_non_mutating_snapshot() -> None:
+    """WHI-844: expected_wait_s is advisory and must not mutate limiter state."""
+    bucket = TokenBucketRateLimiter(capacity=1, window_s=2.0)
+    # Drain via observe so a token is owed.
+    bucket.observe_remaining(0)
+    wait1 = bucket.expected_wait_s()
+    wait2 = bucket.expected_wait_s()
+    assert wait1 > 0
+    assert abs(wait1 - wait2) < 0.05  # second call did not advance refill clock
+
+    rolling = RollingWindowRateLimiter(max_requests=1, window_s=1.0)
+    # Manually plant a timestamp (avoid async acquire).
+    rolling._timestamps.append(time.monotonic())  # noqa: SLF001 — unit probe
+    assert rolling.expected_wait_s() > 0
+    assert len(rolling._timestamps) == 1  # noqa: SLF001 — prune must not run
+
+
 @pytest.mark.asyncio
 async def test_token_bucket_max_wait_raises_when_exceeded() -> None:
     """WHI-844: acquire(max_wait_s=...) fails fast instead of long sleep."""
