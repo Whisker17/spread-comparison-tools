@@ -24,7 +24,8 @@ placeholders. Agents must not assume a module exists until its issue lands. -->
 green, GitHub merge policy aligned). M1 research is done and merged under
 `docs/research/`: prop AMM quote paths (WHI-797), asset inventory (WHI-798), spread &
 fee data model (WHI-799), venue API survey (WHI-800). Solana prop AMM quote redundancy
-/ Jupiter SPOF: WHI-837 + ADR 0001 (`docs/research/`, `docs/adr/`). M2 backend scaffold
+/ Jupiter SPOF: WHI-837 + ADR 0001; WHI-839 re-ran DFlow/OKX (DFlow Q1 pass on
+dev host, Q2 fails the ≲2 bps bar — ADR amended, not superseded). M2 backend scaffold
 (WHI-801): `spread_compare` package with models, bookwalk, costs, adapter protocol +
 registry, mock adapter, and FastAPI `GET /health`. M2 async adapter protocol (WHI-823):
 async `VenueAdapter` + lifecycle hooks, `BaseAdapter` shared `httpx.AsyncClient`, registry

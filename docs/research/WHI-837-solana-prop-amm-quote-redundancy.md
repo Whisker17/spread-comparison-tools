@@ -252,6 +252,8 @@ HumidiFi / TesseraV：无 Q2 表（Q1 未通过）。
 
 **Follow-up research issue：** [WHI-839](https://linear.app/whisker-personal/issue/WHI-839) — re-run Q1/Q2 with DFlow + OKX keys. If either passes all three venues and Q2 ≲ ~2 bps, supersede ADR 0001 and open an implementation issue.
 
+**WHI-839 result (2026-08-04):** DFlow **Q1 PASS** on keyless **dev** host (all three venues); **Q2 FAIL** ≲ ~2 bps bar (div ≈ −5.8…+4.3 bps). OKX still key-blocked. ADR 0001 **amended, not superseded** — no adapter issue. Report: [WHI-839-dflow-okx-redundancy-rerun.md](./WHI-839-dflow-okx-redundancy-rerun.md).
+
 ---
 
 ## 9. 参考

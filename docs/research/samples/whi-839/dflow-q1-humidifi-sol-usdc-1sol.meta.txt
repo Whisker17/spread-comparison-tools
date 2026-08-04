@@ -1,0 +1,2 @@
+label=HumidiFi http=200
+url=https://dev-quote-api.dflow.net/quote?inputMint=So11111111111111111111111111111111111111112&outputMint=EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v&amount=1000000000&onlyDirectRoutes=true&dexes=HumidiFi

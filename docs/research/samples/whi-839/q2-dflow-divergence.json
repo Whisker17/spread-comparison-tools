@@ -1,0 +1,308 @@
+{
+  "captured_at": "2026-08-04T10:46:00.605695+00:00",
+  "dflow_base": "https://dev-quote-api.dflow.net",
+  "jupiter_base": "https://api.jup.ag/swap/v1/quote",
+  "mid_usdc_per_sol": 73.372866,
+  "mid_source": "jup HumidiFi 1 SOL (size conversion only)",
+  "pair": "SOL/USDC",
+  "order": "Jupiter then DFlow; intended sleep ~2s, but many cells show gap_j_to_d_s ~8\u201312s due to transport/5xx retries on DFlow (see per-row gap_j_to_d_s). timing_control is Jupiter-twice with ~2s sleep only \u2014 not matched to 8\u201312s cell gaps.",
+  "rows": [
+    {
+      "jup_label": "HumidiFi",
+      "dflow_label": "HumidiFi",
+      "notional_usd": 1000,
+      "amount_lamports": 13629016481,
+      "jup_http": 200,
+      "dflow_http": 200,
+      "jup_out": 1001056514,
+      "dflow_out": 1001484577,
+      "jup_route_labels": [
+        "HumidiFi"
+      ],
+      "dflow_route_venues": [
+        "HumidiFi"
+      ],
+      "gap_j_to_d_s": 7.946,
+      "p_jup": 73.45038546219071,
+      "p_dflow": 73.48179367133014,
+      "div_bps": 4.2761,
+      "research_key": "humidifi",
+      "product_venue_slug": "humidifi"
+    },
+    {
+      "jup_label": "HumidiFi",
+      "dflow_label": "HumidiFi",
+      "notional_usd": 10000,
+      "amount_lamports": 136290164814,
+      "jup_http": 200,
+      "dflow_http": 200,
+      "jup_out": 10012620016,
+      "dflow_out": 10011831157,
+      "jup_route_labels": [
+        "HumidiFi"
+      ],
+      "dflow_route_venues": [
+        "HumidiFi"
+      ],
+      "gap_j_to_d_s": 12.52,
+      "p_jup": 73.46546267417445,
+      "p_dflow": 73.45967458960446,
+      "div_bps": -0.7879,
+      "research_key": "humidifi",
+      "product_venue_slug": "humidifi"
+    },
+    {
+      "jup_label": "HumidiFi",
+      "dflow_label": "HumidiFi",
+      "notional_usd": 100000,
+      "amount_lamports": 1362901648138,
+      "jup_http": 200,
+      "dflow_http": 200,
+      "jup_out": 100039181044,
+      "dflow_out": 99991301298,
+      "jup_route_labels": [
+        "HumidiFi"
+      ],
+      "dflow_route_venues": [
+        "HumidiFi"
+      ],
+      "gap_j_to_d_s": 8.647,
+      "p_jup": 73.4016142549052,
+      "p_dflow": 73.36648351303148,
+      "div_bps": -4.7861,
+      "research_key": "humidifi",
+      "product_venue_slug": "humidifi"
+    },
+    {
+      "jup_label": "HumidiFi",
+      "dflow_label": "HumidiFi",
+      "notional_usd": 1000000,
+      "amount_lamports": 13629016481379,
+      "jup_http": 400,
+      "dflow_http": 400,
+      "jup_out": null,
+      "dflow_out": null,
+      "jup_route_labels": [],
+      "dflow_route_venues": [],
+      "gap_j_to_d_s": 8.087,
+      "div_bps": null,
+      "research_key": "humidifi",
+      "product_venue_slug": "humidifi",
+      "first_pass": {
+        "jup_http": 400,
+        "dflow_http": 400,
+        "note": "both sides no route / 400 on first and retry"
+      },
+      "div_source": "none"
+    },
+    {
+      "jup_label": "TesseraV",
+      "dflow_label": "Tessera V",
+      "notional_usd": 1000,
+      "amount_lamports": 13629016481,
+      "jup_http": 200,
+      "dflow_http": 200,
+      "jup_out": 1000894657,
+      "dflow_out": 1001109012,
+      "jup_route_labels": [
+        "TesseraV"
+      ],
+      "dflow_route_venues": [
+        "Tessera V"
+      ],
+      "gap_j_to_d_s": 8.136,
+      "p_jup": 73.43850955021821,
+      "p_dflow": 73.45423739091008,
+      "div_bps": 2.1416,
+      "research_key": "tesserav",
+      "product_venue_slug": "tessera_solana"
+    },
+    {
+      "jup_label": "TesseraV",
+      "dflow_label": "Tessera V",
+      "notional_usd": 10000,
+      "amount_lamports": 136290164814,
+      "jup_http": 200,
+      "dflow_http": 200,
+      "jup_out": 10016633684,
+      "dflow_out": 10018119579,
+      "jup_route_labels": [
+        "TesseraV"
+      ],
+      "dflow_route_venues": [
+        "Tessera V"
+      ],
+      "gap_j_to_d_s": 10.09,
+      "p_jup": 73.49491210660764,
+      "p_dflow": 73.50581454408014,
+      "div_bps": 1.4834,
+      "research_key": "tesserav",
+      "product_venue_slug": "tessera_solana"
+    },
+    {
+      "jup_label": "TesseraV",
+      "dflow_label": "Tessera V",
+      "notional_usd": 100000,
+      "amount_lamports": 1362901648138,
+      "jup_http": 200,
+      "dflow_http": 200,
+      "jup_out": 100208101436,
+      "dflow_out": 100186221419,
+      "jup_route_labels": [
+        "TesseraV"
+      ],
+      "dflow_route_venues": [
+        "Tessera V"
+      ],
+      "gap_j_to_d_s": 8.326,
+      "p_jup": 73.52555598777401,
+      "p_dflow": 73.50950199221982,
+      "div_bps": -2.1835,
+      "research_key": "tesserav",
+      "product_venue_slug": "tessera_solana"
+    },
+    {
+      "jup_label": "TesseraV",
+      "dflow_label": "Tessera V",
+      "notional_usd": 1000000,
+      "amount_lamports": 13629016481379,
+      "jup_http": 200,
+      "dflow_http": 200,
+      "jup_out": 1001179559713,
+      "dflow_out": 1001028773763,
+      "jup_route_labels": [
+        "TesseraV"
+      ],
+      "dflow_route_venues": [
+        "Tessera V"
+      ],
+      "gap_j_to_d_s": 8.727,
+      "p_jup": 73.45941367676001,
+      "p_dflow": 73.44835007945598,
+      "div_bps": -1.5061,
+      "research_key": "tesserav",
+      "product_venue_slug": "tessera_solana"
+    },
+    {
+      "jup_label": "BisonFi",
+      "dflow_label": "BisonFi",
+      "notional_usd": 1000,
+      "amount_lamports": 13629016481,
+      "jup_http": 200,
+      "dflow_http": 200,
+      "jup_out": 1002059616,
+      "dflow_out": 1001482638,
+      "jup_route_labels": [
+        "BisonFi"
+      ],
+      "dflow_route_venues": [
+        "BisonFi"
+      ],
+      "gap_j_to_d_s": 7.734,
+      "p_jup": 73.52398593082309,
+      "p_dflow": 73.48165140134296,
+      "div_bps": -5.7579,
+      "research_key": "bisonfi",
+      "product_venue_slug": "bisonfi"
+    },
+    {
+      "jup_label": "BisonFi",
+      "dflow_label": "BisonFi",
+      "notional_usd": 10000,
+      "amount_lamports": 136290164814,
+      "jup_http": 400,
+      "dflow_http": 200,
+      "jup_out": null,
+      "dflow_out": 10015064545,
+      "jup_route_labels": [],
+      "dflow_route_venues": [
+        "BisonFi"
+      ],
+      "gap_j_to_d_s": 8.377,
+      "div_bps": null,
+      "research_key": "bisonfi",
+      "product_venue_slug": "bisonfi",
+      "first_pass": {
+        "jup_http": 400,
+        "dflow_http": 200,
+        "note": "pass1 Jupiter 400 / DFlow 200; pass2 Jupiter 200 / DFlow 400 \u2014 no paired success"
+      },
+      "div_source": "none"
+    },
+    {
+      "jup_label": "BisonFi",
+      "dflow_label": "BisonFi",
+      "notional_usd": 100000,
+      "amount_lamports": 1362901648138,
+      "jup_http": 200,
+      "dflow_http": 400,
+      "jup_out": 100143983910,
+      "dflow_out": null,
+      "jup_route_labels": [
+        "BisonFi"
+      ],
+      "dflow_route_venues": [],
+      "gap_j_to_d_s": null,
+      "div_bps": null,
+      "research_key": "bisonfi",
+      "product_venue_slug": "bisonfi",
+      "first_pass": {
+        "jup_http": 200,
+        "jup_out": 100143983910,
+        "dflow_http": 400,
+        "dflow_body": {
+          "msg": "Route not found",
+          "code": "route_not_found"
+        },
+        "dflow_out": null,
+        "note": "first pass: Jupiter 200, DFlow route_not_found; paired div uses retry pair"
+      },
+      "retry_pair": {
+        "jup_out": 100133162055,
+        "dflow_out": 100159315634,
+        "div_bps": 2.6119
+      },
+      "div_source": "none",
+      "gap_note": "first-pass DFlow failed; no same-pass gap for a successful pair; retry_pair gap not instrumented"
+    },
+    {
+      "jup_label": "BisonFi",
+      "dflow_label": "BisonFi",
+      "notional_usd": 1000000,
+      "amount_lamports": 13629016481379,
+      "jup_http": 200,
+      "dflow_http": 200,
+      "jup_out": 994701659547,
+      "dflow_out": 994558637522,
+      "jup_route_labels": [
+        "BisonFi"
+      ],
+      "dflow_route_venues": [
+        "BisonFi"
+      ],
+      "gap_j_to_d_s": 45.658,
+      "p_jup": 72.98411157591872,
+      "p_dflow": 72.97361764004334,
+      "div_bps": -1.4378,
+      "research_key": "bisonfi",
+      "product_venue_slug": "bisonfi"
+    }
+  ],
+  "timing_control": {
+    "amount_lamports": 136290164814,
+    "jup1_out": 10010902303,
+    "jup2_out": 10010005786,
+    "div_bps_jup_vs_jup": -0.8955,
+    "gap_note": "Jupiter twice with ~2s sleep; gap not equal to Q2 cell gaps"
+  },
+  "reverse_order_control": {
+    "dflow_out": 10011005018,
+    "jup_out": 10011653128,
+    "amount_lamports": 136290164814,
+    "div_bps": -0.6474
+  },
+  "field_notes": {
+    "research_key": "stable key for sample filenames (WHI-837 style); not necessarily product venue slug",
+    "product_venue_slug": "spread_compare/venues.py slug when applicable (tessera_solana not tesserav)"
+  }
+}
