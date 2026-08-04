@@ -25,10 +25,10 @@ def test_load_aggregator_settings_defaults() -> None:
     agg = load_aggregator_settings()
     assert agg.venue_timeout_sec == 3.0
     assert agg.response_cache_ttl_sec == 20.0
-    assert agg.venue_timeout_by_class["prop_amm"] == 8.0
+    assert agg.venue_timeout_by_class["prop_amm"] == 12.0  # WHI-838 five-tier headroom
     assert agg.venue_timeout_by_class["amm_dex"] == 6.0
     assert agg.timeout_for("cex") == 3.0
-    assert agg.timeout_for("prop_amm") == 8.0
+    assert agg.timeout_for("prop_amm") == 12.0
     assert agg.timeout_for("amm_dex") == 6.0
     assert agg.timeout_for("perp_dex") == 3.0
 
