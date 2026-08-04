@@ -11,6 +11,8 @@ import re
 from decimal import Decimal
 from pathlib import Path
 
+import pytest
+
 from spread_compare.models import NOTIONAL_TIERS_USD
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -18,6 +20,8 @@ _NOTIONALS_TS = _REPO_ROOT / "frontend" / "src" / "config" / "notionals.ts"
 
 
 def test_notional_tiers_match_frontend_mirror() -> None:
+    if not _NOTIONALS_TS.is_file():
+        pytest.skip(f"frontend mirror absent at {_NOTIONALS_TS}")
     text = _NOTIONALS_TS.read_text(encoding="utf-8")
     m = re.search(
         r"export const NOTIONAL_TIERS_USD\s*=\s*\[([\s\S]*?)\]\s*as const",

@@ -225,6 +225,9 @@ export function SpreadMatrix({
       <p className="mt-2 text-[11px] text-zinc-500">
         Cells: {metric.replace(/_/g, " ")} · view: {sideView.replace("_", " ")} ·
         best highlight excludes gas_unknown / non-ok (WHI-799 §5.2)
+        {heat
+          ? " · heat colour is per notional column (WHI-838), so a gas-heavy $100 cell does not flatten larger tiers — compare intensity only within a column"
+          : ""}
       </p>
     </div>
   );

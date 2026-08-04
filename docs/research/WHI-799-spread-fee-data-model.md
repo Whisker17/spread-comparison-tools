@@ -170,6 +170,7 @@ q_star = notional_usd / mid
 
 - **只用** reference mid 换算；禁止 venue-local mid。
 - 深度不足以成交 `q_star` → `status=insufficient_liquidity`，价格字段 null（§6.6）。
+- **Lot / tick rounding (WHI-838):** adapters walk continuous `q_star` (no lot/step quantize yet — see `docs/DEFERRED_ISSUES.md` WHI-803). At the $100 tier with typical CEX lots (BTC `1e-5`, ETH `1e-4`, SOL `1e-2`) and blue-chip mids, continuous vs nearest-lot `walk_book` Δspread_bps is **0** on a tight synthetic book (qty relative error ≤0.5% for SOL; 0% for BTC). **Conclusion: not material** — no silent rounding change in this issue.
 
 ### 4.3 Orderbook：walk-the-book → VWAP
 
@@ -547,9 +548,9 @@ SizeQuotePair {
 
 #### 6.6.1 Venue minimums at the $100 tier (WHI-838)
 
-$100 sits near some venue min-order floors. **No new `QuoteStatus` value** — map honestly onto the table above:
+$100 sits near some venue min-order floors. **No new `QuoteStatus` value** — map honestly onto the table above. **Expectations below are engineering priors, not live-measured at every venue** (confirm with `@pytest.mark.live` / dashboard after deploy):
 
-| Venue class | Expected at $100 | Status if venue refuses |
+| Venue class | Expected at $100 (unverified prior) | Status if venue refuses |
 | --- | --- | --- |
 | CEX spot/perp (`binance`, `bybit`) | Blue-chip min notional typically ≪ $100; continuous `walk_book` on L2. If depth < `q_star` (rare at this size) | `insufficient_liquidity` |
 | Perp DEX (`hyperliquid`, `lighter`, `apex`) | Min notional often ~$10; $100 generally quotable. Thin books / size filters → walk fails | `insufficient_liquidity` (or `no_quote` if market absent) |
@@ -557,6 +558,8 @@ $100 sits near some venue min-order floors. **No new `QuoteStatus` value** — m
 | Prop AMM Solana (Jupiter) / EVM (KyberSwap) | Route-based; may return no route for illiquid wrappers or amount edge cases | `no_quote` |
 
 Adapters must **not** invent a synthetic fill for a size the venue would reject.
+
+**Solana prop `gas_bps=0` at $100:** base fee is still ≪ EVM L1 gas, but discretionary priority fees can be tens of bps on a $100 notional. The project keeps the §8 `gas_bps=0` convention (no `gas_unknown`) so Solana props remain §5.2 best-eligible; the intentional gas-dominance signal is the EVM AMM row. Revisit if priority-fee accounting lands.
 
 ---
 
