@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 
 import { CostCompositionBars } from "@/components/CostCompositionBars";
 import { FeeStructureTable } from "@/components/FeeStructureTable";
+import { NOTIONAL_TIERS_USD } from "@/config/notionals";
 import {
   assetSwitcherOptions,
   FEES_DEFAULT_ASSET,
@@ -208,12 +209,13 @@ export function FeesSection() {
               incomplete={incomplete}
               other={other}
             />
-            {notional === "100" ? (
+            {notional === NOTIONAL_TIERS_USD[0] ? (
               <p className="text-[11px] text-zinc-500">
-                At $100, L1 gas often dominates total cost (hundreds of bps) —
-                bar widths scale to that max so gas-heavy venues look huge and
-                low-cost venues look tiny. That is the signal; bps labels stay
-                fully legible (WHI-838).
+                At {formatNotional(NOTIONAL_TIERS_USD[0])}, L1 gas often
+                dominates total cost (hundreds of bps) — bar widths scale to
+                that max so gas-heavy venues look huge and low-cost venues look
+                tiny. That is the signal; bps labels stay fully legible
+                (WHI-838).
               </p>
             ) : null}
             {conclusion ? (
