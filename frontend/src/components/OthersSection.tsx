@@ -3,6 +3,7 @@
 import { Suspense, useMemo } from "react";
 
 import { AssetSpreadBlock } from "@/components/AssetSpreadBlock";
+import { SectionShellLoading } from "@/components/SectionShellLoading";
 import { SizeSelector } from "@/components/SizeSelector";
 import {
   OTHER_ASSET_GROUPS,
@@ -235,16 +236,5 @@ function OtherAssetBlock({
       venueDisplayNames={displayNames}
       instrumentType={preferPerp ? "perp" : undefined}
     />
-  );
-}
-
-function SectionShellLoading({ title }: { title: string }) {
-  return (
-    <div className="space-y-6">
-      <header>
-        <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
-        <p className="mt-2 text-sm text-zinc-500">Loading size selector…</p>
-      </header>
-    </div>
   );
 }

@@ -1,10 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { NOTIONAL_TIERS_USD } from "@/config/notionals";
-import {
-  resolveNotionalSize,
-  SIZE_QUERY_PARAM,
-} from "@/lib/notionalSize";
+import { resolveNotionalSize } from "@/lib/notionalSize";
 
 describe("resolveNotionalSize (WHI-841)", () => {
   const allowed = [...NOTIONAL_TIERS_USD];
@@ -38,9 +35,5 @@ describe("resolveNotionalSize (WHI-841)", () => {
     const subset = ["10000", "100000"] as const;
     expect(resolveNotionalSize(null, subset, "1000")).toBe("10000");
     expect(resolveNotionalSize("100", subset, "1000")).toBe("10000");
-  });
-
-  it("exports the URL key used by the size selector", () => {
-    expect(SIZE_QUERY_PARAM).toBe("size");
   });
 });

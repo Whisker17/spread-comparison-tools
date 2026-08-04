@@ -4,8 +4,10 @@ import { useQuery } from "@tanstack/react-query";
 import { Suspense, useMemo } from "react";
 
 import { AssetSpreadBlock } from "@/components/AssetSpreadBlock";
+import { SectionShellLoading } from "@/components/SectionShellLoading";
 import { SizeSelector } from "@/components/SizeSelector";
 import { UsMarketHoursIndicator } from "@/components/UsMarketHoursIndicator";
+import { DEFAULT_NOTIONAL_USD, NOTIONAL_TIERS_USD } from "@/config/notionals";
 import {
   BSTOCKS_REBASE_FOOTNOTE,
   buildStocksVenueLabels,
@@ -45,10 +47,11 @@ export function StocksSection() {
 }
 
 function StocksSectionInner() {
-  // Both boards share the same tier list + default — one URL size for the page.
+  // Page-level size (not board-level): both boards share one `?size=` and the
+  // product SSOT tiers/default so neither board's config is silently ignored.
   const { notional, setNotional } = useNotionalSize({
-    allowed: tokenizedStocksBoard.notionals,
-    defaultNotional: tokenizedStocksBoard.defaultNotional,
+    allowed: NOTIONAL_TIERS_USD,
+    defaultNotional: DEFAULT_NOTIONAL_USD,
   });
 
   const assetsQuery = useQuery({
@@ -79,7 +82,7 @@ function StocksSectionInner() {
           </div>
           <div className="flex flex-wrap items-start gap-3">
             <SizeSelector
-              tiers={tokenizedStocksBoard.notionals}
+              tiers={NOTIONAL_TIERS_USD}
               value={notional}
               onChange={setNotional}
             />
@@ -261,16 +264,5 @@ function StocksAssetBlock({
       emphasizeMidSource
       midSourceHint={STOCKS_MID_SOURCE_HINT}
     />
-  );
-}
-
-function SectionShellLoading({ title }: { title: string }) {
-  return (
-    <div className="space-y-6">
-      <header>
-        <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
-        <p className="mt-2 text-sm text-zinc-500">Loading size selector…</p>
-      </header>
-    </div>
   );
 }

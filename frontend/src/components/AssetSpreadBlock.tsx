@@ -348,6 +348,7 @@ export function AssetSpreadBlock({
             sideView={sideView}
             metric={section.cellMetric}
             venueLabels={venueLabels}
+            showDetailColumns
             onRetry={() => void query.refetch()}
           />
           {section.showTopOfBook && orderbookVenues.length > 0 && (

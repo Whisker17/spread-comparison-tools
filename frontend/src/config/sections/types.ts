@@ -27,12 +27,14 @@ export type SectionConfig = {
   hiddenVenuesByAsset?: Readonly<Record<string, readonly string[]>>;
   /**
    * Selectable notional tiers for the size selector (WHI-841).
-   * Historically matrix columns; the matrix now shows one tier at a time.
+   * May be a subset of `NOTIONAL_TIERS_USD` when a section hides large/small sizes.
+   * The matrix fetches and renders only the currently selected tier.
    */
   notionals: readonly string[];
   /**
    * Default size when `?size=` is absent or invalid (WHI-841).
-   * Suggested product default: `"1000"`.
+   * Prefer `DEFAULT_NOTIONAL_USD` from `config/notionals.ts` unless the section
+   * needs a different default.
    */
   defaultNotional: string;
   /** Default side / round-trip view. */

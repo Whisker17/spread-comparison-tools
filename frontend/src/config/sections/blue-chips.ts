@@ -1,4 +1,7 @@
-import { NOTIONAL_TIERS_USD } from "@/config/notionals";
+import {
+  DEFAULT_NOTIONAL_USD,
+  NOTIONAL_TIERS_USD,
+} from "@/config/notionals";
 import {
   buildVenueRowLabels,
   buildVenueSummaryLabel,
@@ -130,7 +133,7 @@ export const blueChipsSection: SectionConfig = {
     ETH: ["tessera_bsc"],
   },
   notionals: [...NOTIONAL_TIERS_USD],
-  defaultNotional: "1000",
+  defaultNotional: DEFAULT_NOTIONAL_USD,
   defaultSideView: "buy",
   cellMetric: "total_cost_bps",
   showTopOfBook: true,
