@@ -472,15 +472,21 @@ async def test_concurrent_identical_collect_single_flight() -> None:
 
 @pytest.mark.asyncio
 async def test_rate_limited_fail_fast_under_budget() -> None:
-    """WHI-844: limiter wait that exceeds budget returns rate_limited well under timeout."""
+    """WHI-844: real limiter wait that exceeds budget returns rate_limited under timeout."""
     import time
 
-    from spread_compare.adapters.base import AdapterRateLimitedError
-    from spread_compare.budget import remaining_budget_s, would_exceed_budget
+    from spread_compare.budget import acquire_within_budget
+    from spread_compare.ratelimit import TokenBucketRateLimiter
 
-    class RateLimitedAdapter(BaseAdapter):
+    class LimiterBlockedAdapter(BaseAdapter):
         venue: str = _TIMEOUT_SLUG
         venue_class: VenueClass = "cex"
+
+        def __init__(self) -> None:
+            super().__init__()
+            # Capacity 1, 10s window; empty the bucket so acquire waits ~10s.
+            self._limiter = TokenBucketRateLimiter(capacity=1, window_s=10.0)
+            self._limiter.observe_remaining(0)
 
         async def get_quote(
             self,
@@ -492,14 +498,9 @@ async def test_rate_limited_fail_fast_under_budget() -> None:
             instrument_type: InstrumentType | None = None,
             fee_tier: str | None = None,
         ) -> Quote:
-            # Simulate a 5s rate-limit sleep that would blow a 0.2s budget.
-            wait = 5.0
-            assert remaining_budget_s() is not None
-            assert would_exceed_budget(wait)
-            raise AdapterRateLimitedError(
-                f"{self.venue}: rate limiter wait {wait:.1f}s exceeds budget",
-                retry_after_s=wait,
-            )
+            # Budget-aware acquire only — must not sleep past the quote deadline.
+            await acquire_within_budget(self._limiter, venue=self.venue)
+            raise AssertionError("should have failed on acquire_within_budget")
 
         async def get_orderbook_spread(
             self,
@@ -526,9 +527,9 @@ async def test_rate_limited_fail_fast_under_budget() -> None:
             return ["BTC"]
 
     previous = _REGISTRY.get(_TIMEOUT_SLUG)
-    _REGISTRY[_TIMEOUT_SLUG] = RateLimitedAdapter()
+    _REGISTRY[_TIMEOUT_SLUG] = LimiterBlockedAdapter()
     try:
-        budget = 0.2
+        budget = 0.25
         agg = QuoteAggregator(
             FixedMid(),
             aggregator_settings=AggregatorSettings(

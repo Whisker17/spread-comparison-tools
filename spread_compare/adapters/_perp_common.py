@@ -7,7 +7,6 @@ as an adapter. Perp adapters import from here; walk/bps math stay in
 
 from __future__ import annotations
 
-import asyncio
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -22,7 +21,7 @@ from spread_compare.adapters.base import (
     AdapterTimeoutError,
 )
 from spread_compare.bookwalk import scale_book_to_canonical, walk_book
-from spread_compare.budget import would_exceed_budget
+from spread_compare.budget import acquire_within_budget, sleep_within_budget
 from spread_compare.costs import (
     basis_bps,
     spread_bps,
@@ -37,11 +36,7 @@ from spread_compare.models import (
     Side,
     TopOfBook,
 )
-from spread_compare.ratelimit import (
-    AsyncRateLimiter,
-    RollingWindowRateLimiter,
-    acquire_within_budget,
-)
+from spread_compare.ratelimit import AsyncRateLimiter, RollingWindowRateLimiter
 
 # Rate/depth defaults trace to docs/research/WHI-800-venue-api-survey.md §4
 # until DESIGN.md §2 exists (see docs/DEFERRED_ISSUES.md).
@@ -332,14 +327,9 @@ async def request_json(
                 f"{venue} rate limited (HTTP {resp.status_code}) attempt={attempt + 1}",
                 retry_after_s=delay,
             )
-            if would_exceed_budget(delay):
-                raise AdapterRateLimitedError(
-                    f"{venue} rate limited; backoff {delay:.2f}s exceeds "
-                    f"remaining quote budget",
-                    retry_after_s=delay,
-                )
-            await asyncio.sleep(delay)
-            delay *= 2
+            if attempt + 1 < max_retries:
+                await sleep_within_budget(delay, venue=venue, reason="rate limited")
+                delay *= 2
             continue
 
         if resp.status_code >= 400:

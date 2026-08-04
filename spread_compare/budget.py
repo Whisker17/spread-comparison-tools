@@ -10,10 +10,20 @@ No deadline means unlimited (direct adapter tests, startup probes).
 
 from __future__ import annotations
 
+import asyncio
 import contextvars
 import time
 from collections.abc import Iterator
 from contextlib import contextmanager
+from typing import Protocol
+
+from spread_compare.adapters.base import AdapterRateLimitedError
+from spread_compare.ratelimit import RateLimitWaitExceeded
+
+
+class _Limiter(Protocol):
+    async def acquire(self, *, max_wait_s: float | None = None) -> None: ...
+
 
 _deadline_mono: contextvars.ContextVar[float | None] = contextvars.ContextVar(
     "quote_deadline_mono", default=None
@@ -46,3 +56,41 @@ def would_exceed_budget(wait_s: float) -> bool:
     if remaining is None:
         return False
     return wait_s > remaining
+
+
+async def acquire_within_budget(limiter: _Limiter, *, venue: str) -> None:
+    """Acquire a limiter slot, or raise :class:`AdapterRateLimitedError`.
+
+    Short waits that fit the budget still sleep. When no deadline is bound,
+    ``max_wait_s`` is unlimited (same as a plain ``acquire()``).
+    """
+    remaining = remaining_budget_s()
+    try:
+        await limiter.acquire(max_wait_s=remaining)
+    except RateLimitWaitExceeded as exc:
+        raise AdapterRateLimitedError(
+            f"{venue}: rate limiter wait {exc.wait_s:.2f}s exceeds remaining "
+            f"budget {exc.max_wait_s:.2f}s",
+            retry_after_s=exc.wait_s,
+        ) from exc
+
+
+async def sleep_within_budget(
+    wait_s: float,
+    *,
+    venue: str,
+    reason: str = "rate limited",
+) -> None:
+    """Sleep ``wait_s``, or fail fast when it would exceed the quote budget.
+
+    Used for upstream 429 / Retry-After backoffs (not for non-rate-limit 5xx).
+    """
+    if wait_s <= 0:
+        return
+    if would_exceed_budget(wait_s):
+        raise AdapterRateLimitedError(
+            f"{venue}: {reason}; retry_after={wait_s:.2f}s exceeds remaining "
+            f"quote budget",
+            retry_after_s=wait_s,
+        )
+    await asyncio.sleep(wait_s)

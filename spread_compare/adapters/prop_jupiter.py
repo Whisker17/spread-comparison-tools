@@ -37,7 +37,7 @@ from spread_compare.adapters.base import (
     default_instrument_type,
 )
 from spread_compare.adapters.registry import register_adapter
-from spread_compare.budget import would_exceed_budget
+from spread_compare.budget import acquire_within_budget, sleep_within_budget
 from spread_compare.models import (
     InstrumentType,
     Quote,
@@ -46,7 +46,7 @@ from spread_compare.models import (
     TopOfBook,
     VenueClass,
 )
-from spread_compare.ratelimit import TokenBucketRateLimiter, acquire_within_budget
+from spread_compare.ratelimit import TokenBucketRateLimiter
 from spread_compare.settings import JupiterSettings, load_jupiter_settings
 
 logger = logging.getLogger(__name__)
@@ -341,8 +341,11 @@ class JupiterPropAdapter(BaseAdapter):
                 )
                 if resp.status_code == 429:
                     wait = _retry_after_seconds(resp, 0)
-                    await _raise_or_sleep_rate_limit(
-                        venue=self.venue, wait=wait, attempt=1, remaining_hdr=None
+                    logger.warning(
+                        "%s label-map rate limited; sleep=%.2fs", self.venue, wait
+                    )
+                    await sleep_within_budget(
+                        wait, venue=self.venue, reason="Jupiter rate limited"
                     )
                     await acquire_within_budget(limiter, venue=self.venue)
                     resp = await self.http.get(url, headers=headers)
@@ -404,11 +407,15 @@ class JupiterPropAdapter(BaseAdapter):
             if resp.status_code == 429:
                 wait = _retry_after_seconds(resp, attempt)
                 remaining_hdr = resp.headers.get("x-ratelimit-remaining")
-                await _raise_or_sleep_rate_limit(
-                    venue=self.venue,
-                    wait=wait,
-                    attempt=attempt + 1,
-                    remaining_hdr=remaining_hdr,
+                logger.warning(
+                    "%s rate limited (429) attempt=%s sleep=%.2fs remaining=%s",
+                    self.venue,
+                    attempt + 1,
+                    wait,
+                    remaining_hdr,
+                )
+                await sleep_within_budget(
+                    wait, venue=self.venue, reason="Jupiter rate limited"
                 )
                 last_err = AdapterRateLimitedError(
                     f"{self.venue}: Jupiter rate limited",
@@ -421,12 +428,6 @@ class JupiterPropAdapter(BaseAdapter):
 
             if resp.status_code >= 500:
                 wait = min(2.0 * (2**attempt), 8.0)
-                if would_exceed_budget(wait):
-                    raise AdapterRateLimitedError(
-                        f"{self.venue}: Jupiter 5xx backoff {wait:.1f}s exceeds "
-                        f"remaining quote budget",
-                        retry_after_s=wait,
-                    )
                 logger.warning(
                     "%s Jupiter 5xx=%s attempt=%s sleep=%.1fs",
                     self.venue,
@@ -434,6 +435,8 @@ class JupiterPropAdapter(BaseAdapter):
                     attempt + 1,
                     wait,
                 )
+                # 5xx is not rate_limited (WHI-799 §6.6 / WHI-844) — keep sleeping
+                # under asyncio.timeout; do not reclassify as rate_limited.
                 await asyncio.sleep(wait)
                 last_err = AdapterFetchError(
                     f"{self.venue}: Jupiter HTTP {resp.status_code}"
@@ -506,35 +509,6 @@ def _retry_after_seconds(resp: httpx.Response, attempt: int) -> float:
         except ValueError:
             pass
     return float(min(2.0 * (2**attempt), 30.0))
-
-
-async def _raise_or_sleep_rate_limit(
-    *,
-    venue: str,
-    wait: float,
-    attempt: int,
-    remaining_hdr: str | None,
-) -> None:
-    """Sleep for a short 429 backoff, or fail fast when it would blow the budget.
-
-    WHI-844: a 5–9s sleep inside a 12s prop_amm budget previously burned the
-    timeout and surfaced as ``timeout``. When ``wait`` exceeds remaining budget
-    we raise :class:`AdapterRateLimitedError` immediately.
-    """
-    logger.warning(
-        "%s rate limited (429) attempt=%s sleep=%.2fs remaining=%s",
-        venue,
-        attempt,
-        wait,
-        remaining_hdr,
-    )
-    if would_exceed_budget(wait):
-        raise AdapterRateLimitedError(
-            f"{venue}: Jupiter rate limited; retry_after={wait:.2f}s exceeds "
-            f"remaining quote budget",
-            retry_after_s=wait,
-        )
-    await asyncio.sleep(wait)
 
 
 @register_adapter

@@ -76,8 +76,8 @@ Core timeout fix (WHI-836): shared `ratelimit.py` token bucket, config-driven
 Jupiter budget + header adaptation, concurrent AMM fee-tier probes, per-class
 venue timeouts, response-cache TTL. Aggregator load hygiene (WHI-844):
 `rate_limited` status + fail-fast when limiter/429 wait exceeds remaining
-budget, response-cache single-flight + TTL 35s (above FE 30s poll), rate-limit
-header logging at info.
+budget, response-cache single-flight + TTL 35s (above FE 30s poll); pre-existing
+Jupiter/CEX rate-limit header logging at info retained.
 Core startup resilience (WHI-840): `startup_all` degrades transient
 `AdapterFetchError`/`AdapterTimeoutError` (keeps serving), fails fast on config
 errors; `config/venues.yaml` disable list + background retry; `/health`

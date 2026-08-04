@@ -137,8 +137,7 @@ async def test_token_bucket_max_wait_raises_when_exceeded() -> None:
 @pytest.mark.asyncio
 async def test_acquire_within_budget_maps_to_adapter_error() -> None:
     from spread_compare.adapters.base import AdapterRateLimitedError
-    from spread_compare.budget import quote_deadline
-    from spread_compare.ratelimit import acquire_within_budget
+    from spread_compare.budget import acquire_within_budget, quote_deadline
 
     limiter = TokenBucketRateLimiter(capacity=1, window_s=5.0)
     await limiter.acquire()
@@ -146,4 +145,16 @@ async def test_acquire_within_budget_maps_to_adapter_error() -> None:
         t0 = time.monotonic()
         with pytest.raises(AdapterRateLimitedError):
             await acquire_within_budget(limiter, venue="humidifi")
+        assert time.monotonic() - t0 < 0.15
+
+
+@pytest.mark.asyncio
+async def test_sleep_within_budget_fail_fast() -> None:
+    from spread_compare.adapters.base import AdapterRateLimitedError
+    from spread_compare.budget import quote_deadline, sleep_within_budget
+
+    with quote_deadline(0.05):
+        t0 = time.monotonic()
+        with pytest.raises(AdapterRateLimitedError):
+            await sleep_within_budget(5.0, venue="binance", reason="rate limited")
         assert time.monotonic() - t0 < 0.15

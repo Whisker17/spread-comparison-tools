@@ -33,7 +33,7 @@ from spread_compare.adapters.base import (
     default_instrument_type,
 )
 from spread_compare.adapters.registry import register_adapter
-from spread_compare.budget import would_exceed_budget
+from spread_compare.budget import acquire_within_budget, sleep_within_budget
 from spread_compare.models import (
     InstrumentType,
     Quote,
@@ -42,7 +42,7 @@ from spread_compare.models import (
     TopOfBook,
     VenueClass,
 )
-from spread_compare.ratelimit import AsyncRateLimiter, acquire_within_budget
+from spread_compare.ratelimit import AsyncRateLimiter
 
 logger = logging.getLogger(__name__)
 
@@ -268,13 +268,9 @@ class KyberSwapPropAdapter(BaseAdapter):
                     attempt + 1,
                     wait,
                 )
-                if would_exceed_budget(wait):
-                    raise AdapterRateLimitedError(
-                        f"{self.venue}: KyberSwap rate limited; retry_after="
-                        f"{wait:.1f}s exceeds remaining quote budget",
-                        retry_after_s=wait,
-                    )
-                await asyncio.sleep(wait)
+                await sleep_within_budget(
+                    wait, venue=self.venue, reason="KyberSwap rate limited"
+                )
                 last_err = AdapterRateLimitedError(
                     f"{self.venue}: KyberSwap rate limited",
                     retry_after_s=wait,
@@ -327,12 +323,7 @@ class KyberSwapPropAdapter(BaseAdapter):
 
             if resp.status_code >= 500:
                 wait = min(2.0 * (2**attempt), 8.0)
-                if would_exceed_budget(wait):
-                    raise AdapterRateLimitedError(
-                        f"{self.venue}: KyberSwap 5xx backoff {wait:.1f}s exceeds "
-                        f"remaining quote budget",
-                        retry_after_s=wait,
-                    )
+                # 5xx is not rate_limited (WHI-844) — keep ordinary backoff.
                 await asyncio.sleep(wait)
                 last_err = AdapterFetchError(
                     f"{self.venue}: KyberSwap HTTP {resp.status_code}"

@@ -26,12 +26,17 @@ export type CellRenderKind =
   | "rate_limited" // WHI-844: distinguishable from timeout/error
   | "cost_incomplete"; // gas_unknown (may still show spread_bps)
 
+/** Badge color variant owned by the status SSOT (StatusCell must not re-derive). */
+export type StatusBadgeVariant = "warning" | "danger" | "muted";
+
 export type CellRenderDecision = {
   kind: CellRenderKind;
   /** Primary label (bps string or status text). */
   label: string;
   /** Secondary badge / aria description. */
   badge?: string;
+  /** Badge color when `badge` is set. */
+  badgeVariant?: StatusBadgeVariant;
   /** Retry / action hint for error cells. */
   hint?: string;
   /** mid_stale warning (independent of status). */
@@ -82,6 +87,7 @@ export function decideCellRender(
         kind: "insufficient_liquidity",
         label: "illiquid",
         badge: "insufficient liquidity",
+        badgeVariant: "warning",
         midStale,
         midTimestamp,
         eligibleForBest: false,
@@ -91,6 +97,7 @@ export function decideCellRender(
         kind: "error",
         label: "error",
         badge: quote.error_code ?? "error",
+        badgeVariant: "danger",
         hint: "Retry refresh",
         midStale,
         midTimestamp,
@@ -101,6 +108,7 @@ export function decideCellRender(
         kind: "rate_limited",
         label: "RATE LIMITED",
         badge: "RATE LIMITED",
+        badgeVariant: "warning",
         hint: "Retry later",
         midStale,
         midTimestamp,
@@ -118,6 +126,7 @@ export function decideCellRender(
             kind: "cost_incomplete",
             label: options.formattedMetric ?? "—",
             badge: "cost incomplete",
+            badgeVariant: "muted",
             midStale,
             midTimestamp,
             eligibleForBest: false,

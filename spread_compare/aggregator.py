@@ -461,6 +461,8 @@ class QuoteAggregator:
             if hit is not None and hit.expires_at > self._clock():
                 return hit.package
             # Coalesce in-flight work for the same package key (WHI-844).
+            # Fan-out runs in a detached task so one client disconnect does not
+            # cancel the shared work for other waiters.
             existing = self._inflight.get(cache_key)
             if existing is not None:
                 return await asyncio.shield(existing)
@@ -468,30 +470,32 @@ class QuoteAggregator:
             loop = asyncio.get_running_loop()
             future: asyncio.Future[QuotesPackage] = loop.create_future()
             self._inflight[cache_key] = future
-            try:
-                package = await self._collect_uncached(
-                    asset_key=asset_key,
-                    notional=notional,
-                    venue_slugs=venue_slugs,
-                    sides=sides,
-                    instrument_type=instrument_type,
-                    snapshot_id=snapshot_id,
-                )
-                if cache_eligible:
+
+            async def _run() -> None:
+                try:
+                    package = await self._collect_uncached(
+                        asset_key=asset_key,
+                        notional=notional,
+                        venue_slugs=venue_slugs,
+                        sides=sides,
+                        instrument_type=instrument_type,
+                        snapshot_id=snapshot_id,
+                    )
                     self._cache[cache_key] = _CacheEntry(
                         expires_at=self._clock() + self._agg.response_cache_ttl_sec,
                         package=package,
                     )
-                future.set_result(package)
-                return package
-            except BaseException as exc:
-                if not future.done():
-                    future.set_exception(exc)
-                raise
-            finally:
-                # Only clear if we still own the slot (avoid racing a replacement).
-                if self._inflight.get(cache_key) is future:
-                    del self._inflight[cache_key]
+                    if not future.done():
+                        future.set_result(package)
+                except BaseException as exc:
+                    if not future.done():
+                        future.set_exception(exc)
+                finally:
+                    if self._inflight.get(cache_key) is future:
+                        del self._inflight[cache_key]
+
+            asyncio.create_task(_run())
+            return await asyncio.shield(future)
 
         return await self._collect_uncached(
             asset_key=asset_key,

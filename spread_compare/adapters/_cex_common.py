@@ -7,7 +7,6 @@ own URL/parse/rate-limit details. Walk/bps math stays in ``bookwalk`` / ``costs`
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
@@ -28,7 +27,7 @@ from spread_compare.adapters.base import (
     require_taker_bps,
 )
 from spread_compare.bookwalk import scale_book_to_canonical, walk_book
-from spread_compare.budget import would_exceed_budget
+from spread_compare.budget import acquire_within_budget, sleep_within_budget
 from spread_compare.cex_symbols import (
     resolve_cex_multiplier,
     resolve_cex_symbol,
@@ -44,7 +43,7 @@ from spread_compare.models import (
     TopOfBook,
     VenueClass,
 )
-from spread_compare.ratelimit import AsyncRateLimiter, acquire_within_budget
+from spread_compare.ratelimit import AsyncRateLimiter
 
 logger = logging.getLogger(__name__)
 
@@ -322,13 +321,9 @@ class CexBaseAdapter(BaseAdapter, ABC):
                 )
                 logger.warning("%s", last_error)
                 if attempt + 1 < self._max_retries:
-                    if would_exceed_budget(delay):
-                        raise AdapterRateLimitedError(
-                            f"{self.venue} rate limited; backoff {delay:.2f}s "
-                            f"exceeds remaining quote budget",
-                            retry_after_s=delay,
-                        )
-                    await asyncio.sleep(delay)
+                    await sleep_within_budget(
+                        delay, venue=self.venue, reason="rate limited"
+                    )
                     delay *= 2
                 continue
 
@@ -353,13 +348,9 @@ class CexBaseAdapter(BaseAdapter, ABC):
                 )
                 logger.warning("%s", last_error)
                 if attempt + 1 < self._max_retries:
-                    if would_exceed_budget(delay):
-                        raise AdapterRateLimitedError(
-                            f"{self.venue} body rate-limit; backoff {delay:.2f}s "
-                            f"exceeds remaining quote budget",
-                            retry_after_s=delay,
-                        )
-                    await asyncio.sleep(delay)
+                    await sleep_within_budget(
+                        delay, venue=self.venue, reason="body rate-limit"
+                    )
                     delay *= 2
                 continue
 

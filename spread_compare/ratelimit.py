@@ -243,26 +243,3 @@ class RollingWindowRateLimiter(_LoopBoundLock):
                 await asyncio.sleep(wait)
 
 
-async def acquire_within_budget(
-    limiter: AsyncRateLimiter | TokenBucketRateLimiter | RollingWindowRateLimiter,
-    *,
-    venue: str,
-) -> None:
-    """Acquire a limiter slot, failing with :class:`AdapterRateLimitedError` if
-    the expected wait exceeds the remaining quote budget (WHI-844).
-
-    Short waits that fit the budget still sleep as before.
-    """
-    # Local import avoids a cycle: budget is light; adapters import both.
-    from spread_compare.adapters.base import AdapterRateLimitedError
-    from spread_compare.budget import remaining_budget_s
-
-    remaining = remaining_budget_s()
-    try:
-        await limiter.acquire(max_wait_s=remaining)
-    except RateLimitWaitExceeded as exc:
-        raise AdapterRateLimitedError(
-            f"{venue}: rate limiter wait {exc.wait_s:.2f}s exceeds remaining "
-            f"budget {exc.max_wait_s:.2f}s",
-            retry_after_s=exc.wait_s,
-        ) from exc
