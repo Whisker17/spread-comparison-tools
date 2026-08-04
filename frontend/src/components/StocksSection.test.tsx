@@ -13,7 +13,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { StocksSection } from "@/components/StocksSection";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { DEFAULT_NOTIONAL_USD } from "@/config/notionals";
+
 import {
   BSTOCKS_REBASE_FOOTNOTE,
   equityPerpsBoard,
@@ -164,7 +164,7 @@ describe("StocksSection (WHI-810)", () => {
     expect(nvdaon.getByText(/Tessera \(BSC\)/)).toBeTruthy();
   });
 
-  it("renders one shared size selector and fetches a single notional per asset", () => {
+  it("renders one shared size selector and fetches all notionals per asset", () => {
     render(<StocksSection />, { wrapper: Wrapper });
 
     // Page-level selector only — no per-block duplicate.
@@ -186,10 +186,8 @@ describe("StocksSection (WHI-810)", () => {
       );
       expect(call, `no /quotes request for ${asset}`).toBeDefined();
       const params = call?.[0] as { notionals: string[] };
-      expect(params.notionals).toEqual([
-        tokenizedStocksBoard.defaultNotional,
-      ]);
-      expect(params.notionals).toEqual([DEFAULT_NOTIONAL_USD]);
+      // WHI-843: full multi-tier package per asset (not a single focus tier).
+      expect(params.notionals).toEqual([...tokenizedStocksBoard.notionals]);
     }
   });
 });

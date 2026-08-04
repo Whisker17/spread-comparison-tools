@@ -11,6 +11,7 @@ via contract multiplier before cost formulas (WHI-826).
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 from decimal import Decimal
 from typing import Any, Literal
 
@@ -18,8 +19,10 @@ from spread_compare.adapters._perp_common import (
     DEFAULT_FEE_TIER,
     OrderbookLevels,
     build_quote_from_book,
+    build_quotes_from_book_batch,
     build_top_of_book,
     build_unsupported_quote,
+    cached_book_fetch,
     request_json,
     require_mid_asset,
     resolve_perp_instrument,
@@ -283,23 +286,129 @@ class HyperliquidAdapter(BaseAdapter):
                 ordered.append(asset)
         return ordered
 
-    async def _fetch_l2_book(self, coin: str) -> tuple[OrderbookLevels, OrderbookLevels]:
-        payload = await self._post_info({"type": "l2Book", "coin": coin})
+    async def get_quotes_batch(
+        self,
+        asset: str,
+        sides: Sequence[Side],
+        notionals: Sequence[Decimal],
+        *,
+        mid: ReferenceMid,
+        instrument_type: InstrumentType | None = None,
+        fee_tier: str | None = None,
+    ) -> list[Quote]:
+        """One L2 fetch, walk every notional × side (WHI-843)."""
+        if not notionals or not sides:
+            raise AdapterError("get_quotes_batch requires notionals and sides")
+
+        itype_default = instrument_type or default_instrument_type(self.venue_class)
+        tier = fee_tier or DEFAULT_FEE_TIER
         try:
-            if not isinstance(payload, dict):
-                raise AdapterFetchError(
-                    f"hyperliquid l2Book unexpected type: {type(payload)}"
+            resolved = resolve_hl_coin(asset)
+        except UnsupportedPerpSymbolError as exc:
+            asset_key = (
+                asset.split(":", 1)[-1].upper() if ":" in asset else asset.upper()
+            )
+            return [
+                build_unsupported_quote(
+                    venue=self.venue,
+                    asset=asset_key,
+                    side=side,
+                    notional_usd=n,
+                    mid=mid,
+                    instrument_type=itype_default,
+                    message=str(exc),
+                    fee_tier=tier,
                 )
-            levels = payload["levels"]
-            if not isinstance(levels, list) or len(levels) < 2:
-                raise AdapterFetchError("hyperliquid l2Book missing levels[0/1]")
-            bids = self._parse_hl_levels(levels[0])
-            asks = self._parse_hl_levels(levels[1])
-        except (KeyError, TypeError, AdapterError) as exc:
-            raise AdapterFetchError(f"hyperliquid l2Book parse failed: {exc}") from exc
-        if not bids or not asks:
-            raise AdapterFetchError(f"hyperliquid empty book for coin={coin!r}")
-        return bids, asks
+                for n in notionals
+                for side in sides
+            ]
+
+        coin = resolved.venue_symbol
+        asset_key = hl_logical_id(coin)
+        require_mid_asset(mid, asset_key)
+
+        try:
+            itype = resolve_perp_instrument(itype_default)
+        except AdapterError as exc:
+            return [
+                build_unsupported_quote(
+                    venue=self.venue,
+                    asset=asset_key,
+                    side=side,
+                    notional_usd=n,
+                    mid=mid,
+                    instrument_type=itype_default,
+                    message=str(exc),
+                    fee_tier=tier,
+                )
+                for n in notionals
+                for side in sides
+            ]
+
+        if self._universe_coins and coin not in self._universe_coins:
+            return [
+                build_unsupported_quote(
+                    venue=self.venue,
+                    asset=asset_key,
+                    side=side,
+                    notional_usd=n,
+                    mid=mid,
+                    instrument_type=itype,
+                    message=f"{asset} (coin={coin!r}) not on hyperliquid allowed dexes",
+                    fee_tier=tier,
+                )
+                for n in notionals
+                for side in sides
+            ]
+
+        bids, asks = await self._fetch_l2_book(coin)
+        schedule = self.get_fees(asset_key, instrument_type=itype)
+        return build_quotes_from_book_batch(
+            venue=self.venue,
+            asset=asset_key,
+            sides=sides,
+            notionals=notionals,
+            mid=mid,
+            instrument_type=itype,
+            venue_symbol=coin,
+            bids=bids,
+            asks=asks,
+            fee_tier=tier,
+            trading_fee_bps=require_taker_bps(self.venue, schedule),
+            funding_rate_8h=self._funding_rate_8h(coin),
+            venue_mark=self._mark_px.get(coin),
+            multiplier=resolved.multiplier,
+        )
+
+    async def _fetch_l2_book(self, coin: str) -> tuple[OrderbookLevels, OrderbookLevels]:
+        async def _raw() -> tuple[OrderbookLevels, OrderbookLevels]:
+            payload = await self._post_info({"type": "l2Book", "coin": coin})
+            try:
+                if not isinstance(payload, dict):
+                    raise AdapterFetchError(
+                        f"hyperliquid l2Book unexpected type: {type(payload)}"
+                    )
+                levels = payload["levels"]
+                if not isinstance(levels, list) or len(levels) < 2:
+                    raise AdapterFetchError("hyperliquid l2Book missing levels[0/1]")
+                bids = self._parse_hl_levels(levels[0])
+                asks = self._parse_hl_levels(levels[1])
+            except (KeyError, TypeError, AdapterError) as exc:
+                raise AdapterFetchError(
+                    f"hyperliquid l2Book parse failed: {exc}"
+                ) from exc
+            if not bids or not asks:
+                raise AdapterFetchError(f"hyperliquid empty book for coin={coin!r}")
+            return bids, asks
+
+        # HL hard-caps at 20 levels — depth token is fixed ("l2_20").
+        return await cached_book_fetch(
+            venue=self.venue,
+            symbol=coin,
+            instrument_type="perp",
+            depth="l2_20",
+            fetch=_raw,
+        )
 
     @staticmethod
     def _parse_hl_levels(raw: object) -> OrderbookLevels:

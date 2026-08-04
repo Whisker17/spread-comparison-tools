@@ -18,12 +18,22 @@ import {
 export type UseNotionalSizeOptions = {
   /** Selectable tiers for this section (usually `section.notionals`). */
   allowed: readonly string[];
-  /** Config default when the URL param is missing or invalid. */
+  /**
+   * Config default when the URL param is missing or invalid.
+   * Pass `"all"` (WHI-843) for multi-column matrix by default.
+   */
   defaultNotional: string;
+  /**
+   * When true, `"all"` is a valid selection (multi-column view).
+   * Default true — size selector is a view preference over a full fetch.
+   */
+  allowAll?: boolean;
 };
 
 export type UseNotionalSizeResult = {
-  /** Resolved notional USD string (always in `allowed` when non-empty). */
+  /**
+   * Resolved size view: a tier USD string, or `"all"` for multi-column.
+   */
   notional: string;
   /** Update selection and write `?size=` (scroll preserved). */
   setNotional: (next: string) => void;
@@ -35,6 +45,7 @@ export function useNotionalSize(
   const searchParams = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
+  const allowAll = options.allowAll !== false;
 
   const notional = useMemo(
     () =>
@@ -48,14 +59,17 @@ export function useNotionalSize(
 
   const setNotional = useCallback(
     (next: string) => {
-      // Ignore clicks outside the allowed set (defence in depth).
-      if (!options.allowed.includes(next)) return;
+      if (next === "all") {
+        if (!allowAll) return;
+      } else if (!options.allowed.includes(next)) {
+        return;
+      }
       const params = new URLSearchParams(searchParams.toString());
       params.set(SIZE_QUERY_PARAM, next);
       const qs = params.toString();
       router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
     },
-    [options.allowed, searchParams, router, pathname],
+    [options.allowed, allowAll, searchParams, router, pathname],
   );
 
   return { notional, setNotional };

@@ -8,24 +8,28 @@ import { NOTIONAL_TIERS_USD } from "@/config/notionals";
 
 afterEach(cleanup);
 
-describe("SizeSelector (WHI-841)", () => {
-  it("renders one button per tier from the props list (not a hardcoded set)", () => {
+describe("SizeSelector (WHI-841 / WHI-843)", () => {
+  it("renders All + one button per tier from the props list", () => {
     render(
       <SizeSelector
         tiers={NOTIONAL_TIERS_USD}
-        value="1000"
+        value="all"
         onChange={() => {}}
       />,
     );
 
+    expect(screen.getByTestId("size-option-all").textContent).toBe("All");
     for (const tier of NOTIONAL_TIERS_USD) {
       expect(screen.getByTestId(`size-option-${tier}`)).toBeTruthy();
     }
     // All five WHI-799 §4.1 tiers including $1M.
     expect(screen.getByTestId("size-option-1000000").textContent).toBe("$1M");
+    expect(
+      screen.getByTestId("size-selector").querySelectorAll("button"),
+    ).toHaveLength(6); // All + 5 tiers
   });
 
-  it("adds a sixth button when a sixth tier is passed — no component edit", () => {
+  it("adds a seventh button when a sixth tier is passed — no component edit", () => {
     const tiers = [...NOTIONAL_TIERS_USD, "5000000"] as const;
     render(
       <SizeSelector tiers={tiers} value="1000" onChange={() => {}} />,
@@ -34,7 +38,7 @@ describe("SizeSelector (WHI-841)", () => {
     expect(screen.getByTestId("size-option-5000000").textContent).toBe("$5M");
     expect(
       screen.getByTestId("size-selector").querySelectorAll("button"),
-    ).toHaveLength(6);
+    ).toHaveLength(7); // All + 6 tiers
   });
 
   it("marks the selected tier as pressed and calls onChange", () => {
@@ -56,5 +60,7 @@ describe("SizeSelector (WHI-841)", () => {
 
     fireEvent.click(screen.getByTestId("size-option-10000"));
     expect(onChange).toHaveBeenCalledWith("10000");
+    fireEvent.click(screen.getByTestId("size-option-all"));
+    expect(onChange).toHaveBeenCalledWith("all");
   });
 });

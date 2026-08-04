@@ -56,22 +56,30 @@ class BybitAdapter(CexBaseAdapter):
         q_star: Decimal | None = None,
     ) -> tuple[OrderbookLevels, OrderbookLevels]:
         _ = side, q_star  # Bybit Phase 1: fixed depth 200 (no escalation in WHI-802)
-        category = "spot" if book_side == "spot" else "linear"
-        url = f"{_BASE}/v5/market/orderbook"
-        params = {
-            "category": category,
-            "symbol": symbol,
-            "limit": str(_ORDERBOOK_LIMIT),
-        }
-        data = await self._request_json(url, params)
-        try:
-            result = data["result"]
-            # Bybit: result.a = asks, result.b = bids as [px, sz] string arrays.
-            asks = parse_levels(result["a"])
-            bids = parse_levels(result["b"])
-        except (KeyError, TypeError, AdapterError) as exc:
-            raise AdapterFetchError(f"bybit orderbook parse failed: {exc}") from exc
-        return bids, asks
+
+        async def _raw() -> tuple[OrderbookLevels, OrderbookLevels]:
+            category = "spot" if book_side == "spot" else "linear"
+            url = f"{_BASE}/v5/market/orderbook"
+            params = {
+                "category": category,
+                "symbol": symbol,
+                "limit": str(_ORDERBOOK_LIMIT),
+            }
+            data = await self._request_json(url, params)
+            try:
+                result = data["result"]
+                # Bybit: result.a = asks, result.b = bids as [px, sz] string arrays.
+                asks = parse_levels(result["a"])
+                bids = parse_levels(result["b"])
+            except (KeyError, TypeError, AdapterError) as exc:
+                raise AdapterFetchError(
+                    f"bybit orderbook parse failed: {exc}"
+                ) from exc
+            return bids, asks
+
+        return await self._cached_depth_fetch(
+            symbol, book_side, depth=_ORDERBOOK_LIMIT, fetch=_raw
+        )
 
     def _payload_is_rate_limited(self, payload: dict[str, Any]) -> bool:
         return payload.get("retCode") == 10006

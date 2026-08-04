@@ -212,9 +212,59 @@ export async function fetchQuotes(
 }
 
 /**
- * Fan out `/quotes` across notional tiers.
- * Section pages use a single tier (WHI-841); this helper remains for multi-tier
- * callers. Failures on individual tiers surface as rejected Promise.
+ * `GET /quotes` multi-tier package (WHI-843) — one request, shared snapshot/mid.
+ * Prefer this over N single-notional calls so orderbook venues fetch once.
+ */
+export async function fetchQuotesMultiTier(
+  params: {
+    asset: string;
+    notionals: readonly (string | number)[];
+    venues?: readonly string[] | string;
+    side?: "buy" | "sell";
+    instrument_type?: InstrumentType;
+  },
+  options?: FetchOptions,
+): Promise<QuotesResponse> {
+  if (params.notionals.length === 0) {
+    throw new ApiError("notionals must be non-empty", 422, null);
+  }
+  // Single tier: keep the legacy `notional` param for back-compat clients.
+  if (params.notionals.length === 1) {
+    return fetchQuotes(
+      {
+        asset: params.asset,
+        notional: params.notionals[0]!,
+        venues: params.venues,
+        side: params.side,
+        instrument_type: params.instrument_type,
+      },
+      options,
+    );
+  }
+
+  const venues =
+    params.venues === undefined
+      ? undefined
+      : Array.isArray(params.venues)
+        ? params.venues.join(",")
+        : params.venues;
+
+  const query: Record<string, string | undefined | null> = {
+    asset: params.asset,
+    notionals: params.notionals.map(String).join(","),
+    venues: typeof venues === "string" ? venues : undefined,
+    side: params.side,
+    instrument_type: params.instrument_type,
+  };
+
+  return apiGet<QuotesResponse>("/quotes", query, options);
+}
+
+/**
+ * Quotes across notional tiers for the matrix.
+ *
+ * WHI-843: one multi-tier request (shared snapshot). Falls back to the
+ * response shape expected by `useQuotesMatrix`.
  */
 export async function fetchQuotesMultiNotional(
   params: {
@@ -231,36 +281,12 @@ export async function fetchQuotesMultiNotional(
   mids: ReferenceMid[];
   snapshotIds: string[];
 }> {
-  const settled = await Promise.allSettled(
-    params.notionals.map((notional) =>
-      fetchQuotes(
-        {
-          asset: params.asset,
-          notional,
-          venues: params.venues,
-          side: params.side,
-          instrument_type: params.instrument_type,
-        },
-        options,
-      ),
-    ),
-  );
-
-  const ok = settled.flatMap((r) => (r.status === "fulfilled" ? [r.value] : []));
-  if (ok.length === 0) {
-    const first = settled.find((r) => r.status === "rejected");
-    const reason =
-      first && first.status === "rejected" ? first.reason : undefined;
-    throw reason instanceof Error
-      ? reason
-      : new ApiError("all notional tiers failed", 502, reason);
-  }
-
+  const body = await fetchQuotesMultiTier(params, options);
   return {
     asset: params.asset,
-    pairs: ok.flatMap((r) => r.pairs),
-    mids: ok.map((r) => r.mid),
-    snapshotIds: ok.map((r) => r.snapshot_id),
+    pairs: body.pairs,
+    mids: [body.mid],
+    snapshotIds: [body.snapshot_id],
   };
 }
 

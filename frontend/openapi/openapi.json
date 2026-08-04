@@ -30,7 +30,7 @@
           "quotes"
         ],
         "summary": "Get Quotes",
-        "description": "Fan out to adapters and return SizeQuotePair rows for one asset/notional.",
+        "description": "Fan out to adapters; one asset, one or many notional tiers (WHI-843).",
         "operationId": "get_quotes_quotes_get",
         "parameters": [
           {
@@ -48,13 +48,38 @@
           {
             "name": "notional",
             "in": "query",
-            "required": true,
+            "required": false,
             "schema": {
-              "type": "string",
-              "description": "USD notional; one of 100 / 1000 / 10000 / 100000 / 1000000 (WHI-799 \u00a74.1)",
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Single USD notional; one of 100 / 1000 / 10000 / 100000 / 1000000 (WHI-799 \u00a74.1). Mutually exclusive with ``notionals``.",
               "title": "Notional"
             },
-            "description": "USD notional; one of 100 / 1000 / 10000 / 100000 / 1000000 (WHI-799 \u00a74.1)"
+            "description": "Single USD notional; one of 100 / 1000 / 10000 / 100000 / 1000000 (WHI-799 \u00a74.1). Mutually exclusive with ``notionals``."
+          },
+          {
+            "name": "notionals",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Comma-separated USD notionals (multi-tier package, WHI-843); each must be a \u00a74.1 tier. Mutually exclusive with ``notional``.",
+              "title": "Notionals"
+            },
+            "description": "Comma-separated USD notionals (multi-tier package, WHI-843); each must be a \u00a74.1 tier. Mutually exclusive with ``notional``."
           },
           {
             "name": "venues",
@@ -958,6 +983,15 @@
             },
             "type": "array",
             "title": "Pairs"
+          },
+          "notionals": {
+            "items": {
+              "type": "string",
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+            },
+            "type": "array",
+            "title": "Notionals",
+            "description": "Requested notional tiers (USD); always non-empty."
           }
         },
         "additionalProperties": false,
@@ -970,7 +1004,7 @@
           "pairs"
         ],
         "title": "QuotesResponse",
-        "description": "``GET /quotes`` payload."
+        "description": "``GET /quotes`` payload.\n\nSingle-tier calls set ``notional_usd`` to that tier and ``notionals`` to a\none-element list. Multi-tier calls (``?notionals=\u2026``) return every tier's\npairs under one ``snapshot_id`` / mid; ``notional_usd`` is the first\n(sorted) tier for back-compat (WHI-843)."
       },
       "ReferenceMid": {
         "properties": {

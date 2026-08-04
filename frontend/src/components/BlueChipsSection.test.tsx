@@ -12,7 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { BlueChipsSection } from "@/components/BlueChipsSection";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { DEFAULT_NOTIONAL_USD } from "@/config/notionals";
+import { NOTIONAL_TIERS_USD } from "@/config/notionals";
 import { blueChipsSection } from "@/config/sections/blue-chips";
 
 const { useQuotesMatrixMock, fetchAssetsMock, replaceMock } = vi.hoisted(() => ({
@@ -75,17 +75,18 @@ beforeEach(() => {
 
 afterEach(cleanup);
 
-describe("BlueChipsSection (WHI-841)", () => {
+describe("BlueChipsSection (WHI-843)", () => {
   it("renders one shared size selector (not per-asset)", () => {
     render(<BlueChipsSection />, { wrapper: Wrapper });
     expect(screen.getAllByTestId("size-selector")).toHaveLength(1);
+    expect(screen.getByTestId("size-option-all")).toBeTruthy();
   });
 
-  it("issues one single-notional /quotes request per asset (3 total, not 15)", () => {
+  it("issues one multi-tier /quotes request per asset (3 total, all tiers)", () => {
     render(<BlueChipsSection />, { wrapper: Wrapper });
 
     expect(blueChipsSection.assets).toEqual(["BTC", "ETH", "SOL"]);
-    // One call per asset — not asset × tier.
+    // One call per asset with every section notional (not 15 single-tier calls).
     expect(useQuotesMatrixMock.mock.calls).toHaveLength(3);
 
     for (const asset of blueChipsSection.assets) {
@@ -94,8 +95,8 @@ describe("BlueChipsSection (WHI-841)", () => {
       );
       expect(call, `no /quotes request for ${asset}`).toBeDefined();
       const params = call?.[0] as { notionals: string[] };
-      expect(params.notionals).toEqual([DEFAULT_NOTIONAL_USD]);
-      expect(params.notionals).toHaveLength(1);
+      expect(params.notionals).toEqual([...NOTIONAL_TIERS_USD]);
+      expect(params.notionals).toHaveLength(5);
     }
   });
 });

@@ -7,6 +7,7 @@ client-side via :class:`RollingWindowRateLimiter`.
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any, Literal
@@ -16,8 +17,10 @@ from spread_compare.adapters._perp_common import (
     OrderbookLevels,
     aggregate_orders_by_price,
     build_quote_from_book,
+    build_quotes_from_book_batch,
     build_top_of_book,
     build_unsupported_quote,
+    cached_book_fetch,
     request_json,
     require_mid_asset,
     resolve_perp_instrument,
@@ -237,32 +240,117 @@ class LighterAdapter(BaseAdapter):
         except (KeyError, TypeError, ValueError, ArithmeticError, AdapterError) as exc:
             raise AdapterFetchError(f"lighter market table parse failed: {exc}") from exc
 
+    async def get_quotes_batch(
+        self,
+        asset: str,
+        sides: Sequence[Side],
+        notionals: Sequence[Decimal],
+        *,
+        mid: ReferenceMid,
+        instrument_type: InstrumentType | None = None,
+        fee_tier: str | None = None,
+    ) -> list[Quote]:
+        """One order-book fetch, walk every notional × side (WHI-843)."""
+        if not notionals or not sides:
+            raise AdapterError("get_quotes_batch requires notionals and sides")
+
+        itype_default = instrument_type or default_instrument_type(self.venue_class)
+        asset_key = asset.upper()
+        resolved = resolve_lighter_symbol(asset_key)
+        tier = fee_tier or DEFAULT_FEE_TIER
+        require_mid_asset(mid, asset_key)
+
+        try:
+            itype = resolve_perp_instrument(itype_default)
+        except AdapterError as exc:
+            return [
+                build_unsupported_quote(
+                    venue=self.venue,
+                    asset=asset_key,
+                    side=side,
+                    notional_usd=n,
+                    mid=mid,
+                    instrument_type=itype_default,
+                    message=str(exc),
+                    fee_tier=tier,
+                )
+                for n in notionals
+                for side in sides
+            ]
+
+        meta = self._markets_by_symbol.get(resolved.venue_symbol)
+        if meta is None:
+            return [
+                build_unsupported_quote(
+                    venue=self.venue,
+                    asset=asset_key,
+                    side=side,
+                    notional_usd=n,
+                    mid=mid,
+                    instrument_type=itype,
+                    message=f"{asset} not in lighter market table (run startup)",
+                    fee_tier=tier,
+                )
+                for n in notionals
+                for side in sides
+            ]
+
+        bids, asks = await self._fetch_orders(meta.market_id)
+        schedule = self.get_fees(asset_key, instrument_type=itype)
+        return build_quotes_from_book_batch(
+            venue=self.venue,
+            asset=asset_key,
+            sides=sides,
+            notionals=notionals,
+            mid=mid,
+            instrument_type=itype,
+            venue_symbol=meta.symbol,
+            bids=bids,
+            asks=asks,
+            fee_tier=tier,
+            trading_fee_bps=require_taker_bps(self.venue, schedule),
+            funding_rate_8h=None,
+            venue_mark=meta.mark_price,
+            multiplier=resolved.multiplier,
+        )
+
     async def _fetch_orders(
         self, market_id: int
     ) -> tuple[OrderbookLevels, OrderbookLevels]:
-        url = f"{_BASE}{_ORDERS_PATH}"
-        params = {"market_id": str(market_id), "limit": str(_ORDER_LIMIT)}
-        payload = await self._get_json(url, params=params)
-        try:
-            raw_asks = payload.get("asks") or []
-            raw_bids = payload.get("bids") or []
-            if not isinstance(raw_asks, list) or not isinstance(raw_bids, list):
-                raise AdapterFetchError("lighter orderBookOrders asks/bids not lists")
-            asks = aggregate_orders_by_price(
-                [o for o in raw_asks if isinstance(o, dict)],
-                descending=False,
-            )
-            bids = aggregate_orders_by_price(
-                [o for o in raw_bids if isinstance(o, dict)],
-                descending=True,
-            )
-        except (TypeError, AdapterError) as exc:
-            raise AdapterFetchError(f"lighter orders parse failed: {exc}") from exc
-        if not bids or not asks:
-            raise AdapterFetchError(
-                f"lighter empty book for market_id={market_id}"
-            )
-        return bids, asks
+        async def _raw() -> tuple[OrderbookLevels, OrderbookLevels]:
+            url = f"{_BASE}{_ORDERS_PATH}"
+            params = {"market_id": str(market_id), "limit": str(_ORDER_LIMIT)}
+            payload = await self._get_json(url, params=params)
+            try:
+                raw_asks = payload.get("asks") or []
+                raw_bids = payload.get("bids") or []
+                if not isinstance(raw_asks, list) or not isinstance(raw_bids, list):
+                    raise AdapterFetchError(
+                        "lighter orderBookOrders asks/bids not lists"
+                    )
+                asks = aggregate_orders_by_price(
+                    [o for o in raw_asks if isinstance(o, dict)],
+                    descending=False,
+                )
+                bids = aggregate_orders_by_price(
+                    [o for o in raw_bids if isinstance(o, dict)],
+                    descending=True,
+                )
+            except (TypeError, AdapterError) as exc:
+                raise AdapterFetchError(f"lighter orders parse failed: {exc}") from exc
+            if not bids or not asks:
+                raise AdapterFetchError(
+                    f"lighter empty book for market_id={market_id}"
+                )
+            return bids, asks
+
+        return await cached_book_fetch(
+            venue=self.venue,
+            symbol=str(market_id),
+            instrument_type="perp",
+            depth=_ORDER_LIMIT,
+            fetch=_raw,
+        )
 
     async def _get_json(
         self, url: str, *, params: dict[str, str] | None = None

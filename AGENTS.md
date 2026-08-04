@@ -86,6 +86,10 @@ errors; `config/venues.yaml` disable list + background retry; `/health`
 Frontend size selector (WHI-841): section pages show one notional at a time via
 shared `SizeSelector` + `?size=` URL; one `GET /quotes` per asset (not × tiers)
 to cut request fan-out 5× and clear TIMEOUT cells.
+Orderbook multi-tier (WHI-843): `GET /quotes?notionals=` returns all tiers under
+one `snapshot_id`/mid; CEX/perp adapters batch-walk one book fetch; short-TTL
+depth-keyed orderbook cache; FE multi-column matrix restored with size selector
+as view preference (`all` vs single-size focus).
 Core RPC hardening (WHI-842): Multicall3-batched AMM quoter probes, per-endpoint
 `TokenBucketRateLimiter` + 429/Retry-After backoff (`config/rpc.yaml`), distinct
 `rate_limited` error_code, short-TTL `eth_gasPrice` cache; no RPC URL/key in logs.
@@ -149,11 +153,12 @@ load-bearing interfaces other modules may depend on.
 - **`spread_compare/budget.py`** — per-call quote deadline + `acquire_within_budget` / `sleep_within_budget` (WHI-844).
 - **`spread_compare/fees.py`** — typed `config/fees/*.yaml` → `FeeSchedule` catalog; adapters + `GET /fees`.
 - **`spread_compare/mids.py`** — reference-mid service (WHI-799 §3 priority chain + cache).
-- **`spread_compare/aggregator.py`** — concurrent adapter fan-out, per-class timeout, SizeQuotePair assembly, response cache; also hosts shared fan-out helpers (`quote_with_timeout`, `resolve_mid_with_budget`, `effective_instrument_type`) used by the simulator; never recomputes bps.
+- **`spread_compare/aggregator.py`** — concurrent adapter fan-out, multi-notional packages (WHI-843), per-class timeout, SizeQuotePair assembly, response cache (multi-tier + single-tier subset hits); also hosts shared fan-out helpers (`quote_with_timeout`, `resolve_mid_with_budget`, `effective_instrument_type`) used by the simulator; never recomputes bps.
 - **`spread_compare/simulator.py`** — `POST /simulate` fan-out (WHI-814): pair validation, free-form notional, expected_output derivation, §5.2 best ranking; no response cache; never recomputes bps.
 - **`spread_compare/adapters/`** — async `VenueAdapter` + `BaseAdapter`, auto-discovery, `@register_adapter` registry with `startup_all`/`aclose_all` (WHI-840: degrade transient startup failures, disabled venues, background retry), `mock` + CEX (`binance`/`bybit`) + perp DEX (`perp_hyperliquid`/`perp_lighter`/`perp_apex`) + AMM DEX (`amm_uniswap`/`amm_aerodrome`/`amm_pancakeswap`) + prop AMM (`prop_jupiter`/`prop_kyberswap`), shared `_cex_common` / `_perp_common` / `_amm_common` / `_prop_common`; one module per real venue (no hand-import list).
 - **`spread_compare/api/`** — FastAPI app factory with lifespan; `/health` (degradation fields), `/quotes`, `/venues` (omits config-disabled), `/assets`, `/fees`, `POST /simulate`, `GET /simulate/pairs`; CORS for local FE.
-- **`frontend/`** — Next.js dashboard (WHI-808): typed API client, SpreadMatrix, section config modules, route shell; `/simulate` UI (WHI-815) via `SimulateSection` + `simulatePairs`/`simulateView` pure libs; size selector + single-notional fetch (WHI-841).
+- **`frontend/`** — Next.js dashboard (WHI-808): typed API client, SpreadMatrix, section config modules, route shell; `/simulate` UI (WHI-815) via `SimulateSection` + `simulatePairs`/`simulateView` pure libs; multi-tier matrix + size view preference (WHI-843 / WHI-841).
+- **`spread_compare/orderbook_cache.py`** — short-TTL single-flight orderbook snapshot cache (WHI-843); depth is part of the key.
 - **`main.py`** — CLI: `--dry-run` validates; live serves uvicorn.
 
 ## Git workflow (mandatory)

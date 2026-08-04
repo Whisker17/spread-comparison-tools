@@ -10,7 +10,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from abc import ABC, abstractmethod
-from collections.abc import Sequence
+from collections.abc import Awaitable, Callable, Hashable, Sequence
 from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any, Literal
@@ -43,6 +43,11 @@ from spread_compare.models import (
     Side,
     TopOfBook,
     VenueClass,
+)
+from spread_compare.orderbook_cache import (
+    OrderbookSnapshotCache,
+    book_cache_key,
+    default_orderbook_cache,
 )
 from spread_compare.ratelimit import AsyncRateLimiter
 
@@ -271,9 +276,18 @@ class CexBaseAdapter(BaseAdapter, ABC):
     # Primary + optional alternate response headers to log for rate-limit hygiene.
     _rate_limit_log_headers: tuple[str, ...] = ()
 
-    def __init__(self, *, timeout: float = 10.0) -> None:
+    def __init__(
+        self,
+        *,
+        timeout: float = 10.0,
+        book_cache: OrderbookSnapshotCache | None = None,
+    ) -> None:
         super().__init__(timeout=timeout)
         self._limiter = AsyncRateLimiter(self._min_interval_s)
+        # Shared process cache by default so multi-tier + TOB reuse one HTTP hit.
+        self._book_cache = (
+            book_cache if book_cache is not None else default_orderbook_cache()
+        )
 
     @abstractmethod
     async def _fetch_book(
@@ -286,6 +300,19 @@ class CexBaseAdapter(BaseAdapter, ABC):
     ) -> tuple[OrderbookLevels, OrderbookLevels]:
         """Return ``(bids, asks)`` best-first. May use ``side``/``q_star`` to escalate depth."""
         ...
+
+    async def _cached_depth_fetch(
+        self,
+        symbol: str,
+        book_side: CexBookSide,
+        *,
+        depth: Hashable,
+        fetch: Callable[[], Awaitable[tuple[OrderbookLevels, OrderbookLevels]]],
+    ) -> tuple[OrderbookLevels, OrderbookLevels]:
+        """Fetch via the short-TTL book cache (depth is part of the key — WHI-843)."""
+        key = book_cache_key(self.venue, symbol, book_side, depth)
+        snap = await self._book_cache.get_or_fetch(key, fetch, depth=depth)
+        return snap.bids, snap.asks
 
     def _log_rate_limit_headers(self, resp: httpx.Response, url: str) -> None:
         for name in self._rate_limit_log_headers:
@@ -465,6 +492,126 @@ class CexBaseAdapter(BaseAdapter, ABC):
             trading_fee_bps=trading_fee,
             multiplier=multiplier,
         )
+
+    async def get_quotes_batch(
+        self,
+        asset: str,
+        sides: Sequence[Side],
+        notionals: Sequence[Decimal],
+        *,
+        mid: ReferenceMid,
+        instrument_type: InstrumentType | None = None,
+        fee_tier: str | None = None,
+    ) -> list[Quote]:
+        """Price many notionals/sides from **one** orderbook fetch (WHI-843).
+
+        Fetches depth sufficient for the largest notional, then walks that book
+        at every size. All returned quotes share one wall-clock timestamp.
+        Per-tier ``insufficient_liquidity`` is still possible when the book
+        fills a smaller tier but not a larger one.
+        """
+        if not notionals:
+            raise AdapterError("get_quotes_batch requires at least one notional")
+        if not sides:
+            raise AdapterError("get_quotes_batch requires at least one side")
+
+        explicit_itype = instrument_type is not None
+        requested = instrument_type or default_instrument_type(self.venue_class)
+        asset_key = asset.upper()
+        tier = fee_tier or DEFAULT_FEE_TIER
+
+        if mid.asset.upper() != asset_key:
+            raise AdapterError(
+                f"mid.asset={mid.asset!r} does not match asset={asset!r}"
+            )
+
+        book_side = resolve_cex_instrument(requested)
+        if book_side is None:
+            return [
+                build_error_quote(
+                    venue=self.venue,
+                    asset=asset_key,
+                    side=side,
+                    notional_usd=n,
+                    mid=mid,
+                    instrument_type=requested,
+                    error_code="unsupported_instrument_type",
+                    message=(
+                        f"CEX adapters only support instrument_type spot|perp, "
+                        f"got {requested!r}"
+                    ),
+                    fee_tier=tier,
+                    status="error",
+                )
+                for n in notionals
+                for side in sides
+            ]
+
+        symbol = resolve_cex_symbol(asset_key, book_side)
+        if (
+            symbol is None
+            and not explicit_itype
+            and book_side == "spot"
+            and resolve_cex_symbol(asset_key, "perp") is not None
+        ):
+            book_side = "perp"
+            symbol = resolve_cex_symbol(asset_key, "perp")
+        if symbol is None or not self._venue_lists_asset(asset_key, book_side):
+            return [
+                build_error_quote(
+                    venue=self.venue,
+                    asset=asset_key,
+                    side=side,
+                    notional_usd=n,
+                    mid=mid,
+                    instrument_type=book_side,
+                    error_code="unsupported_asset",
+                    message=(
+                        f"{asset} not supported by {self.venue} adapter "
+                        f"as instrument_type={book_side!r}"
+                    ),
+                    fee_tier=tier,
+                    status="unsupported_asset",
+                )
+                for n in notionals
+                for side in sides
+            ]
+
+        schedule = self.get_fees(asset_key, instrument_type=book_side)
+        trading_fee = require_taker_bps(self.venue, schedule)
+        multiplier = resolve_cex_multiplier(asset_key, book_side)
+
+        # Depth for the largest tier — smaller tiers walk the same snapshot.
+        max_notional = max(notionals)
+        q_max = max_notional / mid.mid
+        # Prefer buy side for escalation when both present (asks deepen with size).
+        escalate_side: Side = "buy" if "buy" in sides else sides[0]
+        bids, asks = await self._fetch_book(
+            symbol, book_side, side=escalate_side, q_star=q_max
+        )
+        shared_ts = datetime.now(tz=UTC)
+
+        out: list[Quote] = []
+        for n in notionals:
+            for side in sides:
+                out.append(
+                    build_quote_from_book(
+                        venue=self.venue,
+                        asset=asset_key,
+                        side=side,
+                        notional_usd=n,
+                        mid=mid,
+                        instrument_type=book_side,
+                        venue_symbol=symbol,
+                        bids=bids,
+                        asks=asks,
+                        fee_tier=tier,
+                        trading_fee_bps=trading_fee,
+                        timestamp=shared_ts,
+                        multiplier=multiplier,
+                    )
+                )
+        return out
 
     async def get_orderbook_spread(
         self,

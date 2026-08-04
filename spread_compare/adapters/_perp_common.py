@@ -8,7 +8,7 @@ as an adapter. Perp adapters import from here; walk/bps math stay in
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Sequence
+from collections.abc import Awaitable, Callable, Sequence
 from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any, Literal
@@ -36,6 +36,11 @@ from spread_compare.models import (
     ReferenceMid,
     Side,
     TopOfBook,
+)
+from spread_compare.orderbook_cache import (
+    OrderbookSnapshotCache,
+    book_cache_key,
+    default_orderbook_cache,
 )
 from spread_compare.ratelimit import AsyncRateLimiter, RollingWindowRateLimiter
 
@@ -244,6 +249,71 @@ def build_unsupported_quote(
         error_code="unsupported_asset",
         error_message=message,
     )
+
+
+def build_quotes_from_book_batch(
+    *,
+    venue: str,
+    asset: str,
+    sides: Sequence[Side],
+    notionals: Sequence[Decimal],
+    mid: ReferenceMid,
+    instrument_type: InstrumentType,
+    venue_symbol: str,
+    bids: OrderbookLevels,
+    asks: OrderbookLevels,
+    fee_tier: str = DEFAULT_FEE_TIER,
+    trading_fee_bps: Decimal,
+    funding_rate_8h: Decimal | None = None,
+    venue_mark: Decimal | None = None,
+    timestamp: datetime | None = None,
+    multiplier: Decimal = Decimal(1),
+) -> list[Quote]:
+    """Walk one book at every notional × side with a shared timestamp (WHI-843)."""
+    if not notionals:
+        raise AdapterError("build_quotes_from_book_batch requires notionals")
+    if not sides:
+        raise AdapterError("build_quotes_from_book_batch requires sides")
+    shared_ts = timestamp or datetime.now(tz=UTC)
+    out: list[Quote] = []
+    for n in notionals:
+        for side in sides:
+            out.append(
+                build_quote_from_book(
+                    venue=venue,
+                    asset=asset,
+                    side=side,
+                    notional_usd=n,
+                    mid=mid,
+                    instrument_type=instrument_type,
+                    venue_symbol=venue_symbol,
+                    bids=bids,
+                    asks=asks,
+                    fee_tier=fee_tier,
+                    trading_fee_bps=trading_fee_bps,
+                    funding_rate_8h=funding_rate_8h,
+                    venue_mark=venue_mark,
+                    timestamp=shared_ts,
+                    multiplier=multiplier,
+                )
+            )
+    return out
+
+
+async def cached_book_fetch(
+    *,
+    venue: str,
+    symbol: str,
+    instrument_type: str,
+    depth: object,
+    fetch: Callable[[], Awaitable[tuple[OrderbookLevels, OrderbookLevels]]],
+    cache: OrderbookSnapshotCache | None = None,
+) -> tuple[OrderbookLevels, OrderbookLevels]:
+    """Shared short-TTL single-flight book fetch for perp adapters (WHI-843)."""
+    store = cache if cache is not None else default_orderbook_cache()
+    key = book_cache_key(venue, symbol, instrument_type, depth)
+    snap = await store.get_or_fetch(key, fetch, depth=depth)
+    return snap.bids, snap.asks
 
 
 def build_top_of_book(

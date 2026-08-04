@@ -1,5 +1,5 @@
 import {
-  DEFAULT_NOTIONAL_USD,
+  DEFAULT_SIZE_VIEW,
   NOTIONAL_TIERS_USD,
 } from "@/config/notionals";
 import {
@@ -161,7 +161,7 @@ export const tokenizedStocksBoard: SectionConfig = {
     NVDAON: ["binance"],
   },
   notionals: [...NOTIONAL_TIERS_USD],
-  defaultNotional: DEFAULT_NOTIONAL_USD,
+  defaultNotional: DEFAULT_SIZE_VIEW,
   defaultSideView: "buy",
   cellMetric: "total_cost_bps",
   showTopOfBook: true,
@@ -177,7 +177,7 @@ export const equityPerpsBoard: SectionConfig = {
   assets: [...EQUITY_PERP_ASSETS],
   venues: [...EQUITY_PERP_VENUES],
   notionals: [...NOTIONAL_TIERS_USD],
-  defaultNotional: DEFAULT_NOTIONAL_USD,
+  defaultNotional: DEFAULT_SIZE_VIEW,
   defaultSideView: "buy",
   cellMetric: "total_cost_bps",
   showTopOfBook: true,

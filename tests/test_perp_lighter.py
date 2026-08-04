@@ -204,11 +204,16 @@ async def test_lighter_sample_orders_aggregate() -> None:
 async def test_lighter_rate_limit_burst_against_stub() -> None:
     """Adapter must stay within the configured rolling-window budget."""
     # 3 req / 0.5s window; 5 sequential order fetches must span ≥ one window.
+    # Clear the WHI-843 book cache each iteration so we measure the HTTP limiter,
+    # not short-TTL snapshot reuse.
+    from spread_compare.orderbook_cache import default_orderbook_cache
+
     counter = _CountingTransport()
     adapter, _ = await _ready_adapter(max_rpm=3, window_s=0.5, counter=counter)
     try:
         t0 = time.monotonic()
         for _ in range(5):
+            default_orderbook_cache().clear()
             await adapter.get_orderbook_spread("BTC", mid=_mid())
         elapsed = time.monotonic() - t0
         assert counter.order_requests == 5
