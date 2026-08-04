@@ -26,7 +26,6 @@ from spread_compare.adapters.base import (
 from spread_compare.adapters.registry import (
     _INITIALIZED,
     _REGISTRY,
-    _STARTUP_COMPLETED,
     aclose_all,
     clear_disabled_venues,
     expected_adapter_count,
@@ -485,11 +484,66 @@ async def test_quotes_include_other_venues_when_one_degraded(
 
 def test_is_available_before_startup_completed() -> None:
     """Unit tests that never call startup_all still get quotes (no false guard)."""
-    # aclose_all leaves _STARTUP_COMPLETED False.
-    assert _STARTUP_COMPLETED is False or True  # either state after other tests
-    # Force pre-boot state.
     import spread_compare.adapters.registry as reg
 
     reg._STARTUP_COMPLETED = False
     _INITIALIZED.discard("mock")
     assert is_available("mock") is True
+
+
+def test_unknown_disabled_slug_fails_fast() -> None:
+    with pytest.raises(ValueError, match="unknown venue slug"):
+        set_disabled_venues(["binanace"])
+    with pytest.raises(Exception, match="unknown venue slug"):
+        VenueSettings(
+            disabled=["bybitt"],
+            startup_retry_interval_sec=0,
+            startup_retry_backoff_multiplier=2.0,
+            startup_retry_max_interval_sec=300.0,
+        )
+
+
+@pytest.mark.asyncio
+async def test_simulate_failed_venue_is_not_initialized(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Simulate must not collapse failed startup into not_supported (WHI-840)."""
+    from spread_compare.simulator import TradeSimulator
+
+    class BoomAdapter(StubAdapter):
+        venue: str = "lighter"
+
+        async def startup(self) -> None:
+            raise AdapterFetchError("down")
+
+        def supported_assets(
+            self, *, instrument_type: object | None = None
+        ) -> list[str]:
+            return []  # empty warm-up cache shape
+
+    monkeypatch.setitem(_REGISTRY, "lighter", BoomAdapter())
+    _INITIALIZED.discard("lighter")
+    await startup_all(slugs=["lighter"])
+    assert not is_available("lighter")
+
+    sim = TradeSimulator(
+        FixedMid(),
+        aggregator_settings=AggregatorSettings(
+            venue_timeout_sec=3.0,
+            venue_timeout_by_class={},
+            response_cache_ttl_sec=0,
+        ),
+    )
+    package = await sim.simulate(
+        "USDC",
+        "BTC",
+        Decimal("10000"),
+        venues=["lighter"],
+    )
+    assert len(package.rows) == 1
+    row = package.rows[0]
+    assert row.error_code == "not_initialized"
+    assert row.error_code != "not_supported"
+    assert row.status == "error"
+
+    await aclose_all()

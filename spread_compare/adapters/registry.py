@@ -109,12 +109,25 @@ def set_disabled_venues(slugs: Iterable[str]) -> None:
     Disabled venues are excluded from :func:`list_venues`, :func:`startup_all`,
     and :func:`get`. Registration is preserved so re-enable (clear) works without
     re-importing adapter modules.
+
+    Unknown slugs raise :class:`ValueError` (fail-fast; typo must not silently
+    leave a venue live).
     """
-    _DISABLED.clear()
+    allowed = known_slugs() | _EXTRA_ALLOWED_SLUGS
+    cleaned: list[str] = []
     for raw in slugs:
         slug = str(raw).strip()
-        if slug:
-            _DISABLED.add(slug)
+        if not slug:
+            continue
+        cleaned.append(slug)
+    unknown = sorted({s for s in cleaned if s not in allowed})
+    if unknown:
+        raise ValueError(
+            f"unknown venue slug(s) in disabled config: {unknown}; "
+            f"allowed: {sorted(allowed)}"
+        )
+    _DISABLED.clear()
+    _DISABLED.update(cleaned)
     # A venue that is no longer eligible must not count as healthy / retried.
     _INITIALIZED.difference_update(_DISABLED)
     _DEGRADED.difference_update(_DISABLED)
@@ -233,10 +246,12 @@ async def startup_all(
 
     _STARTUP_COMPLETED = True
 
+    disabled = sorted(_DISABLED)
     logger.info(
-        "adapter startup summary: up=%s down=%s",
+        "adapter startup summary: up=%s down=%s disabled=%s",
         sorted(succeeded) if succeeded else "[]",
         sorted(degraded) if degraded else "[]",
+        disabled if disabled else "[]",
     )
 
     if fatal:
@@ -320,10 +335,7 @@ async def run_startup_retry_loop(
     current = interval_sec
 
     while not stop_event.is_set():
-        try:
-            await sleep_fn(current)
-        except asyncio.CancelledError:
-            raise
+        await sleep_fn(current)
 
         if stop_event.is_set():
             break
@@ -333,10 +345,9 @@ async def run_startup_retry_loop(
             continue
 
         recovered = await retry_uninitialized()
-        if recovered and not _DEGRADED:
-            current = interval_sec
-        elif recovered:
-            # Partial recovery — keep probing remaining failures at base interval.
+        if recovered:
+            # Full or partial recovery — reset backoff so remaining failures
+            # are probed again at the base interval.
             current = interval_sec
         else:
             current = min(current * backoff_multiplier, max_interval_sec)

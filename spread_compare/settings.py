@@ -124,6 +124,22 @@ class VenueSettings(BaseModel):
             return value
         return [str(v).strip() for v in value if str(v).strip()]
 
+    @field_validator("disabled")
+    @classmethod
+    def _known_disabled_slugs(cls, value: list[str]) -> list[str]:
+        # Lazy import: settings must stay importable before adapter discovery.
+        from spread_compare.venues import known_slugs
+
+        # Match registry._EXTRA_ALLOWED_SLUGS (scaffold/test slugs).
+        allowed = known_slugs() | frozenset({"mock", "_test_discovery"})
+        unknown = sorted({s for s in value if s not in allowed})
+        if unknown:
+            raise ValueError(
+                f"unknown venue slug(s) in disabled: {unknown}; "
+                f"allowed: {sorted(allowed)}"
+            )
+        return value
+
     @model_validator(mode="after")
     def _max_not_below_interval(self) -> VenueSettings:
         if (
