@@ -276,5 +276,5 @@ HumidiFi / TesseraV：无 Q2 表（Q1 未通过）。
 | --- | --- |
 | `docs/research/WHI-837-solana-prop-amm-quote-redundancy.md` | 本文 |
 | `docs/research/samples/whi-837/` | live 样本（见该目录 `README.md`） |
-| `docs/adr/0001-solana-prop-amm-jupiter-sole-path.md` | 接受 Jupiter  sole path + 显式降级 |
+| `docs/adr/0001-solana-prop-amm-jupiter-sole-path.md` | 接受 Jupiter sole path + 显式降级 |
 | WHI-797 §9 更新 | 风险行指向本文 |
