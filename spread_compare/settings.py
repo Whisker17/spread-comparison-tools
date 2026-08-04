@@ -9,6 +9,7 @@ missing key fails at startup instead of silently diverging from the file.
 
 from __future__ import annotations
 
+from decimal import Decimal
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -113,7 +114,8 @@ class ImpactSettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     # Quotes with price_impact_bps above this become status=excessive_impact.
-    max_price_impact_bps: float = Field(gt=0)
+    # Decimal to match model-layer bps; YAML numbers parse natively.
+    max_price_impact_bps: Decimal = Field(gt=0)
 
 
 # Known AMM adapter ``rpc_env`` names (must stay aligned with amm_*.py).

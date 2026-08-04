@@ -25,7 +25,11 @@ import {
 } from "@/lib/format";
 import { heatClass, heatRange, type HeatRange } from "@/lib/heat";
 import { detailFromPair } from "@/lib/matrixDetail";
-import { isEligibleForBest, type MetricKey } from "@/lib/status";
+import {
+  includeQuoteInHeat,
+  isEligibleForBest,
+  type MetricKey,
+} from "@/lib/status";
 import {
   bestVenueMap,
   bothLegsEligible,
@@ -393,7 +397,5 @@ function includeInHeat(
     return pair.buy?.status === "ok" && pair.sell?.status === "ok";
   }
   const quote = sideView === "buy" ? pair.buy : pair.sell;
-  if (!quote || quote.status !== "ok") return false;
-  if (metric === "total_cost_bps") return isEligibleForBest(quote);
-  return true;
+  return includeQuoteInHeat(quote ?? null, metric);
 }

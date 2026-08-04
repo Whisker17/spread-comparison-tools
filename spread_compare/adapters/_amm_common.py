@@ -30,6 +30,7 @@ from spread_compare.adapters.base import (
 )
 from spread_compare.costs import spread_bps as calc_spread_bps
 from spread_compare.costs import total_cost_bps
+from spread_compare.impact import apply_impact_threshold, derive_price_impact_bps
 from spread_compare.models import (
     FeeBreakdown,
     InstrumentType,
@@ -1099,8 +1100,6 @@ def build_ok_quote(
     as the impact diagnostic (WHI-845 — on-chain quoters / Kyber have no separate
     impact field). Jupiter callers pass the upstream-reported value instead.
     """
-    from spread_compare.impact import apply_impact_threshold
-
     sp = calc_spread_bps(side, effective_price, mid.mid)
     cost = total_cost_bps(
         sp,
@@ -1111,7 +1110,7 @@ def build_ok_quote(
         gas_usd=gas_usd,
         notional_usd=notional_usd,
     )
-    impact = price_impact_bps if price_impact_bps is not None else abs(sp)
+    impact = derive_price_impact_bps(price_impact_bps, sp)
     quote = Quote(
         snapshot_id=mid.snapshot_id,
         venue=venue,

@@ -28,6 +28,7 @@ from spread_compare.aggregator import (
 from spread_compare.assets import get_asset, is_usd_stable
 from spread_compare.mids import MidService
 from spread_compare.models import (
+    PRICED_QUOTE_STATUSES,
     FeeBreakdown,
     InstrumentType,
     Quote,
@@ -209,8 +210,6 @@ def expected_output_from_quote(quote: Quote, *, side: Side) -> Decimal | None:
     ``excessive_impact`` keeps price fields readable (WHI-845) so expected_output
     is still derived; ranking still requires status=ok for ``best``.
     """
-    from spread_compare.models import PRICED_QUOTE_STATUSES
-
     if quote.status not in PRICED_QUOTE_STATUSES:
         return None
     if quote.effective_price is None or quote.effective_price <= 0:

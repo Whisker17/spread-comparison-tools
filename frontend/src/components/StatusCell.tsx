@@ -60,9 +60,7 @@ export function StatusCell({
       data-best={isBest ? "true" : "false"}
       data-mid-stale={decision.midStale ? "true" : "false"}
     >
-      {decision.kind === "value" ||
-      decision.kind === "cost_incomplete" ||
-      decision.kind === "excessive_impact" ? (
+      {decision.showsMetric ? (
         <span className="font-medium">{decision.label}</span>
       ) : decision.kind === "dash" ? (
         <span className="text-zinc-400">—</span>
@@ -158,7 +156,7 @@ function buildTooltip(
           <li>effective: {formatPrice(quote.effective_price)}</li>
           <li>spread: {formatBps(quote.spread_bps)} bps</li>
           <li>total cost: {formatBps(quote.total_cost_bps)} bps</li>
-          {quote.price_impact_bps != null && quote.price_impact_bps !== undefined ? (
+          {quote.price_impact_bps != null ? (
             <li>price impact: {formatBps(quote.price_impact_bps)} bps</li>
           ) : null}
           <li>

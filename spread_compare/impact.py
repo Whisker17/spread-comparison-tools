@@ -26,6 +26,21 @@ def fraction_to_impact_bps(fraction: Decimal | float | str) -> Decimal:
     return value * _BPS
 
 
+def derive_price_impact_bps(
+    reported: Decimal | None,
+    spread_bps: Decimal,
+) -> Decimal:
+    """Resolve impact for a priced quote (WHI-799 §6.2 inv. 6 / WHI-845).
+
+    Prefer the upstream-reported value (Jupiter ``priceImpactPct`` as bps).
+    When missing, use mid-relative ``|spread_bps|`` — the deviation from
+    reference mid that Kyber / on-chain quoters expose without a separate field.
+    """
+    if reported is not None:
+        return abs(reported)
+    return abs(spread_bps)
+
+
 def apply_impact_threshold(quote: Quote) -> Quote:
     """Reclassify an ok quote whose impact exceeds ``max_price_impact_bps``.
 
@@ -38,7 +53,7 @@ def apply_impact_threshold(quote: Quote) -> Quote:
     if impact is None:
         return quote
 
-    max_bps = Decimal(str(load_impact_settings().max_price_impact_bps))
+    max_bps = load_impact_settings().max_price_impact_bps
     if impact <= max_bps:
         return quote
 

@@ -46,6 +46,8 @@ export type CellRenderDecision = {
   midTimestamp?: string;
   /** Eligible for best-venue highlighting (WHI-799 §5.2). */
   eligibleForBest: boolean;
+  /** True when the primary label is a numeric metric (value / cost_incomplete / excessive_impact). */
+  showsMetric: boolean;
 };
 
 /**
@@ -67,6 +69,7 @@ export function decideCellRender(
       label: "—",
       midStale: false,
       eligibleForBest: false,
+      showsMetric: false,
     };
   }
 
@@ -83,6 +86,7 @@ export function decideCellRender(
         midStale,
         midTimestamp,
         eligibleForBest: false,
+        showsMetric: false,
       };
     case "insufficient_liquidity":
       return {
@@ -93,6 +97,7 @@ export function decideCellRender(
         midStale,
         midTimestamp,
         eligibleForBest: false,
+        showsMetric: false,
       };
     case "error":
       return {
@@ -104,6 +109,7 @@ export function decideCellRender(
         midStale,
         midTimestamp,
         eligibleForBest: false,
+        showsMetric: false,
       };
     case "rate_limited":
       return {
@@ -115,6 +121,7 @@ export function decideCellRender(
         midStale,
         midTimestamp,
         eligibleForBest: false,
+        showsMetric: false,
       };
     case "excessive_impact":
       // Keep the magnitude legible (WHI-845); exclude from best / heat via
@@ -127,6 +134,7 @@ export function decideCellRender(
         midStale,
         midTimestamp,
         eligibleForBest: false,
+        showsMetric: true,
       };
     case "ok": {
       const metricKey = options.metricKey ?? "total_cost_bps";
@@ -144,6 +152,7 @@ export function decideCellRender(
             midStale,
             midTimestamp,
             eligibleForBest: false,
+            showsMetric: true,
           };
         }
       }
@@ -153,6 +162,7 @@ export function decideCellRender(
         midStale,
         midTimestamp,
         eligibleForBest: isEligibleForBest(quote),
+        showsMetric: true,
       };
     }
     default: {
@@ -164,6 +174,7 @@ export function decideCellRender(
         midStale,
         midTimestamp,
         eligibleForBest: false,
+        showsMetric: false,
       };
     }
   }
@@ -172,6 +183,7 @@ export function decideCellRender(
 /**
  * WHI-799 §5.2: only status=ok AND total_cost_bps is not null participate in
  * "best venue" ranking. gas_unknown forces total_cost_bps null.
+ * ``excessive_impact`` is never eligible (WHI-845).
  */
 export function isEligibleForBest(quote: Quote | null | undefined): boolean {
   if (!quote) return false;
@@ -180,6 +192,19 @@ export function isEligibleForBest(quote: Quote | null | undefined): boolean {
   if (quote.total_cost_bps === null || quote.total_cost_bps === undefined) {
     return false;
   }
+  return true;
+}
+
+/**
+ * Whether a quote's metric may enter the per-column heat range (WHI-838 / WHI-845).
+ * Only comparable ``ok`` quotes — never ``excessive_impact``.
+ */
+export function includeQuoteInHeat(
+  quote: Quote | null | undefined,
+  metric: MetricKey = "total_cost_bps",
+): boolean {
+  if (!quote || quote.status !== "ok") return false;
+  if (metric === "total_cost_bps") return isEligibleForBest(quote);
   return true;
 }
 

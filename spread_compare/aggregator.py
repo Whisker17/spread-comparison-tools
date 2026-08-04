@@ -34,6 +34,7 @@ from spread_compare.costs import (
 from spread_compare.mids import MidResolutionError, MidService, is_mid_stale
 from spread_compare.models import (
     NOTIONAL_TIERS_USD,
+    PRICED_QUOTE_STATUSES,
     FeeBreakdown,
     InstrumentType,
     Quote,
@@ -369,10 +370,28 @@ def assemble_pair(
     if sell is not None:
         sell = apply_mid_stale(sell, stale_threshold_sec=stale_threshold_sec)
 
-    buy_spread = buy.spread_bps if buy is not None and buy.status == "ok" else None
-    sell_spread = sell.spread_bps if sell is not None and sell.status == "ok" else None
-    buy_total = buy.total_cost_bps if buy is not None and buy.status == "ok" else None
-    sell_total = sell.total_cost_bps if sell is not None and sell.status == "ok" else None
+    # Priced statuses keep numbers readable (WHI-845 excessive_impact); only
+    # status=ok remains §5.2 best / heat eligible (FE gates on status separately).
+    buy_spread = (
+        buy.spread_bps
+        if buy is not None and buy.status in PRICED_QUOTE_STATUSES
+        else None
+    )
+    sell_spread = (
+        sell.spread_bps
+        if sell is not None and sell.status in PRICED_QUOTE_STATUSES
+        else None
+    )
+    buy_total = (
+        buy.total_cost_bps
+        if buy is not None and buy.status in PRICED_QUOTE_STATUSES
+        else None
+    )
+    sell_total = (
+        sell.total_cost_bps
+        if sell is not None and sell.status in PRICED_QUOTE_STATUSES
+        else None
+    )
 
     return SizeQuotePair(
         snapshot_id=mid.snapshot_id,

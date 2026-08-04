@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import type { Quote } from "@/lib/api";
-import { decideCellRender, isEligibleForBest } from "@/lib/status";
+import {
+  decideCellRender,
+  includeQuoteInHeat,
+  isEligibleForBest,
+} from "@/lib/status";
 
 function q(partial: Partial<Quote> & Pick<Quote, "status">): Quote {
   return {
@@ -189,5 +193,32 @@ describe("isEligibleForBest", () => {
         }),
       ),
     ).toBe(false);
+  });
+});
+
+describe("includeQuoteInHeat", () => {
+  it("excludes excessive_impact so extreme bps cannot enter heat range (WHI-845)", () => {
+    expect(
+      includeQuoteInHeat(
+        q({
+          status: "excessive_impact",
+          total_cost_bps: "38283",
+          price_impact_bps: "8100",
+        }),
+      ),
+    ).toBe(false);
+    expect(
+      includeQuoteInHeat(
+        q({
+          status: "ok",
+          total_cost_bps: "5",
+          fee_breakdown: {
+            embedded_in_price: false,
+            platform_fee_bps: "0",
+            gas_unknown: false,
+          },
+        }),
+      ),
+    ).toBe(true);
   });
 });

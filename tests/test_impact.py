@@ -9,7 +9,11 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from spread_compare.impact import apply_impact_threshold, fraction_to_impact_bps
+from spread_compare.impact import (
+    apply_impact_threshold,
+    derive_price_impact_bps,
+    fraction_to_impact_bps,
+)
 from spread_compare.models import FeeBreakdown, Quote
 from spread_compare.settings import clear_settings_cache, load_impact_settings
 
@@ -48,6 +52,11 @@ def test_fraction_to_impact_bps_jupiter_fraction() -> None:
     # Jupiter priceImpactPct 0.81 → 8100 bps (the $1M tessera_solana case).
     assert fraction_to_impact_bps("0.81") == Decimal("8100")
     assert fraction_to_impact_bps("0.000083") == Decimal("0.83")
+
+
+def test_derive_prefers_reported_then_abs_spread() -> None:
+    assert derive_price_impact_bps(Decimal("8100"), Decimal("12")) == Decimal("8100")
+    assert derive_price_impact_bps(None, Decimal("-12.5")) == Decimal("12.5")
 
 
 def test_load_impact_settings_defaults() -> None:
