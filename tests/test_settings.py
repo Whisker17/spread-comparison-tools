@@ -86,6 +86,14 @@ def test_load_venue_settings_defaults() -> None:
     assert venues.startup_retry_max_interval_sec == 300.0
 
 
+def test_load_impact_settings_defaults() -> None:
+    clear_settings_cache()
+    from spread_compare.settings import load_impact_settings
+
+    impact = load_impact_settings()
+    assert impact.max_price_impact_bps == 500
+
+
 def test_load_rpc_settings_defaults() -> None:
     clear_settings_cache()
     rpc = load_rpc_settings()

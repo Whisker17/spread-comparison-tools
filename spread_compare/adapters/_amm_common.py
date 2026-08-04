@@ -30,6 +30,7 @@ from spread_compare.adapters.base import (
 )
 from spread_compare.costs import spread_bps as calc_spread_bps
 from spread_compare.costs import total_cost_bps
+from spread_compare.impact import apply_impact_threshold, derive_price_impact_bps
 from spread_compare.models import (
     FeeBreakdown,
     InstrumentType,
@@ -1091,8 +1092,14 @@ def build_ok_quote(
     gas_usd: Decimal | None,
     gas_unknown: bool,
     venue_symbol: str | None,
+    price_impact_bps: Decimal | None = None,
 ) -> Quote:
-    """Build an ok Quote with embedded LP fees and shared cost formulas."""
+    """Build an ok Quote with embedded LP fees and shared cost formulas.
+
+    When ``price_impact_bps`` is omitted, mid-relative ``|spread_bps|`` is used
+    as the impact diagnostic (WHI-845 — on-chain quoters / Kyber have no separate
+    impact field). Jupiter callers pass the upstream-reported value instead.
+    """
     sp = calc_spread_bps(side, effective_price, mid.mid)
     cost = total_cost_bps(
         sp,
@@ -1103,7 +1110,8 @@ def build_ok_quote(
         gas_usd=gas_usd,
         notional_usd=notional_usd,
     )
-    return Quote(
+    impact = derive_price_impact_bps(price_impact_bps, sp)
+    quote = Quote(
         snapshot_id=mid.snapshot_id,
         venue=venue,
         asset=asset,
@@ -1132,7 +1140,9 @@ def build_ok_quote(
         status="ok",
         qty_base=qty_base,
         qty_method=qty_method,
+        price_impact_bps=impact,
     )
+    return apply_impact_threshold(quote)
 
 
 class AmmDexAdapter(BaseAdapter):

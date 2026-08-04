@@ -1,0 +1,15 @@
+# Price-impact guard (WHI-845).
+# Defaults are **unvalidated** pending docs/DESIGN.md §2 — engineering starting
+# points only. Quotes whose measured price impact exceeds this threshold are
+# kept visible but marked status=excessive_impact (non-comparable: never best,
+# never in heat range).
+#
+# Units: bps (1% = 100 bps). Jupiter reports priceImpactPct as a fraction
+# (0.81 = 81% → 8100 bps); adapters convert before comparing.
+#
+# A few hundred bps is intentional: gas-dominated AMM rows at $100 can be
+# hundreds of bps of *gas* but only single-digit *mid-relative spread*, and the
+# guard keys off price impact / |spread_bps|, not total_cost_bps — so gas alone
+# does not trigger it.
+
+max_price_impact_bps: 500

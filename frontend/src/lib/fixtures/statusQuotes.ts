@@ -152,6 +152,36 @@ export const STATUS_FIXTURES: FixtureCase[] = [
     },
   },
   {
+    id: "excessive_impact",
+    title: "excessive_impact",
+    description:
+      "Price impact over threshold → number stays visible, never best/heat (WHI-845).",
+    formattedMetric: "38283.00",
+    quote: {
+      ...base,
+      venue: "tessera_solana",
+      instrument_type: "prop_amm",
+      mid_stale: false,
+      effective_price: "344641.67",
+      spread_bps: "44011.1805",
+      total_cost_bps: "38283",
+      price_impact_bps: "8100",
+      fee_breakdown: {
+        embedded_in_price: true,
+        fee_tier: "TesseraV",
+        trading_fee_bps: null,
+        platform_fee_bps: "0",
+        gas_unknown: false,
+        gas_bps: "0",
+        explicit_fee_bps: "0",
+      },
+      status: "excessive_impact",
+      qty_base: "2.9016",
+      error_code: "excessive_impact",
+      error_message: "price impact 8100 bps exceeds max_price_impact_bps=500",
+    },
+  },
+  {
     id: "gas_unknown",
     title: "gas_unknown",
     description:

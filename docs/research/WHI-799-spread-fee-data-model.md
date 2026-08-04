@@ -331,7 +331,7 @@ else:
     fee_breakdown.explicit_fee_bps = explicit_fee_bps
 ```
 
-**排序规则（给 dashboard / simulate）**：仅 `status=ok` 且 `total_cost_bps is not null` 参与「最优」排序；`gas_unknown` 行单独分组或标「成本不完整」，**不得**因 gas=0 幻觉排到最前。
+**排序规则（给 dashboard / simulate）**：仅 `status=ok` 且 `total_cost_bps is not null` 参与「最优」排序；`gas_unknown` 行单独分组或标「成本不完整」，**不得**因 gas=0 幻觉排到最前；`excessive_impact`（WHI-845）保留数字但**永不** best，且不进入 heat 范围。
 
 ### 5.3 Funding 政策
 
@@ -412,6 +412,7 @@ QuoteStatus =
   | "unsupported_asset"
   | "error"
   | "rate_limited"             # WHI-844：限流等待会超过本 call 剩余 budget（非 timeout）
+  | "excessive_impact"         # WHI-845：价格冲击超过 config 阈值；数字仍展示，不参与 best/heat
 ```
 
 （`TopOfBook` 不复用该枚举——orderbook 适配器用返回值 `None` 表示「本 venue 无 TOB 概念」，见 §6.3 / §7。）
@@ -439,7 +440,7 @@ Quote {
 
   # --- fees & total ---
   fee_breakdown:      FeeBreakdown
-  total_cost_bps:     Decimal | null      # gas_unknown 或 status!=ok 时 null
+  total_cost_bps:     Decimal | null      # gas_unknown 或非 priced status 时 null
 
   # --- book-keeping ---
   timestamp:          datetime            # venue 报价时刻 UTC
@@ -452,19 +453,22 @@ Quote {
 
   error_code:         str | null
   error_message:      str | null
+  price_impact_bps:   Decimal | null      # WHI-845：上游/推导的价格冲击（bps）；诊断用
 }
 ```
 
 **不变量**：
 
-1. 若 `status == "ok"`：则 `effective_price`、`spread_bps`、`qty_base` 均非 null；**并且**  
+1. 若 `status` 为 **priced**（`ok` 或 `excessive_impact`，WHI-845）：则 `effective_price`、`spread_bps`、`qty_base` 均非 null；**并且**  
    - 若 `fee_breakdown.gas_unknown` 为 true，则 `total_cost_bps is null`；  
    - 若 `fee_breakdown.gas_unknown` 为 false，则 `total_cost_bps` 非 null。  
-   （两条合取，不是析取。）
-2. 若 `status != "ok"`：则 `effective_price`、`spread_bps`、`total_cost_bps`、`qty_base`、以及 `fee_breakdown.explicit_fee_bps` 均为 null。
+   （两条合取，不是析取。）  
+   另：`status=excessive_impact` 时 `price_impact_bps` 必须非 null。
+2. 若 `status` **不是** priced（即不是 `ok` / `excessive_impact`）：则 `effective_price`、`spread_bps`、`total_cost_bps`、`qty_base`、以及 `fee_breakdown.explicit_fee_bps` 均为 null。
 3. `snapshot_id` / `mid` / `mid_source` / `mid_timestamp` 在同快照同资产上全 venue 一致。
 4. bps 公式 **仅** §4.5 / §5.2。
 5. `mid_stale` 与 `status` 独立：`mid_stale=true` 仍可 `status=ok`。
+6. **WHI-845 价格冲击护栏**（AMM / prop-AMM 报价路径；CEX/perp 盘口不在此护栏范围）：当 adapter 测得 `price_impact_bps` 且超过 `config/impact.yaml` 的 `max_price_impact_bps`（**unvalidated** pending DESIGN.md §2）时，`status` 置为 `excessive_impact`。**不得**静默丢行——数字保留可读，但不参与 §5.2 best，也不进入 dashboard 分列 heat 范围。Jupiter 用 `priceImpactPct`（单位分数）× 10_000；Kyber / on-chain quoter 无独立字段时用 **adverse** mid 相对 spread（`max(spread_bps, 0)`，有利偏差不触发）。`price_impact_bps` 为诊断字段，非 priced status 下通常为 null（不强制与 mid_stale 同级的正交语义）。
 
 ### 6.3 `TopOfBook`
 
@@ -546,6 +550,7 @@ SizeQuotePair {
 | 资产不支持 | `unsupported_asset` | 200 |
 | 超时 / 上游失败 | `error` | 200 + 该 venue 错误；不整包失败 |
 | 限流等待会超过本 call 剩余 budget（本地 limiter 或上游 429） | `rate_limited` | 200 + 该 venue 错误；**不得**与 `timeout` 混淆；不参与 §5.2 best（WHI-844） |
+| 价格冲击超过 config 阈值（池深度被吃穿等） | `excessive_impact` | 200；**保留** effective/spread/total 数字可读；不参与 §5.2 best；排除出 heat 范围（WHI-845） |
 | mid 不可用 | — | 整包 503/422 |
 
 #### 6.6.1 Venue minimums at the $100 tier (WHI-838)
@@ -706,3 +711,4 @@ bps API 保留 4 位小数；展示可再圆整到 2 位。
 | 2026-08-03 | **v2 对齐 WHI-797/798 重做**：slug 拆 `tessera_solana/base/bsc`（作废 `tessera`）；§4.4/§8 增 KyberSwap 报价与错误映射（EVM gas 用 `gasUsd`）；§3.3 tokenized 现货 mid 改用自身 CEX TOB + rebase 口径 + 资产 ID 语义；新增 Q5/Q6。公式与模型字段无变化 |
 | 2026-08-04 | **WHI-838**：§4.1 增 `$100` 为第五档 → `[100, 1_000, 10_000, 100_000, 1_000_000]`；collector 改为五档都采；注明零售档 gas_bps 放大与 dashboard 按列 heat。公式与 `QuoteStatus` 词汇无变化 |
 | 2026-08-04 | **WHI-844**：§6.1 / §6.6 增 `rate_limited`（限流等待会超过本 call 剩余 budget，fail-fast，与 `timeout` 区分）；§5.2 best 规则不变（仅 `status=ok` 且 `total_cost_bps` 非 null） |
+| 2026-08-04 | **WHI-845**：§6.1 / §6.6 增 `excessive_impact`；§6.2 增 `price_impact_bps` 与 priced-status 不变量（`ok`/`excessive_impact` 保留数字；阈值 `config/impact.yaml` unvalidated）；§5.2 best 仍仅 `status=ok` 且 `total_cost_bps` 非 null；heat 排除非 ok |

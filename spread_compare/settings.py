@@ -9,6 +9,7 @@ missing key fails at startup instead of silently diverging from the file.
 
 from __future__ import annotations
 
+from decimal import Decimal
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -105,6 +106,16 @@ class ApiSettings(BaseModel):
         if not isinstance(value, list):
             return value
         return [str(v).rstrip("/") for v in value]
+
+
+class ImpactSettings(BaseModel):
+    """``config/impact.yaml`` — price-impact guard threshold (WHI-845)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    # Quotes with price_impact_bps above this become status=excessive_impact.
+    # Decimal to match model-layer bps; YAML numbers parse natively.
+    max_price_impact_bps: Decimal = Field(gt=0)
 
 
 # Known AMM adapter ``rpc_env`` names (must stay aligned with amm_*.py).
@@ -304,6 +315,12 @@ def load_rpc_settings() -> RpcSettings:
     return RpcSettings.model_validate(_merge_local("rpc"))
 
 
+@lru_cache(maxsize=1)
+def load_impact_settings() -> ImpactSettings:
+    """Parse price-impact guard settings once; fail fast on invalid config."""
+    return ImpactSettings.model_validate(_merge_local("impact"))
+
+
 def clear_settings_cache() -> None:
     """Drop cached settings (tests that rewrite YAML)."""
     load_mid_settings.cache_clear()
@@ -312,3 +329,4 @@ def clear_settings_cache() -> None:
     load_api_settings.cache_clear()
     load_venue_settings.cache_clear()
     load_rpc_settings.cache_clear()
+    load_impact_settings.cache_clear()

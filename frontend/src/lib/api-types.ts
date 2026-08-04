@@ -360,7 +360,7 @@ export interface components {
              * Status
              * @enum {string}
              */
-            status: "ok" | "no_quote" | "insufficient_liquidity" | "unsupported_asset" | "error" | "rate_limited";
+            status: "ok" | "no_quote" | "insufficient_liquidity" | "unsupported_asset" | "error" | "rate_limited" | "excessive_impact";
             /** Qty Base */
             qty_base?: string | null;
             /** Qty Method */
@@ -375,6 +375,8 @@ export interface components {
             error_code?: string | null;
             /** Error Message */
             error_message?: string | null;
+            /** Price Impact Bps */
+            price_impact_bps?: string | null;
         };
         /**
          * QuotesResponse
@@ -538,7 +540,7 @@ export interface components {
              */
             timestamp: string;
             /** Status */
-            status: ("ok" | "no_quote" | "insufficient_liquidity" | "unsupported_asset" | "error" | "rate_limited") | "not_supported";
+            status: ("ok" | "no_quote" | "insufficient_liquidity" | "unsupported_asset" | "error" | "rate_limited" | "excessive_impact") | "not_supported";
             /**
              * Best
              * @default false

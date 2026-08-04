@@ -31,6 +31,7 @@ from spread_compare.mids import MidService
 from spread_compare.settings import (
     load_aggregator_settings,
     load_api_settings,
+    load_impact_settings,
     load_mid_settings,
     load_venue_settings,
 )
@@ -69,6 +70,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     agg_settings = load_aggregator_settings()
     api_settings = load_api_settings()
     venue_settings = load_venue_settings()
+    load_impact_settings()
     get_fee_catalog()
     set_disabled_venues(venue_settings.disabled)
 

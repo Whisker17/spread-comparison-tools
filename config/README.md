@@ -18,12 +18,15 @@ loaded into a typed, validated model at startup.
 Loaders:
 - `spread_compare/settings.py` — `load_mid_settings`, `load_aggregator_settings`,
   `load_jupiter_settings`, `load_api_settings`, `load_venue_settings`,
-  `load_rpc_settings`
+  `load_rpc_settings`, `load_impact_settings`
 - `spread_compare/fees.py` — `get_fee_catalog` / `get_fee_schedule` (one YAML per venue)
 
 Checked-in files:
 - `mid.yaml`, `aggregator.yaml`, `jupiter.yaml`, `api.yaml` (defaults flagged
   unvalidated pending DESIGN.md §2)
+- `impact.yaml` — price-impact guard threshold in bps (WHI-845). Quotes above
+  `max_price_impact_bps` become `status=excessive_impact` (shown, never best /
+  heat). Unvalidated pending DESIGN.md §2; override with `impact.local.yaml`.
 - `rpc.yaml` — EVM JSON-RPC client budget (WHI-842): per-endpoint token-bucket RPS,
   429 retry/backoff, `eth_gasPrice` cache TTL. Shared across AMM adapters on the
   same RPC URL. Override with `rpc.local.yaml` for keyed provider tiers.

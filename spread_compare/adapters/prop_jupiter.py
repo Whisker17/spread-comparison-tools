@@ -38,6 +38,7 @@ from spread_compare.adapters.base import (
 )
 from spread_compare.adapters.registry import register_adapter
 from spread_compare.budget import acquire_within_budget, sleep_within_budget
+from spread_compare.impact import fraction_to_impact_bps
 from spread_compare.models import (
     InstrumentType,
     Quote,
@@ -258,8 +259,14 @@ class JupiterPropAdapter(BaseAdapter):
                     f"{self.venue}: invalid Jupiter quote body: {exc}"
                 ) from exc
             self._assert_route_labels(body)
+            impact_bps = _parse_jupiter_price_impact_bps(body)
             # Solana tx fees fixed at 0 (WHI-799 §8) — gas_usd left None with gas_unknown=False.
-            return PropFill(amount_in=in_raw, amount_out=out_raw, gas_usd=None)
+            return PropFill(
+                amount_in=in_raw,
+                amount_out=out_raw,
+                gas_usd=None,
+                price_impact_bps=impact_bps,
+            )
 
         return await exact_in_prop_quote(
             venue=self.venue,
@@ -490,6 +497,21 @@ class JupiterPropAdapter(BaseAdapter):
         if key:
             headers["x-api-key"] = key
         return headers
+
+
+def _parse_jupiter_price_impact_bps(body: dict[str, Any]) -> Decimal | None:
+    """Parse Jupiter ``priceImpactPct`` (unit fraction) into bps (WHI-845).
+
+    Missing or unparseable values return None so ``build_ok_quote`` falls back
+    to mid-relative ``|spread_bps|``.
+    """
+    raw = body.get("priceImpactPct")
+    if raw is None or raw == "":
+        return None
+    try:
+        return fraction_to_impact_bps(raw)
+    except (ArithmeticError, ValueError, TypeError):
+        return None
 
 
 def _retry_after_seconds(resp: httpx.Response, attempt: int) -> float:

@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import type { Quote } from "@/lib/api";
-import { decideCellRender, isEligibleForBest } from "@/lib/status";
+import {
+  decideCellRender,
+  includeQuoteInHeat,
+  isEligibleForBest,
+} from "@/lib/status";
 
 function q(partial: Partial<Quote> & Pick<Quote, "status">): Quote {
   return {
@@ -53,6 +57,32 @@ describe("decideCellRender", () => {
     );
     expect(d.kind).toBe("rate_limited");
     expect(d.badge).toBe("RATE LIMITED");
+    expect(d.eligibleForBest).toBe(false);
+  });
+
+  it("maps excessive_impact to number + badge, never best (WHI-845)", () => {
+    const d = decideCellRender(
+      q({
+        status: "excessive_impact",
+        error_code: "excessive_impact",
+        effective_price: "344641.67",
+        spread_bps: "44011.18",
+        total_cost_bps: "38283",
+        qty_base: "2.9",
+        price_impact_bps: "8100",
+        fee_breakdown: {
+          embedded_in_price: true,
+          platform_fee_bps: "0",
+          gas_unknown: false,
+          explicit_fee_bps: "0",
+          gas_bps: "0",
+        },
+      }),
+      { formattedMetric: "38283.00", metricKey: "total_cost_bps" },
+    );
+    expect(d.kind).toBe("excessive_impact");
+    expect(d.label).toBe("38283.00");
+    expect(d.badge).toMatch(/excessive impact/i);
     expect(d.eligibleForBest).toBe(false);
   });
 
@@ -144,6 +174,15 @@ describe("isEligibleForBest", () => {
     expect(
       isEligibleForBest(
         q({
+          status: "excessive_impact",
+          total_cost_bps: "38283",
+          price_impact_bps: "8100",
+        }),
+      ),
+    ).toBe(false);
+    expect(
+      isEligibleForBest(
+        q({
           status: "ok",
           total_cost_bps: null,
           fee_breakdown: {
@@ -154,5 +193,32 @@ describe("isEligibleForBest", () => {
         }),
       ),
     ).toBe(false);
+  });
+});
+
+describe("includeQuoteInHeat", () => {
+  it("excludes excessive_impact so extreme bps cannot enter heat range (WHI-845)", () => {
+    expect(
+      includeQuoteInHeat(
+        q({
+          status: "excessive_impact",
+          total_cost_bps: "38283",
+          price_impact_bps: "8100",
+        }),
+      ),
+    ).toBe(false);
+    expect(
+      includeQuoteInHeat(
+        q({
+          status: "ok",
+          total_cost_bps: "5",
+          fee_breakdown: {
+            embedded_in_price: false,
+            platform_fee_bps: "0",
+            gas_unknown: false,
+          },
+        }),
+      ),
+    ).toBe(true);
   });
 });
