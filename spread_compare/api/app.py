@@ -33,6 +33,7 @@ from spread_compare.settings import (
     load_api_settings,
     load_impact_settings,
     load_mid_settings,
+    load_orderbook_cache_settings,
     load_venue_settings,
 )
 from spread_compare.simulator import TradeSimulator
@@ -71,6 +72,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     api_settings = load_api_settings()
     venue_settings = load_venue_settings()
     load_impact_settings()
+    load_orderbook_cache_settings()
     get_fee_catalog()
     set_disabled_venues(venue_settings.disabled)
 
