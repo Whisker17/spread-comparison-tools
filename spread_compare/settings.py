@@ -107,6 +107,12 @@ class ApiSettings(BaseModel):
         return [str(v).rstrip("/") for v in value]
 
 
+# Known AMM adapter ``rpc_env`` names (must stay aligned with amm_*.py).
+_KNOWN_RPC_ENVS: frozenset[str] = frozenset(
+    {"ETH_RPC_URL", "BASE_RPC_URL", "BSC_RPC_URL"}
+)
+
+
 class RpcChainOverride(BaseModel):
     """Optional per-``rpc_env`` budget override under ``config/rpc.yaml`` chains."""
 
@@ -114,8 +120,10 @@ class RpcChainOverride(BaseModel):
 
     rps: int | None = Field(default=None, ge=1)
     window_sec: float | None = Field(default=None, gt=0)
-    max_retries: int | None = Field(default=None, ge=1)
+    max_attempts: int | None = Field(default=None, ge=1)
     backoff_start_sec: float | None = Field(default=None, gt=0)
+    backoff_max_sec: float | None = Field(default=None, gt=0)
+    retry_after_floor_sec: float | None = Field(default=None, ge=0)
     gas_price_cache_ttl_sec: float | None = Field(default=None, ge=0)
 
 
@@ -126,8 +134,10 @@ class RpcChainBudget(BaseModel):
 
     rps: int = Field(ge=1)
     window_sec: float = Field(gt=0)
-    max_retries: int = Field(ge=1)
+    max_attempts: int = Field(ge=1)
     backoff_start_sec: float = Field(gt=0)
+    backoff_max_sec: float = Field(gt=0)
+    retry_after_floor_sec: float = Field(ge=0)
     gas_price_cache_ttl_sec: float = Field(ge=0)
 
 
@@ -138,8 +148,10 @@ class RpcSettings(BaseModel):
 
     default_rps: int = Field(ge=1)
     window_sec: float = Field(gt=0)
-    max_retries: int = Field(ge=1)
+    max_attempts: int = Field(ge=1)
     backoff_start_sec: float = Field(gt=0)
+    backoff_max_sec: float = Field(gt=0)
+    retry_after_floor_sec: float = Field(ge=0)
     gas_price_cache_ttl_sec: float = Field(ge=0)
     chains: dict[str, RpcChainOverride]
 
@@ -150,40 +162,43 @@ class RpcSettings(BaseModel):
             return value
         return {str(k).strip(): v for k, v in value.items() if str(k).strip()}
 
+    @field_validator("chains")
+    @classmethod
+    def _known_chain_keys(
+        cls, value: dict[str, RpcChainOverride]
+    ) -> dict[str, RpcChainOverride]:
+        unknown = sorted(k for k in value if k not in _KNOWN_RPC_ENVS)
+        if unknown:
+            raise ValueError(
+                f"unknown rpc env key(s) in chains: {unknown}; "
+                f"allowed: {sorted(_KNOWN_RPC_ENVS)}"
+            )
+        return value
+
+    @model_validator(mode="after")
+    def _backoff_max_not_below_start(self) -> RpcSettings:
+        if self.backoff_max_sec < self.backoff_start_sec:
+            raise ValueError(
+                "backoff_max_sec must be >= backoff_start_sec "
+                f"(got max={self.backoff_max_sec}, start={self.backoff_start_sec})"
+            )
+        return self
+
     def budget_for(self, rpc_env: str) -> RpcChainBudget:
         """Resolve defaults with optional per-env overrides."""
+        base = {
+            "rps": self.default_rps,
+            "window_sec": self.window_sec,
+            "max_attempts": self.max_attempts,
+            "backoff_start_sec": self.backoff_start_sec,
+            "backoff_max_sec": self.backoff_max_sec,
+            "retry_after_floor_sec": self.retry_after_floor_sec,
+            "gas_price_cache_ttl_sec": self.gas_price_cache_ttl_sec,
+        }
         override = self.chains.get(rpc_env)
-        if override is None:
-            return RpcChainBudget(
-                rps=self.default_rps,
-                window_sec=self.window_sec,
-                max_retries=self.max_retries,
-                backoff_start_sec=self.backoff_start_sec,
-                gas_price_cache_ttl_sec=self.gas_price_cache_ttl_sec,
-            )
-        return RpcChainBudget(
-            rps=override.rps if override.rps is not None else self.default_rps,
-            window_sec=(
-                override.window_sec
-                if override.window_sec is not None
-                else self.window_sec
-            ),
-            max_retries=(
-                override.max_retries
-                if override.max_retries is not None
-                else self.max_retries
-            ),
-            backoff_start_sec=(
-                override.backoff_start_sec
-                if override.backoff_start_sec is not None
-                else self.backoff_start_sec
-            ),
-            gas_price_cache_ttl_sec=(
-                override.gas_price_cache_ttl_sec
-                if override.gas_price_cache_ttl_sec is not None
-                else self.gas_price_cache_ttl_sec
-            ),
-        )
+        if override is not None:
+            base.update(override.model_dump(exclude_none=True))
+        return RpcChainBudget.model_validate(base)
 
 
 class VenueSettings(BaseModel):

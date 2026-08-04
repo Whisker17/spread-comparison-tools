@@ -624,12 +624,26 @@ async def test_error_when_rpc_rate_limited(
         await adapter.aclose()
 
 
+def _rpc_budget(**overrides: Any) -> RpcChainBudget:
+    base = {
+        "rps": 50,
+        "window_sec": 1.0,
+        "max_attempts": 3,
+        "backoff_start_sec": 0.5,
+        "backoff_max_sec": 8.0,
+        "retry_after_floor_sec": 0.05,
+        "gas_price_cache_ttl_sec": 15.0,
+    }
+    base.update(overrides)
+    return RpcChainBudget.model_validate(base)
+
+
 @pytest.mark.asyncio
 async def test_aerodrome_get_quote_one_http_request(
     eth_rpc_env: None,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Aerodrome get_quote collapses 8 probes into one Multicall3 HTTP post (WHI-842)."""
+    """Aerodrome get_quote is one HTTP: Multicall3 + eth_gasPrice batch (WHI-842)."""
     clear_rpc_endpoint_state()
     request_count = 0
     fair_wei = int((Decimal("1000") / Decimal("3000")) * Decimal(10**18))
@@ -638,53 +652,49 @@ async def test_aerodrome_get_quote_one_http_request(
     def handler(request: httpx.Request) -> httpx.Response:
         nonlocal request_count
         request_count += 1
-        body = request.read()
         import json
 
-        payload = json.loads(body)
-        assert payload["method"] == "eth_call"
-        # Multicall3 target
-        to = payload["params"][0]["to"].lower()
+        payload = json.loads(request.read())
+        # Cold path: JSON-RPC batch [eth_call Multicall3, eth_gasPrice].
+        assert isinstance(payload, list)
+        assert len(payload) == 2
+        call_req = next(p for p in payload if p["method"] == "eth_call")
+        gas_req = next(p for p in payload if p["method"] == "eth_gasPrice")
+        to = call_req["params"][0]["to"].lower()
         assert to == MULTICALL3_ADDRESS.lower()
-        calldata = bytes.fromhex(payload["params"][0]["data"][2:])
-        # Decode call list so we can return per-subcall results.
-        # Re-encode a success for first CL path only.
+        calldata = bytes.fromhex(call_req["params"][0]["data"][2:])
         from eth_abi.abi import decode as abi_decode
 
         assert calldata[:4].hex() == "82ad56cb"  # aggregate3
         (calls,) = abi_decode(["(address,bool,bytes)[]"], calldata[4:])
-        n = len(calls)
-        assert n == 8  # 4 CL + 2 V2 + 2 router
+        assert len(calls) == 8  # 4 CL + 2 V2 + 2 router
         results: list[tuple[bool, bytes]] = []
-        for i in range(n):
+        for i in range(len(calls)):
             if i == 0:
-                results.append((True, _encode_quoter_result(weth_out, gas_estimate=200_000)))
+                results.append(
+                    (True, _encode_quoter_result(weth_out, gas_estimate=200_000))
+                )
             else:
                 results.append((False, b""))
         result_hex = "0x" + encode(["(bool,bytes)[]"], [results]).hex()
         return httpx.Response(
             200,
-            json={"jsonrpc": "2.0", "id": payload["id"], "result": result_hex},
+            json=[
+                {"jsonrpc": "2.0", "id": call_req["id"], "result": result_hex},
+                {"jsonrpc": "2.0", "id": gas_req["id"], "result": "0x4a817c800"},
+            ],
         )
 
     transport = httpx.MockTransport(handler)
     adapter = AerodromeBaseAdapter()
     await adapter.startup()
-    # Replace HTTP client so RpcClient posts hit the stub.
     await adapter.http.aclose()
     adapter._client = httpx.AsyncClient(transport=transport, timeout=5.0)
-    budget = RpcChainBudget(
-        rps=100,
-        window_sec=1.0,
-        max_retries=1,
-        backoff_start_sec=0.01,
-        gas_price_cache_ttl_sec=60.0,
-    )
     adapter._rpc = RpcClient(
         adapter.http,
         "http://rpc.test/base",
         rpc_env="BASE_RPC_URL",
-        budget=budget,
+        budget=_rpc_budget(rps=100, max_attempts=1, gas_price_cache_ttl_sec=60.0),
     )
 
     async def fake_mid(http: Any, symbol: str) -> Decimal:
@@ -694,19 +704,11 @@ async def test_aerodrome_get_quote_one_http_request(
         "spread_compare.adapters._amm_common.fetch_binance_mid",
         fake_mid,
     )
-    # Force gas path to use a second call only if eth_gasPrice is invoked —
-    # CL result has gasEstimate, so without cache we'd see 2 posts; with warm
-    # cache or gas failure we'd see 1. Seed gas cache via one eth_gasPrice
-    # that does NOT count? Simpler: monkeypatch eth_gas_price on the client.
-    async def _cached_gas() -> int:
-        return 20_000_000_000
-
-    assert adapter._rpc is not None
-    monkeypatch.setattr(adapter._rpc, "eth_gas_price", _cached_gas)
 
     try:
         quote = await adapter.get_quote("ETH", "buy", Decimal("1000"), mid=_MID_ETH)
         assert quote.status == "ok"
+        assert quote.fee_breakdown.gas_unknown is False
         assert request_count == 1
     finally:
         await adapter.aclose()
@@ -741,13 +743,7 @@ async def test_rpc_client_retries_429_then_rate_limited(
         )
 
     transport = httpx.MockTransport(handler)
-    budget = RpcChainBudget(
-        rps=50,
-        window_sec=1.0,
-        max_retries=3,
-        backoff_start_sec=0.5,
-        gas_price_cache_ttl_sec=0,
-    )
+    budget = _rpc_budget(max_attempts=3, backoff_start_sec=0.5, gas_price_cache_ttl_sec=0)
     async with httpx.AsyncClient(transport=transport) as client:
         rpc = RpcClient(
             client,
@@ -785,13 +781,7 @@ async def test_eth_gas_price_cached_per_endpoint() -> None:
             json={"jsonrpc": "2.0", "id": payload["id"], "result": "0x3b9aca00"},
         )
 
-    budget = RpcChainBudget(
-        rps=50,
-        window_sec=1.0,
-        max_retries=1,
-        backoff_start_sec=0.01,
-        gas_price_cache_ttl_sec=30.0,
-    )
+    budget = _rpc_budget(max_attempts=1, gas_price_cache_ttl_sec=30.0)
     transport = httpx.MockTransport(handler)
     async with httpx.AsyncClient(transport=transport) as client:
         rpc = RpcClient(

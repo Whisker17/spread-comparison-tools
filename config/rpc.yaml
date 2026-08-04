@@ -8,15 +8,18 @@
 
 default_rps: 5
 window_sec: 1.0
-# Bounded retries for HTTP 429 / provider rate-limit JSON-RPC errors.
-max_retries: 3
+# Total attempts for HTTP 429 / provider rate-limit JSON-RPC errors (includes first).
+max_attempts: 3
 backoff_start_sec: 0.5
-# eth_gasPrice is chain-level; cache so a snapshot's many legs share one fetch.
+# Cap for exponential backoff (and Retry-After floor below).
+backoff_max_sec: 8.0
+retry_after_floor_sec: 0.05
+# eth_gasPrice is chain-level; short TTL so a snapshot's many legs share one fetch.
 gas_price_cache_ttl_sec: 15.0
 
 # Optional per-env overrides (env var name → partial budget).
-# Unknown keys are ignored only if chains is empty; listed keys must be known
-# adapter rpc_env names when non-empty validation is applied in settings.
+# Keys must match adapter ``rpc_env`` values (ETH_RPC_URL / BASE_RPC_URL / BSC_RPC_URL);
+# unknown keys fail fast at load.
 chains:
   ETH_RPC_URL:
     rps: 5

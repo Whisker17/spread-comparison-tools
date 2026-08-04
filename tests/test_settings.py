@@ -91,12 +91,33 @@ def test_load_rpc_settings_defaults() -> None:
     rpc = load_rpc_settings()
     assert rpc.default_rps == 5
     assert rpc.window_sec == 1.0
-    assert rpc.max_retries == 3
+    assert rpc.max_attempts == 3
     assert rpc.backoff_start_sec == 0.5
+    assert rpc.backoff_max_sec == 8.0
+    assert rpc.retry_after_floor_sec == 0.05
     assert rpc.gas_price_cache_ttl_sec == 15.0
     base = rpc.budget_for("BASE_RPC_URL")
     assert base.rps == 5
-    assert base.max_retries == 3
-    # Unknown env falls back to defaults.
+    assert base.max_attempts == 3
+    # Unknown env falls back to defaults (no chains entry).
     other = rpc.budget_for("UNKNOWN_RPC_URL")
     assert other.rps == rpc.default_rps
+
+
+def test_rpc_settings_rejects_unknown_chain_key() -> None:
+    import pytest
+    from pydantic import ValidationError
+
+    from spread_compare.settings import RpcSettings
+
+    with pytest.raises(ValidationError, match="unknown rpc env"):
+        RpcSettings(
+            default_rps=5,
+            window_sec=1.0,
+            max_attempts=3,
+            backoff_start_sec=0.5,
+            backoff_max_sec=8.0,
+            retry_after_floor_sec=0.05,
+            gas_price_cache_ttl_sec=15.0,
+            chains={"BSE_RPC_URL": {"rps": 1}},
+        )
