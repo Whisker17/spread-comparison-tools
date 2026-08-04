@@ -170,6 +170,12 @@ describe("StocksSection (WHI-810)", () => {
     // Page-level selector only — no per-block duplicate.
     expect(screen.getAllByTestId("size-selector")).toHaveLength(1);
 
+    // Both boards share size config so page-level ?size= is not board-skewed.
+    expect(tokenizedStocksBoard.defaultNotional).toBe(
+      equityPerpsBoard.defaultNotional,
+    );
+    expect(tokenizedStocksBoard.notionals).toEqual(equityPerpsBoard.notionals);
+
     const assets = [
       ...tokenizedStocksBoard.assets,
       ...equityPerpsBoard.assets,
@@ -180,6 +186,9 @@ describe("StocksSection (WHI-810)", () => {
       );
       expect(call, `no /quotes request for ${asset}`).toBeDefined();
       const params = call?.[0] as { notionals: string[] };
+      expect(params.notionals).toEqual([
+        tokenizedStocksBoard.defaultNotional,
+      ]);
       expect(params.notionals).toEqual([DEFAULT_NOTIONAL_USD]);
     }
   });

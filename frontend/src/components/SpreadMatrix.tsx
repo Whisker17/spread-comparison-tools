@@ -3,13 +3,14 @@
 /**
  * Parameter-complete venues × notional-tiers matrix.
  *
- * WHI-841: section pages pass a single notional column; freed horizontal
- * space surfaces effective price + fee-breakdown summary that previously
- * lived only in tooltips. Multi-notional still works for status fixtures /
- * multi-tier callers.
+ * WHI-841: when `showDetailColumns` is set (section pages' single-size view),
+ * freed horizontal space surfaces effective price + fee-breakdown summary that
+ * previously lived only in tooltips. Multi-notional columns remain available
+ * for callers that pass several tiers without detail columns.
  *
- * Section agents drive venue sets, hidden columns, side view, and metric via
- * props/config — they must not edit this file (WHI-808 parallel-safety).
+ * Section agents drive venue sets / side / metric via props — they should not
+ * edit this file for product content (WHI-808). Additive shared props (e.g.
+ * `showDetailColumns`) may land here when every section needs them.
  */
 
 import { useMemo } from "react";
@@ -54,9 +55,9 @@ export type SpreadMatrixProps = {
   /** Heat-color numeric cells. Default true. */
   heat?: boolean;
   /**
-   * When true, add Effective + Fees columns (WHI-841 single-size view).
-   * Driven by the caller — never inferred from `notionals.length` alone, so
-   * status fixtures and multi-tier callers stay unchanged.
+   * When true and exactly one notional column is shown, add Effective + Fees
+   * columns (WHI-841 single-size view). No-op when multiple notionals are
+   * passed — detail is single-tier only.
    */
   showDetailColumns?: boolean;
   className?: string;
@@ -93,7 +94,10 @@ export function SpreadMatrix({
     ]);
   }, [notionalsProp, pairs]);
 
-  const detailMode = showDetailColumns;
+  // Detail columns only make sense for a single selected size (WHI-841).
+  const detailMode = showDetailColumns && notionals.length === 1;
+  // Round-trip has no single effective price — hide that column (fees remain).
+  const showEffectiveColumn = detailMode && sideView !== "round_trip";
 
   const venues = useMemo(() => {
     if (venuesProp && venuesProp.length > 0) {
@@ -189,15 +193,15 @@ export function SpreadMatrix({
                 {formatNotional(n)}
               </th>
             ))}
+            {showEffectiveColumn ? (
+              <th className="px-2 py-2 text-right text-xs font-medium uppercase tracking-wide text-zinc-500">
+                Effective
+              </th>
+            ) : null}
             {detailMode ? (
-              <>
-                <th className="px-2 py-2 text-right text-xs font-medium uppercase tracking-wide text-zinc-500">
-                  Effective
-                </th>
-                <th className="px-2 py-2 text-right text-xs font-medium uppercase tracking-wide text-zinc-500">
-                  Fees
-                </th>
-              </>
+              <th className="px-2 py-2 text-right text-xs font-medium uppercase tracking-wide text-zinc-500">
+                Fees
+              </th>
             ) : null}
           </tr>
         </thead>
@@ -254,12 +258,14 @@ export function SpreadMatrix({
                       const detail = detailFromPair(pair, sideView);
                       return (
                         <>
-                          <td
-                            className="px-2 py-1 text-right text-xs tabular-nums text-zinc-600 dark:text-zinc-300"
-                            data-testid={`effective-${venue}`}
-                          >
-                            {detail.effective}
-                          </td>
+                          {showEffectiveColumn ? (
+                            <td
+                              className="px-2 py-1 text-right text-xs tabular-nums text-zinc-600 dark:text-zinc-300"
+                              data-testid={`effective-${venue}`}
+                            >
+                              {detail.effective}
+                            </td>
+                          ) : null}
                           <td
                             className="px-2 py-1 text-right text-xs tabular-nums text-zinc-500"
                             data-testid={`fees-${venue}`}

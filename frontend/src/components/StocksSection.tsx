@@ -7,7 +7,6 @@ import { AssetSpreadBlock } from "@/components/AssetSpreadBlock";
 import { SectionShellLoading } from "@/components/SectionShellLoading";
 import { SizeSelector } from "@/components/SizeSelector";
 import { UsMarketHoursIndicator } from "@/components/UsMarketHoursIndicator";
-import { DEFAULT_NOTIONAL_USD, NOTIONAL_TIERS_USD } from "@/config/notionals";
 import {
   BSTOCKS_REBASE_FOOTNOTE,
   buildStocksVenueLabels,
@@ -35,6 +34,7 @@ import { formatNotional } from "@/lib/format";
  * Owns section-config helpers so AssetSpreadBlock stays section-agnostic.
  *
  * WHI-841: one page-level size selector shared by both boards.
+ * Boards must declare the same `notionals` / `defaultNotional` (asserted below).
  */
 export function StocksSection() {
   return (
@@ -47,11 +47,21 @@ export function StocksSection() {
 }
 
 function StocksSectionInner() {
-  // Page-level size (not board-level): both boards share one `?size=` and the
-  // product SSOT tiers/default so neither board's config is silently ignored.
+  // Page-level `?size=` — both boards' SectionConfig fields must agree.
+  if (
+    process.env.NODE_ENV !== "production" &&
+    (tokenizedStocksBoard.defaultNotional !==
+      equityPerpsBoard.defaultNotional ||
+      tokenizedStocksBoard.notionals.join(",") !==
+        equityPerpsBoard.notionals.join(","))
+  ) {
+    console.warn(
+      "[stocks] tokenized and equity boards disagree on size config; using tokenized board",
+    );
+  }
   const { notional, setNotional } = useNotionalSize({
-    allowed: NOTIONAL_TIERS_USD,
-    defaultNotional: DEFAULT_NOTIONAL_USD,
+    allowed: tokenizedStocksBoard.notionals,
+    defaultNotional: tokenizedStocksBoard.defaultNotional,
   });
 
   const assetsQuery = useQuery({
@@ -82,7 +92,7 @@ function StocksSectionInner() {
           </div>
           <div className="flex flex-wrap items-start gap-3">
             <SizeSelector
-              tiers={NOTIONAL_TIERS_USD}
+              tiers={tokenizedStocksBoard.notionals}
               value={notional}
               onChange={setNotional}
             />

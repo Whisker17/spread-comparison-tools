@@ -54,19 +54,33 @@ export function detailFromPair(
 /** Compact fee line for matrix cells + full title for hover. */
 export function feeSummary(quote: Quote): { short: string; title: string } {
   const fb = quote.fee_breakdown;
-  const trading = formatBps(fb.trading_fee_bps);
-  const gas = fb.gas_unknown ? "gas?" : `${formatBps(fb.gas_bps)}g`;
-  const embedded = fb.embedded_in_price ? " · in price" : "";
-  const short = `${trading}f · ${gas}${embedded}`;
+  const tradingLabel =
+    fb.trading_fee_bps == null || fb.trading_fee_bps === ""
+      ? null
+      : `${formatBps(fb.trading_fee_bps)}f`;
+  const gasLabel = fb.gas_unknown
+    ? "gas?"
+    : fb.gas_bps == null || fb.gas_bps === ""
+      ? null
+      : `${formatBps(fb.gas_bps)}g`;
+  const parts = [tradingLabel, gasLabel].filter(Boolean);
+  if (fb.embedded_in_price) parts.push("in price");
+  const short = parts.length > 0 ? parts.join(" · ") : "—";
   const title = [
-    `trading fee ${formatBps(fb.trading_fee_bps)} bps`,
+    fb.trading_fee_bps != null && fb.trading_fee_bps !== ""
+      ? `trading fee ${formatBps(fb.trading_fee_bps)} bps`
+      : null,
     fb.embedded_in_price ? "embedded in price" : null,
-    fb.gas_unknown ? "gas unknown" : `gas ${formatBps(fb.gas_bps)} bps`,
+    fb.gas_unknown
+      ? "gas unknown"
+      : fb.gas_bps != null && fb.gas_bps !== ""
+        ? `gas ${formatBps(fb.gas_bps)} bps`
+        : null,
     fb.platform_fee_bps != null && fb.platform_fee_bps !== "0"
       ? `platform ${formatBps(fb.platform_fee_bps)} bps`
       : null,
   ]
     .filter(Boolean)
     .join(" · ");
-  return { short, title };
+  return { short, title: title || "—" };
 }

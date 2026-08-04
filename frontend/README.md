@@ -74,29 +74,38 @@ contract changes (WHI-807+).
 ```
 src/
   app/                 # routes: /, /blue-chips, /stocks, /others, /fees, /simulate, /status-fixtures
-  components/          # SpreadMatrix, TopOfBookRow, StatusCell, SummaryStrip, …
+  components/          # SpreadMatrix, SizeSelector, TopOfBookRow, StatusCell, SummaryStrip, …
   config/
+    notionals.ts       # NOTIONAL_TIERS_USD + DEFAULT_NOTIONAL_USD (WHI-841)
     sections/          # one module per section (blue-chips / stocks / others)
     navigation.ts      # pre-created nav — section PRs must not edit this
-  hooks/useQuotes.ts   # TanStack Query polling + manual refresh
+  hooks/
+    useQuotes.ts       # TanStack Query polling + manual refresh
+    useNotionalSize.ts # ?size= URL round-trip for the size selector (WHI-841)
   lib/
-    api.ts             # thin fetch client
+    api.ts             # thin fetch client (fetchQuotes + multi-notional helper)
     api-types.ts       # generated
+    notionalSize.ts    # pure resolveNotionalSize for ?size=
+    matrixDetail.ts    # single-size Effective/Fees cell view-model
     summary.ts         # best-venue-per-tier rule (WHI-799 §5.2)
     status.ts          # status render SSOT
 ```
 
-Section pages (WHI-809/810/811) should only edit their own
-`config/sections/<id>.ts` and page content — not `SpreadMatrix` or nav.
-Shared additive seams used by all sections live in `config/sections/types.ts`,
-`config/sections/helpers.ts`, and `lib/summary.ts` (best-venue / snapshot prose).
+Section pages should only edit their own `config/sections/<id>.ts` and page
+content for product data — not nav. Shared additive seams used by all sections
+live in `config/sections/types.ts`, `config/sections/helpers.ts`,
+`lib/summary.ts`, and occasionally `SpreadMatrix` / `SizeSelector` when every
+section needs the same UI control (WHI-841 size selector).
 
 ## Data fetching
 
-**TanStack Query** (not SWR): explicit query keys, multi-notional fan-out for
-the matrix, and first-class `refetch` for the manual refresh button. Default
-poll interval: 15s hook default (`DEFAULT_POLL_MS`); blue-chips overrides to 30s
-via `section.pollIntervalMs`.
+**TanStack Query** (not SWR): explicit query keys and first-class `refetch` for
+the manual refresh button. Section matrices fetch **one notional at a time**
+via the page-level size selector (`?size=`, WHI-841) — one `GET /quotes` per
+asset, not per asset × tier. `fetchQuotesMultiNotional` remains for any caller
+that still needs multi-tier fan-out. Default poll: 15s hook default
+(`DEFAULT_POLL_MS`); blue-chips / stocks / others override to 30s via
+`section.pollIntervalMs`.
 
 ## Status rendering
 

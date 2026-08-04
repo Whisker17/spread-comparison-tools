@@ -76,9 +76,8 @@ function BlueChipsSectionInner() {
           Showing size{" "}
           <strong className="font-medium text-zinc-700 dark:text-zinc-300">
             {formatNotional(notional)}
-          </strong>{" "}
-          — one <code className="text-[11px]">/quotes</code> request per asset
-          (not per tier) so venue rate limiters stay inside their timeout budget.
+          </strong>
+          .
         </p>
       </header>
 

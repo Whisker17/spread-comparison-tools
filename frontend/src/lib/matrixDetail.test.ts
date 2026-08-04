@@ -60,12 +60,11 @@ describe("detailFromPair (WHI-841)", () => {
     const d = detailFromPair(p, "buy");
     // Locale-dependent separators; assert numeric content, not exact string.
     expect(d.effective.replace(/[^\d.]/g, "")).toMatch(/^100100/);
-    expect(d.fees).toContain("10.00f");
-    expect(d.fees).toContain("0.00g");
+    expect(d.fees).toBe("10.00f · 0.00g");
     expect(d.feesTitle).toContain("trading fee 10.00 bps");
   });
 
-  it("marks gas_unknown in the fees cell", () => {
+  it("marks gas_unknown in the fees cell without a fake —f trading token", () => {
     const p = pair(
       "uniswap_eth",
       quote({
@@ -77,13 +76,14 @@ describe("detailFromPair (WHI-841)", () => {
           platform_fee_bps: "0",
           gas_unknown: true,
           explicit_fee_bps: null,
+          trading_fee_bps: null,
           gas_bps: null,
         },
       }),
     );
     const d = detailFromPair(p, "buy");
-    expect(d.fees).toContain("gas?");
-    expect(d.fees).toContain("in price");
+    expect(d.fees).toBe("gas? · in price");
+    expect(d.fees).not.toContain("—f");
     expect(d.feesTitle).toContain("gas unknown");
   });
 
