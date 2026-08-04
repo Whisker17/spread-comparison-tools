@@ -7,6 +7,7 @@ Underscore-prefixed so adapter auto-discovery skips this module.
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -38,6 +39,8 @@ from spread_compare.models import (
     TopOfBook,
     VenueClass,
 )
+
+logger = logging.getLogger(__name__)
 
 # Uniswap V3 / PancakeSwap V3 QuoterV2 (struct form).
 _SIG_QUOTE_EXACT_IN_SINGLE = "quoteExactInputSingle((address,address,uint256,uint24,uint160))"
@@ -475,7 +478,19 @@ async def probe_quoter_v2(
         )
         return "ok", candidate
 
-    outcomes = await asyncio.gather(*(_probe_tier(fee) for fee in fee_tiers))
+    raw_outcomes = await asyncio.gather(
+        *(_probe_tier(fee) for fee in fee_tiers),
+        return_exceptions=True,
+    )
+    outcomes: list[ProbeOutcome] = []
+    for item in raw_outcomes:
+        if isinstance(item, BaseException):
+            # Unexpected exception: treat as transport so siblings are not lost
+            # and we still degrade per WHI-799 §6.6 rather than fail the gather.
+            logger.warning("probe_quoter_v2 unexpected error: %s", item)
+            outcomes.append(("transport", None))
+        else:
+            outcomes.append(item)
     return reduce_probe_outcomes(
         outcomes,
         prefer_min_in=side != "sell",

@@ -54,6 +54,11 @@ defines none: `docs/GIT_WORKFLOW.md` § High-risk paths), **Medium**
   `AdapterFetchError` when every path fails. Acceptable for Phase 1 private RPCs;
   add a per-endpoint token bucket if public-RPC multi-tenant deploy lands.
 
+- **Jupiter header adaptation does not retune `window_sec` from `x-ratelimit-reset`**
+  (Low, WHI-836). Capacity adapts from remaining+current; window stays config-fixed
+  at the measured ~1s. If a plan's reset interval diverges, add reset-based window
+  adaptation.
+
 - **AdapterConfigError collapses to generic adapter_error in aggregator** (Low, WHI-806).
   `AdapterConfigError` subclasses `AdapterError`; the aggregator maps both to
   `error_code=adapter_error`. Config drift (40011 / dexes+exclude) is therefore

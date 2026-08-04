@@ -10,6 +10,7 @@ produce a quote, so ``total_cost_bps`` can be filled whenever CL liquidity exist
 from __future__ import annotations
 
 import asyncio
+import logging
 from decimal import Decimal
 
 from spread_compare.adapters._amm_common import (
@@ -31,6 +32,8 @@ from spread_compare.adapters._amm_common import (
 )
 from spread_compare.adapters.registry import register_adapter
 from spread_compare.models import ReferenceMid, Side
+
+logger = logging.getLogger(__name__)
 
 # MixedQuoter (Base) — covers volatile / stable / CL.
 # Doc-sourced 2026-08-03 from https://aerodrome.finance/security
@@ -175,13 +178,21 @@ class AerodromeBaseAdapter(AmmDexAdapter):
                 exact_out=False,
             )
 
-        outcomes = await asyncio.gather(
+        raw_outcomes = await asyncio.gather(
             *(_probe_cl(tick) for tick in AERO_TICK_SPACINGS),
             _probe_v2(False, "v2_volatile"),
             _probe_v2(True, "v2_stable"),
             _probe_router(False, "router_volatile"),
             _probe_router(True, "router_stable"),
+            return_exceptions=True,
         )
+        outcomes: list[ProbeOutcome] = []
+        for item in raw_outcomes:
+            if isinstance(item, BaseException):
+                logger.warning("Aerodrome probe unexpected error: %s", item)
+                outcomes.append(("transport", None))
+            else:
+                outcomes.append(item)
         return reduce_probe_outcomes(
             outcomes,
             prefer_min_in=False,

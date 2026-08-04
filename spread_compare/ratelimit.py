@@ -88,11 +88,12 @@ class TokenBucketRateLimiter(_LoopBoundLock):
     def set_capacity(self, capacity: int) -> None:
         """Change bucket capacity (e.g. keyed → keyless downgrade).
 
-        Does not grant extra tokens beyond the new capacity; clips current
-        balance if it exceeds the new cap. Also lowers the adaptation ceiling.
+        Settles accrued refill at the *old* rate first, then applies the new
+        ceiling. Does not grant extra tokens beyond the new capacity.
         """
         if capacity < 1:
             raise ValueError("capacity must be >= 1")
+        self._refill(time.monotonic())
         self._capacity = float(capacity)
         self._capacity_ceiling = float(capacity)
         self._refill_per_s = float(capacity) / self._window_s

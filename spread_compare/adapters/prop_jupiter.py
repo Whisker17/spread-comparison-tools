@@ -127,8 +127,15 @@ def _observe_rate_limit_headers(
     limiter: TokenBucketRateLimiter,
     *,
     venue: str,
+    has_api_key: bool,
 ) -> None:
-    """Log rate-limit headers and optionally sync the bucket (never logs the API key)."""
+    """Log rate-limit headers and optionally sync the bucket (never logs the API key).
+
+    Capacity adaptation is keyed-only: WHI-836 header measurements were taken
+    under the keyed plan. Keyless responses still log headers for observability
+    but do not raise the local token balance (avoids no-op limiter on a longer
+    keyless window).
+    """
     remaining_raw = resp.headers.get("x-ratelimit-remaining")
     current_raw = resp.headers.get("x-ratelimit-current")
     reset_raw = resp.headers.get("x-ratelimit-reset")
@@ -142,7 +149,7 @@ def _observe_rate_limit_headers(
         reset_raw,
     )
     settings = load_jupiter_settings()
-    if not settings.adapt_from_headers:
+    if not settings.adapt_from_headers or not has_api_key:
         return
     try:
         remaining = int(remaining_raw) if remaining_raw is not None else None
@@ -326,7 +333,9 @@ class JupiterPropAdapter(BaseAdapter):
             await limiter.acquire()
             try:
                 resp = await self.http.get(url, headers=headers)
-                _observe_rate_limit_headers(resp, limiter, venue=self.venue)
+                _observe_rate_limit_headers(
+                    resp, limiter, venue=self.venue, has_api_key=bool(self._api_key)
+                )
                 if resp.status_code == 429:
                     wait = _retry_after_seconds(resp, 0)
                     logger.warning(
@@ -335,7 +344,9 @@ class JupiterPropAdapter(BaseAdapter):
                     await asyncio.sleep(wait)
                     await limiter.acquire()
                     resp = await self.http.get(url, headers=headers)
-                    _observe_rate_limit_headers(resp, limiter, venue=self.venue)
+                    _observe_rate_limit_headers(
+                        resp, limiter, venue=self.venue, has_api_key=bool(self._api_key)
+                    )
                 resp.raise_for_status()
                 raw: Any = resp.json()
             except (httpx.HTTPError, ValueError, TypeError) as exc:
@@ -382,7 +393,9 @@ class JupiterPropAdapter(BaseAdapter):
             except httpx.HTTPError as exc:
                 raise AdapterFetchError(f"{self.venue}: Jupiter transport error: {exc}") from exc
 
-            _observe_rate_limit_headers(resp, limiter, venue=self.venue)
+            _observe_rate_limit_headers(
+                resp, limiter, venue=self.venue, has_api_key=bool(self._api_key)
+            )
 
             if resp.status_code == 429:
                 wait = _retry_after_seconds(resp, attempt)
