@@ -3,10 +3,12 @@
 | 字段 | 值 |
 | --- | --- |
 | Issue | [WHI-837](https://linear.app/whisker-personal/issue/WHI-837) |
+| Milestone | Post-M1 research (SPOF / redundancy) |
 | Closes risk | [WHI-797](./WHI-797-prop-amm-jupiter-quote-api.md) §9「Solana 完全依赖 Jupiter……暂无冗余路径」 |
 | Related | WHI-799 §4.1 notional tiers; WHI-836 (throughput — **different problem**) |
 | 调研日期 | 2026-08-04（UTC） |
 | 验证环境 | 公网 live：Jupiter（`JUPITER_API_KEY`）、Titan DART（keyless）、DFlow/OKX/0x/Titan Gateway（unauth 负样本） |
+| 样本 | [`samples/whi-837/`](./samples/whi-837/) |
 
 ---
 
@@ -53,6 +55,9 @@
 | **OKX DEX Aggregator** | ✅ | `dexIds` / `excludeDexIds` | 文档 `forJitoBundle` 点名 HumidiFi、BisonFi | 未测 | **OUT（key）** | 签名四元组 + Project ID；get-liquidity 需 auth |
 | **0x Solana Swap** | ✅ | **仅** `disabled_sources` | 未验证 prop 名单 | n/a | **OUT** | **无 include-filter** |
 | **1inch** | Intent only | n/a Classic | n/a | n/a | **OUT** | Solana Classic SWAP ❌ |
+| **ParaSwap / Velora** | ❌ Solana | — | WHI-797 §7.7 EVM 侧无 Tessera；Solana 非其主场 | n/a | **OUT** | no Solana coverage for this use case |
+| **Hashflow / RFQ-only** | RFQ | 通常无 per-DEX include | 非 prop AMM 程序路由面 | n/a | **OUT** | wrong venue class (RFQ vs prop program) |
+| **Raydium / Meteora / Orca trade APIs** | ✅ | 单 venue 自身 | 非 prop AMM；不含 HumidiFi/Tessera/Bison | n/a | **OUT** | no prop AMM integration |
 | **直接 on-chain 报价** | n/a | n/a | 闭源 + 私有 oracle 曲线 | n/a | **OUT** | 不可从账户状态重建 `Quote` |
 | **链上成交事件** | n/a | n/a | 可做 realized | n/a | **非 Quote 路径** | 不能填请求 size 的 `Quote` |
 
@@ -104,7 +109,7 @@
 
 **Q1 裁决：OUT（不完整）** — include 过滤器真实可用，但 **不满足「三家全部可隔离」**。
 
-**Rate limit（实测）**：文档 1 rps；连续探测易 429 HTML。生产若采用需客户端串行 ≥1s + 退避。
+**Rate limit：** 文档 **1 req/s per IP**（超限 HTTP 429）。本调研在 label 扫描中 **观察到** nginx `429 Too Many Requests` HTML（未单独落盘样本；与文档一致）。生产若采用需客户端串行 ≥1s + 退避——**非** 独立 measured RPS 标定（对比 WHI-797 Jupiter 冷窗口 burst 表）。
 
 **费用**：文档「Up to 1 bps fee」on-chain program；Q2 中 Titan 持续略逊 ~1 bps，与「≤1 bps 平台费」方向一致，但 **未** 在响应中拆出独立 fee 字段（只有 `outputAmount`）。
 
@@ -112,7 +117,7 @@
 
 | 项 | 值 |
 | --- | --- |
-| Filter | `dexes` / `excludeDexes` / `providers` / venue allow|ban list |
+| Filter | `dexes` / `excludeDexes` / `providers` / venue allowlist & banlist |
 | Auth | Bearer / query `auth`；Triton / QuickNode / Titan |
 | Live | `GET .../api/v1/quote/price` → **401** `Missing authentication token` |
 
@@ -173,9 +178,9 @@ OpenAPI：无 include-only 参数。Exclude 不能把路由 **限制到单 venue
 
 **方法：**
 
-1. 用 Jupiter `dexes=BisonFi` 1 SOL→USDC 估 mid（USDC/SOL）。
+1. 用 Jupiter `dexes=BisonFi` 1 SOL→USDC 估 mid（USDC/SOL）。**Caveat（WHI-799 §4.2）：** 生产口径应用 **reference mid**，禁止 venue-local mid。此处 mid 仅用于把美元档位换成 lamports，使两源 **同一 amount**；档位因此是近似 $1k/$10k/$100k/$1M，不是 reference-mid 精确对齐。分歧计算本身不受 mid 选择影响（两腿共享 amount）。
 2. 对 WHI-799 §4.1 四档 `N ∈ {1000, 10_000, 100_000, 1_000_000}` USD，设 `amount = round(N / mid * 1e9)` lamports。
-3. 紧接调用：Jupiter `dexes=BisonFi` 然后 Titan `includeDexes=["BisonFi"]`。
+3. **同窗口：** 对每个 N，先 Jupiter 再 Titan；Jupiter→Titan 间隔 **~3–4 s**（迁就 Titan ~1 rps），两腿顺序固定。样本 JSON 无服务端时间戳字段；捕获日 2026-08-04。
 4. 有效价 `P = (out_amount / 1e6) / (amount / 1e9)`（USDC per SOL）。
 5. `div_bps = (P_titan - P_jup) / P_jup * 10_000`。
 
@@ -244,8 +249,7 @@ HumidiFi / TesseraV：无 Q2 表（Q1 未通过）。
 | DFlow/OKX 未来变完整冗余 | 需 key + Q1 三家样本 + Q2 表；**通过后** 再 ADR 修订 + 实现 issue |
 | Titan DART 1 rps | 即便未来补齐 venue，吞吐也不够矩阵热路径（仍要 Gateway） |
 
-**建议 follow-up issue（研究，非实现）：**  
-「Re-run WHI-837 Q1/Q2 with DFlow + OKX API keys」— 阻塞于凭证；若任一家三家齐备且 Q2 ≤ ~2 bps，再开 adapter 实现单。
+**Follow-up research issue：** [WHI-839](https://linear.app/whisker-personal/issue/WHI-839) — re-run Q1/Q2 with DFlow + OKX keys. If either passes all three venues and Q2 ≲ ~2 bps, supersede ADR 0001 and open an implementation issue.
 
 ---
 
