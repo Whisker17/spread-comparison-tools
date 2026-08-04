@@ -152,7 +152,9 @@ def test_non_ok_null_fields_valid() -> None:
 
 
 def test_notional_tiers_usd() -> None:
+    # Pin WHI-799 §4.1 / WHI-838 five-tier SSOT (retail $100 floor).
     assert NOTIONAL_TIERS_USD == (
+        Decimal("100"),
         Decimal("1000"),
         Decimal("10000"),
         Decimal("100000"),

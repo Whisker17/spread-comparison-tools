@@ -17,7 +17,7 @@ import {
   parseDecimal,
   sortNotionals,
 } from "@/lib/format";
-import { heatClass, heatRange } from "@/lib/heat";
+import { heatClass, heatRange, type HeatRange } from "@/lib/heat";
 import { isEligibleForBest, type MetricKey } from "@/lib/status";
 import {
   bestVenueMap,
@@ -116,20 +116,28 @@ export function SpreadMatrix({
     disabledVenues,
   ]);
 
-  const range = useMemo(() => {
-    if (!heat) return null;
-    const values: (number | null)[] = [];
-    for (const v of venues) {
-      if (disabled.has(v)) continue;
-      for (const n of notionals) {
+  /**
+   * Per-column heat ranges (WHI-838 / WHI-799 §4.1). A gas-dominated $100 AMM
+   * cell can be 100–1000× larger than CEX spreads; matrix-wide min/max would
+   * collapse colour resolution on every larger tier. Extreme values remain
+   * fully legible as numbers — only the colour mapping is column-local.
+   */
+  const rangesByNotional = useMemo(() => {
+    const map = new Map<string, HeatRange | null>();
+    if (!heat) return map;
+    for (const n of notionals) {
+      const values: (number | null)[] = [];
+      for (const v of venues) {
+        if (disabled.has(v)) continue;
         const pair = index.get(`${v}::${n}`);
         const value = metricValue(pair, sideView, metric);
         if (value === null) continue;
         if (!includeInHeat(pair, sideView, metric)) continue;
         values.push(value);
       }
+      map.set(n, heatRange(values));
     }
-    return heatRange(values);
+    return map;
   }, [heat, venues, notionals, index, sideView, metric, disabled]);
 
   if (venues.length === 0 || notionals.length === 0) {
@@ -192,6 +200,7 @@ export function SpreadMatrix({
                     !isDisabled &&
                     cell.value !== null &&
                     includeInHeat(pair, sideView, metric);
+                  const colRange = rangesByNotional.get(n) ?? null;
 
                   return (
                     <td key={n} className="px-0.5 py-0.5">
@@ -201,7 +210,7 @@ export function SpreadMatrix({
                         metricKey={metric}
                         isBest={isBest}
                         heatClassName={
-                          heatOk ? heatClass(cell.value, range) : undefined
+                          heatOk ? heatClass(cell.value, colRange) : undefined
                         }
                         onRetry={onRetry}
                       />
@@ -216,6 +225,9 @@ export function SpreadMatrix({
       <p className="mt-2 text-[11px] text-zinc-500">
         Cells: {metric.replace(/_/g, " ")} · view: {sideView.replace("_", " ")} ·
         best highlight excludes gas_unknown / non-ok (WHI-799 §5.2)
+        {heat
+          ? " · heat colour is per notional column (WHI-838), so a gas-heavy $100 cell does not flatten larger tiers — compare intensity only within a column"
+          : ""}
       </p>
     </div>
   );

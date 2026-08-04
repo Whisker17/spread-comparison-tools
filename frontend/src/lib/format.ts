@@ -37,7 +37,7 @@ export function compareSlug(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
-/** Compact USD notional labels ($1k / $10k / $100k / $1M). */
+/** Compact USD notional labels ($100 / $1k / $10k / $100k / $1M). */
 export function formatNotional(usd: string | number): string {
   const n = typeof usd === "number" ? usd : Number(usd);
   if (!Number.isFinite(n)) {

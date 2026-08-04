@@ -51,10 +51,10 @@
             "required": true,
             "schema": {
               "type": "string",
-              "description": "USD notional; one of 1000 / 10000 / 100000 / 1000000 (WHI-799 \u00a74.1)",
+              "description": "USD notional; one of 100 / 1000 / 10000 / 100000 / 1000000 (WHI-799 \u00a74.1)",
               "title": "Notional"
             },
-            "description": "USD notional; one of 1000 / 10000 / 100000 / 1000000 (WHI-799 \u00a74.1)"
+            "description": "USD notional; one of 100 / 1000 / 10000 / 100000 / 1000000 (WHI-799 \u00a74.1)"
           },
           {
             "name": "venues",

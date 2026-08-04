@@ -45,6 +45,7 @@ MidSource = Literal[
 
 # WHI-799 §4.1 — fixed notional tiers (USD). Compare with Decimal equality.
 NOTIONAL_TIERS_USD: Final[tuple[Decimal, ...]] = (
+    Decimal("100"),
     Decimal("1000"),
     Decimal("10000"),
     Decimal("100000"),

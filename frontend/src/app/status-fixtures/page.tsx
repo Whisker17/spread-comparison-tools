@@ -18,6 +18,9 @@ export default function StatusFixturesPage() {
         <p className="mt-1 max-w-2xl text-sm text-zinc-600 dark:text-zinc-400">
           Single source of truth for status chrome shared by all section pages.
           Rules live in <code className="text-xs">src/lib/status.ts</code>.
+          The <code className="text-xs">gas_dominated ($100)</code> fixture
+          (WHI-838) is a magnitude case, not a new status: numbers stay fully
+          legible; matrix heat is per-column so larger tiers stay colour-legible.
         </p>
       </div>
 

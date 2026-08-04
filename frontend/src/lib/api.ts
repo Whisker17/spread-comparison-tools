@@ -212,7 +212,7 @@ export async function fetchQuotes(
 }
 
 /**
- * Fan out `/quotes` across notional tiers (matrix needs all four).
+ * Fan out `/quotes` across notional tiers (matrix needs every WHI-799 §4.1 tier).
  * Failures on individual tiers surface as rejected Promise (caller handles).
  */
 export async function fetchQuotesMultiNotional(

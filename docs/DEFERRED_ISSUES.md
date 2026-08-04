@@ -32,6 +32,20 @@ defines none: `docs/GIT_WORKFLOW.md` § High-risk paths), **Medium**
 
 ## Open
 
+- **Live blue-chips poll under five tiers not re-measured in a clean network** (Medium, WHI-838).
+  Agent-env load runs hit SOCKS-proxy latency (Binance/mid timeouts) so the AC
+  "no `error_code=timeout` rows" could not be validated live. Capacity prior:
+  3 assets × 5 tiers × 3 Solana props × 2 sides ≈ 90 Jupiter acquires on a cold
+  page; keyed bucket 10/s + `prop_amm` timeout raised to 12s in this PR. Re-run
+  a clean-network blue-chips cycle after deploy and record wall-clock + timeout
+  count in a follow-up comment if any residual timeouts remain.
+
+- **Solana prop `gas_bps=0` remains best-eligible at $100 while EVM gas dominates**
+  (Low, WHI-838). Documented in WHI-799 §6.6.1 / §8: base fee is still ≪ L1 gas,
+  but priority fees can be tens of bps at $100. Convention kept so Solana props
+  stay §5.2 eligible; EVM AMM carries the gas signal. Fix: account priority fee
+  or mark `gas_unknown` at the retail tier when funding that work.
+
 - **`AssetResponse.category` is plain `str` in OpenAPI — no category enum for FE** (Low, WHI-827).
   `spread_compare/api/quotes.py::AssetResponse.category` is `str`, so
   `pnpm gen:openapi` / `gen:api` cannot emit `tokenized_stock` /

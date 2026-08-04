@@ -1,6 +1,6 @@
 /**
  * Heat coloring for bps cells: lower total cost = cooler (green), higher = warmer (red).
- * Pure function of the value and the min/max among comparable cells in the same matrix.
+ * Pure function of the value and a caller-supplied min/max (typically one matrix column).
  */
 
 import { parseDecimal } from "@/lib/format";

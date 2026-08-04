@@ -182,4 +182,36 @@ export const STATUS_FIXTURES: FixtureCase[] = [
       qty_method: "base_from_mid",
     },
   },
+  {
+    id: "gas_dominated_100",
+    title: "gas_dominated ($100)",
+    description:
+      "WHI-838: $100 L1 AMM — $3 gas → 300 gas_bps. Number stays fully legible; " +
+      "matrix heat is per-column so this cell does not flatten larger tiers.",
+    formattedMetric: "304.40",
+    quote: {
+      ...base,
+      venue: "uniswap_eth",
+      instrument_type: "amm_pool",
+      notional_usd: "100",
+      mid_stale: false,
+      effective_price: "100044",
+      spread_bps: "4.4000",
+      // spread 4.4 + gas 300 = 304.4 total (embedded trading fee in price)
+      total_cost_bps: "304.4000",
+      fee_breakdown: {
+        embedded_in_price: true,
+        fee_tier: null,
+        trading_fee_bps: null,
+        platform_fee_bps: "0",
+        gas_unknown: false,
+        gas_bps: "300.0000",
+        gas_usd: "3",
+        explicit_fee_bps: null,
+      },
+      status: "ok",
+      qty_base: "0.001",
+      qty_method: "base_from_mid",
+    },
+  },
 ];

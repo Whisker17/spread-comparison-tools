@@ -20,6 +20,7 @@ from spread_compare.assets import list_assets
 from spread_compare.fees import list_fee_schedules
 from spread_compare.mids import MidResolutionError
 from spread_compare.models import (
+    NOTIONAL_TIERS_USD,
     FeeSchedule,
     InstrumentType,
     ReferenceMid,
@@ -92,7 +93,11 @@ async def get_quotes(
     notional: Annotated[
         str,
         Query(
-            description="USD notional; one of 1000 / 10000 / 100000 / 1000000 (WHI-799 §4.1)",
+            description=(
+                "USD notional; one of "
+                + " / ".join(str(t) for t in NOTIONAL_TIERS_USD)
+                + " (WHI-799 §4.1)"
+            ),
         ),
     ],
     venues: Annotated[

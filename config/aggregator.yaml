@@ -8,7 +8,11 @@ venue_timeout_sec: 3.0
 # Classes absent here use venue_timeout_sec. Do not raise the global default
 # just to fit the slowest class — that delays every CEX/perp response.
 venue_timeout_by_class:
-  prop_amm: 8.0
+  # WHI-838: five tiers × 3 Solana props × 2 sides can queue ~30 Jupiter
+  # acquires per asset (blue-chips matrix fan-out). Keyed bucket capacity 10/s
+  # (config/jupiter.yaml) → ~3s pure limiter drain; keep headroom for RTT/429
+  # backoff so the tail does not classify as timeout (WHI-836 class).
+  prop_amm: 12.0
   amm_dex: 6.0
 
 # Response cache TTL. Frontend section poll interval is 30s; keep this below
