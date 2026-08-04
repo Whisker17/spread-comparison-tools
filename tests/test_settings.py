@@ -7,6 +7,7 @@ from spread_compare.settings import (
     load_api_settings,
     load_jupiter_settings,
     load_mid_settings,
+    load_rpc_settings,
     load_venue_settings,
 )
 
@@ -83,3 +84,19 @@ def test_load_venue_settings_defaults() -> None:
     assert venues.startup_retry_interval_sec == 60.0
     assert venues.startup_retry_backoff_multiplier == 2.0
     assert venues.startup_retry_max_interval_sec == 300.0
+
+
+def test_load_rpc_settings_defaults() -> None:
+    clear_settings_cache()
+    rpc = load_rpc_settings()
+    assert rpc.default_rps == 5
+    assert rpc.window_sec == 1.0
+    assert rpc.max_retries == 3
+    assert rpc.backoff_start_sec == 0.5
+    assert rpc.gas_price_cache_ttl_sec == 15.0
+    base = rpc.budget_for("BASE_RPC_URL")
+    assert base.rps == 5
+    assert base.max_retries == 3
+    # Unknown env falls back to defaults.
+    other = rpc.budget_for("UNKNOWN_RPC_URL")
+    assert other.rps == rpc.default_rps

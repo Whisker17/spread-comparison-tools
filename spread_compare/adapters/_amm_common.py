@@ -6,14 +6,15 @@ Underscore-prefixed so adapter auto-discovery skips this module.
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import os
+import time
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any, Final, Literal
+from urllib.parse import urlparse
 
 import httpx
 from eth_abi.abi import decode, encode
@@ -39,6 +40,8 @@ from spread_compare.models import (
     TopOfBook,
     VenueClass,
 )
+from spread_compare.ratelimit import TokenBucketRateLimiter
+from spread_compare.settings import RpcChainBudget, load_rpc_settings
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +53,8 @@ _SIG_AERO_V3 = "quoteExactInputSingleV3((address,address,uint256,int24,uint160))
 _SIG_AERO_V2 = "quoteExactInputSingleV2((address,address,bool,uint256))"
 # Aerodrome Router V2-style getAmountsOut.
 _SIG_GET_AMOUNTS_OUT = "getAmountsOut(uint256,(address,address,bool,address)[])"
+# Multicall3 aggregate3 — per-call success flags so one revert does not poison the batch.
+_SIG_AGGREGATE3 = "aggregate3((address,bool,bytes)[])"
 
 SEL_QUOTE_EXACT_IN_SINGLE: Final[bytes] = function_signature_to_4byte_selector(
     _SIG_QUOTE_EXACT_IN_SINGLE
@@ -60,6 +65,15 @@ SEL_QUOTE_EXACT_OUT_SINGLE: Final[bytes] = function_signature_to_4byte_selector(
 SEL_AERO_V3: Final[bytes] = function_signature_to_4byte_selector(_SIG_AERO_V3)
 SEL_AERO_V2: Final[bytes] = function_signature_to_4byte_selector(_SIG_AERO_V2)
 SEL_GET_AMOUNTS_OUT: Final[bytes] = function_signature_to_4byte_selector(_SIG_GET_AMOUNTS_OUT)
+SEL_AGGREGATE3: Final[bytes] = function_signature_to_4byte_selector(_SIG_AGGREGATE3)
+
+# Multicall3 CREATE2 address — identical on Ethereum, Base, and BSC (and 100+ chains).
+# Verified 2026-08-04:
+# - Deployments list: https://www.multicall3.com/deployments
+# - Ethereum: https://etherscan.io/address/0xcA11bde05977b3631167028862bE2a173976CA11
+# - Base: https://basescan.org/address/0xcA11bde05977b3631167028862bE2a173976CA11
+# - BSC: https://bscscan.com/address/0xcA11bde05977b3631167028862bE2a173976CA11
+MULTICALL3_ADDRESS: Final[str] = "0xcA11bde05977b3631167028862bE2a173976CA11"
 
 # Fee tier probes (Uniswap fee units = 1e-6). Source: WHI-800 §5.1 / §5.3 (2026-08-03).
 UNISWAP_FEE_TIERS: Final[tuple[int, ...]] = (100, 500, 3000, 10000)
@@ -293,10 +307,17 @@ class JsonRpcError(AdapterFetchError):
         *,
         transport: bool = False,
         revert: bool = False,
+        rate_limited: bool = False,
     ) -> None:
         super().__init__(message)
         self.transport = transport
         self.revert = revert
+        self.rate_limited = rate_limited
+
+
+def is_rate_limited_error(exc: BaseException) -> bool:
+    """True when the failure is an exhausted RPC rate limit (WHI-842)."""
+    return isinstance(exc, JsonRpcError) and exc.rate_limited
 
 
 def _is_execution_revert(err: object) -> bool:
@@ -314,39 +335,243 @@ def _is_execution_revert(err: object) -> bool:
     return False
 
 
-class RpcClient:
-    """Minimal async JSON-RPC client for eth_call / eth_gasPrice."""
+def _is_rpc_rate_limit_error(err: object) -> bool:
+    """True when a JSON-RPC error body indicates provider rate limiting."""
+    text = str(err).lower()
+    if "rate limit" in text or "too many requests" in text or "429" in text:
+        return True
+    if isinstance(err, dict):
+        code = err.get("code")
+        # Common provider codes for rate limit / capacity (Alchemy/Infura/etc.).
+        if code in (-32005, -32016, 429):
+            return True
+    return False
 
-    def __init__(self, http: httpx.AsyncClient, url: str) -> None:
+
+def rpc_endpoint_label(url: str) -> str:
+    """Host-only label for logs — never include path/query (may embed API keys)."""
+    try:
+        host = urlparse(url).hostname
+    except ValueError:
+        return "rpc"
+    return host or "rpc"
+
+
+def encode_multicall3_aggregate3(calls: Sequence[tuple[str, bytes]]) -> bytes:
+    """ABI-encode Multicall3.aggregate3 with allowFailure=True per subcall."""
+    encoded_calls = [
+        (to_checksum_address(target), True, calldata)
+        for target, calldata in calls
+    ]
+    return SEL_AGGREGATE3 + encode(
+        ["(address,bool,bytes)[]"],
+        [encoded_calls],
+    )
+
+
+def decode_multicall3_aggregate3(data: bytes) -> list[tuple[bool, bytes]]:
+    """Decode Multicall3.aggregate3 → list of (success, returnData)."""
+    (results,) = decode(["(bool,bytes)[]"], data)
+    return [(bool(success), bytes(ret)) for success, ret in results]
+
+
+@dataclass
+class _EndpointState:
+    """Shared per-URL limiter + gas-price cache (budget belongs to the endpoint)."""
+
+    limiter: TokenBucketRateLimiter
+    budget: RpcChainBudget
+    gas_price_wei: int | None = None
+    gas_price_mono: float = 0.0
+
+
+_ENDPOINT_STATE: dict[str, _EndpointState] = {}
+
+
+def _endpoint_state(url: str, budget: RpcChainBudget) -> _EndpointState:
+    state = _ENDPOINT_STATE.get(url)
+    if state is None:
+        state = _EndpointState(
+            limiter=TokenBucketRateLimiter(
+                capacity=budget.rps,
+                window_s=budget.window_sec,
+            ),
+            budget=budget,
+        )
+        _ENDPOINT_STATE[url] = state
+        return state
+    # Keep limiter capacity in sync if config was reloaded (tests).
+    if (
+        state.budget.rps != budget.rps
+        or state.budget.window_sec != budget.window_sec
+    ):
+        state.limiter = TokenBucketRateLimiter(
+            capacity=budget.rps,
+            window_s=budget.window_sec,
+        )
+    state.budget = budget
+    return state
+
+
+def clear_rpc_endpoint_state() -> None:
+    """Drop per-URL limiter/gas caches (tests)."""
+    _ENDPOINT_STATE.clear()
+
+
+def _retry_after_seconds(response: httpx.Response, attempt: int, start: float) -> float:
+    """Backoff for 429; honour Retry-After when present."""
+    retry_after = response.headers.get("retry-after")
+    if retry_after:
+        try:
+            parsed = float(retry_after)
+        except ValueError:
+            pass
+        else:
+            return parsed if parsed > 0.05 else 0.05
+    wait = start * float(2**attempt)
+    return wait if wait < 8.0 else 8.0
+
+
+def _log_rate_limit_headers(response: httpx.Response, *, host: str, method: str) -> None:
+    """Log provider rate-limit signals without logging the full URL."""
+    remaining = response.headers.get("x-ratelimit-remaining")
+    limit = response.headers.get("x-ratelimit-limit")
+    reset = response.headers.get("x-ratelimit-reset")
+    retry_after = response.headers.get("retry-after")
+    if remaining is None and limit is None and reset is None and retry_after is None:
+        return
+    logger.info(
+        "rpc rate-limit signal host=%s method=%s remaining=%s limit=%s reset=%s "
+        "retry_after=%s status=%s",
+        host,
+        method,
+        remaining,
+        limit,
+        reset,
+        retry_after,
+        response.status_code,
+    )
+
+
+class RpcClient:
+    """Async JSON-RPC client for eth_call / eth_gasPrice (WHI-804 / WHI-842).
+
+    One limiter + gas cache per endpoint URL (shared across adapter instances).
+    HTTP 429 and provider rate-limit JSON-RPC codes are retried with backoff;
+    exhausted retries raise :class:`JsonRpcError` with ``rate_limited=True``.
+    """
+
+    def __init__(
+        self,
+        http: httpx.AsyncClient,
+        url: str,
+        *,
+        rpc_env: str = "",
+        budget: RpcChainBudget | None = None,
+    ) -> None:
         self._http = http
         self._url = url
+        self._rpc_env = rpc_env
+        self._host = rpc_endpoint_label(url)
+        if budget is None:
+            budget = load_rpc_settings().budget_for(rpc_env)
+        self._budget = budget
+        self._state = _endpoint_state(url, budget)
         self._next_id = 1
 
+    @property
+    def host(self) -> str:
+        """Safe endpoint label for logs (never the raw URL)."""
+        return self._host
+
     async def call(self, method: str, params: list[Any]) -> Any:
-        req_id = self._next_id
-        self._next_id += 1
-        payload = {
-            "jsonrpc": "2.0",
-            "id": req_id,
-            "method": method,
-            "params": params,
-        }
-        try:
-            response = await self._http.post(self._url, json=payload)
-            response.raise_for_status()
-            body = response.json()
-        except (httpx.HTTPError, ValueError) as exc:
-            raise JsonRpcError(
-                f"{method} transport failed: {exc}", transport=True
-            ) from exc
-        if "error" in body and body["error"]:
-            err = body["error"]
-            raise JsonRpcError(
-                f"{method} error: {err}",
-                transport=False,
-                revert=_is_execution_revert(err),
-            )
-        return body.get("result")
+        last_rate_limited: JsonRpcError | None = None
+        max_attempts = self._budget.max_retries
+        for attempt in range(max_attempts):
+            await self._state.limiter.acquire()
+            req_id = self._next_id
+            self._next_id += 1
+            payload = {
+                "jsonrpc": "2.0",
+                "id": req_id,
+                "method": method,
+                "params": params,
+            }
+            try:
+                response = await self._http.post(self._url, json=payload)
+            except httpx.HTTPError as exc:
+                # Never interpolate the full exception — it may embed the URL/key.
+                raise JsonRpcError(
+                    f"{method} transport failed: {type(exc).__name__} (host={self._host})",
+                    transport=True,
+                ) from exc
+
+            _log_rate_limit_headers(response, host=self._host, method=method)
+
+            if response.status_code == 429:
+                wait = _retry_after_seconds(
+                    response, attempt, self._budget.backoff_start_sec
+                )
+                last_rate_limited = JsonRpcError(
+                    f"{method} rate limited (HTTP 429) host={self._host} "
+                    f"attempt={attempt + 1}/{max_attempts}",
+                    transport=True,
+                    rate_limited=True,
+                )
+                logger.warning("%s", last_rate_limited)
+                if attempt + 1 < max_attempts:
+                    await _async_sleep(wait)
+                    continue
+                raise last_rate_limited
+
+            if response.status_code >= 400:
+                raise JsonRpcError(
+                    f"{method} transport failed: HTTP {response.status_code} "
+                    f"(host={self._host})",
+                    transport=True,
+                )
+
+            try:
+                body = response.json()
+            except ValueError as exc:
+                raise JsonRpcError(
+                    f"{method} transport failed: invalid JSON (host={self._host})",
+                    transport=True,
+                ) from exc
+
+            if not isinstance(body, dict):
+                raise JsonRpcError(
+                    f"{method} transport failed: non-object response (host={self._host})",
+                    transport=True,
+                )
+
+            if body.get("error"):
+                err = body["error"]
+                if _is_rpc_rate_limit_error(err):
+                    wait = self._budget.backoff_start_sec * (2**attempt)
+                    wait = min(wait, 8.0)
+                    last_rate_limited = JsonRpcError(
+                        f"{method} rate limited (rpc error) host={self._host} "
+                        f"attempt={attempt + 1}/{max_attempts}",
+                        transport=True,
+                        rate_limited=True,
+                    )
+                    logger.warning("%s", last_rate_limited)
+                    if attempt + 1 < max_attempts:
+                        await _async_sleep(wait)
+                        continue
+                    raise last_rate_limited
+                raise JsonRpcError(
+                    f"{method} error: {err}",
+                    transport=False,
+                    revert=_is_execution_revert(err),
+                )
+            return body.get("result")
+
+        raise last_rate_limited or JsonRpcError(
+            f"{method} failed with no response (host={self._host})",
+            transport=True,
+        )
 
     async def eth_call(self, to: str, data: bytes) -> bytes:
         result = await self.call(
@@ -360,15 +585,85 @@ class RpcClient:
             raise JsonRpcError("eth_call returned empty data")
         return raw
 
+    async def eth_call_many(
+        self,
+        calls: Sequence[tuple[str, bytes]],
+    ) -> list[tuple[bool, bytes | None]]:
+        """Batch eth_calls via Multicall3.aggregate3 (one HTTP round-trip).
+
+        Each entry is ``(success, return_data_or_None)``. A subcall revert
+        yields ``(False, None)`` without failing the batch. Outer transport /
+        rate-limit failures raise :class:`JsonRpcError`.
+        """
+        if not calls:
+            return []
+        if len(calls) == 1:
+            target, data = calls[0]
+            try:
+                raw = await self.eth_call(target, data)
+            except JsonRpcError as exc:
+                if exc.rate_limited or exc.transport:
+                    raise
+                # Single-call revert path.
+                return [(False, None)]
+            return [(True, raw)]
+
+        encoded = encode_multicall3_aggregate3(calls)
+        try:
+            raw = await self.eth_call(MULTICALL3_ADDRESS, encoded)
+        except JsonRpcError:
+            raise
+        try:
+            decoded = decode_multicall3_aggregate3(raw)
+        except ValueError as exc:
+            raise JsonRpcError(
+                f"Multicall3 decode failed (host={self._host}): {exc}",
+                transport=True,
+            ) from exc
+        if len(decoded) != len(calls):
+            raise JsonRpcError(
+                f"Multicall3 result length mismatch: got {len(decoded)} "
+                f"expected {len(calls)} (host={self._host})",
+                transport=True,
+            )
+        out: list[tuple[bool, bytes | None]] = []
+        for success, ret in decoded:
+            if not success:
+                out.append((False, None))
+            elif not ret:
+                # Successful eth_call with empty data — treat as ok/empty.
+                out.append((True, b""))
+            else:
+                out.append((True, ret))
+        return out
+
     async def eth_gas_price(self) -> int:
+        now = time.monotonic()
+        ttl = self._budget.gas_price_cache_ttl_sec
+        if (
+            ttl > 0
+            and self._state.gas_price_wei is not None
+            and (now - self._state.gas_price_mono) < ttl
+        ):
+            return self._state.gas_price_wei
         result = await self.call("eth_gasPrice", [])
         if not isinstance(result, str) or not result.startswith("0x"):
             raise JsonRpcError(f"eth_gasPrice unexpected: {result!r}")
-        return int(result, 16)
+        price = int(result, 16)
+        self._state.gas_price_wei = price
+        self._state.gas_price_mono = time.monotonic()
+        return price
 
 
-# Concurrent probe outcome tags (WHI-836). "ok" means the RPC round-trip
-# succeeded (even if amount was zero or decode failed after transport OK).
+async def _async_sleep(seconds: float) -> None:
+    """Isolated for tests that monkeypatch sleep."""
+    import asyncio
+
+    await asyncio.sleep(seconds)
+
+
+# Probe outcome tags (WHI-836 / WHI-842). "ok" means the RPC path for that
+# subcall succeeded (even if amount was zero or decode failed after transport OK).
 ProbeKind = Literal["ok", "transport", "revert"]
 ProbeOutcome = tuple[ProbeKind, QuoterResult | None]
 
@@ -386,7 +681,7 @@ def reduce_probe_outcomes(
     prefer_min_in: bool,
     error_label: str,
 ) -> QuoterResult | None:
-    """Fold concurrent probe outcomes into best quote or AdapterFetchError.
+    """Fold probe outcomes into best quote or AdapterFetchError.
 
     Transport-only total failure raises; any successful RPC path (even with
     zero/empty decode) degrades to ``no_quote`` (``None``) per WHI-799 §6.6.
@@ -414,6 +709,44 @@ def reduce_probe_outcomes(
     return best
 
 
+def _quoter_v2_outcome_from_raw(
+    *,
+    side: Side,
+    fee: int,
+    amount_base_raw: int,
+    success: bool,
+    raw: bytes | None,
+) -> ProbeOutcome:
+    """Map one Multicall3 subcall result to a probe outcome."""
+    if not success:
+        return "revert", None
+    if raw is None or raw == b"":
+        return "ok", None
+    try:
+        amount, _, _, gas_est = decode_quoter_v2_result(raw)
+    except ValueError:
+        return "ok", None
+    if amount <= 0:
+        return "ok", None
+    if side == "sell":
+        return "ok", QuoterResult(
+            amount_in=amount_base_raw,
+            amount_out=amount,
+            gas_estimate=gas_est,
+            fee_label=f"pool_{fee}",
+            lp_fee_tier_bps=fee_to_lp_bps(fee),
+            exact_out=False,
+        )
+    return "ok", QuoterResult(
+        amount_in=amount,
+        amount_out=amount_base_raw,
+        gas_estimate=gas_est,
+        fee_label=f"pool_{fee}",
+        lp_fee_tier_bps=fee_to_lp_bps(fee),
+        exact_out=True,
+    )
+
+
 async def probe_quoter_v2(
     rpc: RpcClient,
     quoter: str,
@@ -424,17 +757,19 @@ async def probe_quoter_v2(
     fee_tiers: tuple[int, ...],
     side: Side,
 ) -> QuoterResult | None:
-    """Probe Uniswap-family QuoterV2 fee tiers concurrently; return best quote.
+    """Probe Uniswap-family QuoterV2 fee tiers in one Multicall3 round-trip.
 
     Sell: ExactIn base → quote. Buy: ExactOut base ← quote.
     Transport/RPC outage (no successful eth_call) raises AdapterFetchError so the
     adapter can map to status=error (WHI-799 §6.6). Per-tier reverts stay no_quote.
-    Fee tiers are independent and issued via ``asyncio.gather`` (WHI-836).
+    Fee tiers are batched via Multicall3.aggregate3 (WHI-842); rate-limit exhaustion
+    propagates as :class:`JsonRpcError` with ``rate_limited=True``.
     """
     if amount_base_raw is None or amount_base_raw <= 0:
         return None
 
-    async def _probe_tier(fee: int) -> ProbeOutcome:
+    calldatas: list[tuple[str, bytes]] = []
+    for fee in fee_tiers:
         if side == "sell":
             data = encode_quote_exact_input_single(
                 token_base, token_quote, amount_base_raw, fee
@@ -443,54 +778,31 @@ async def probe_quoter_v2(
             data = encode_quote_exact_output_single(
                 token_quote, token_base, amount_base_raw, fee
             )
-        try:
-            raw = await rpc.eth_call(quoter, data)
-        except JsonRpcError as exc:
-            return classify_json_rpc_error(exc), None
-        # eth_call succeeded — count as success even if decode fails (pre-WHI-836).
-        try:
-            amount, _, _, gas_est = decode_quoter_v2_result(raw)
-        except ValueError:
-            return "ok", None
+        calldatas.append((quoter, data))
 
-        if side == "sell":
-            if amount <= 0:
-                return "ok", None
-            candidate = QuoterResult(
-                amount_in=amount_base_raw,
-                amount_out=amount,
-                gas_estimate=gas_est,
-                fee_label=f"pool_{fee}",
-                lp_fee_tier_bps=fee_to_lp_bps(fee),
-                exact_out=False,
-            )
-            return "ok", candidate
-
-        if amount <= 0:
-            return "ok", None
-        candidate = QuoterResult(
-            amount_in=amount,
-            amount_out=amount_base_raw,
-            gas_estimate=gas_est,
-            fee_label=f"pool_{fee}",
-            lp_fee_tier_bps=fee_to_lp_bps(fee),
-            exact_out=True,
+    try:
+        results = await rpc.eth_call_many(calldatas)
+    except JsonRpcError as exc:
+        if exc.rate_limited:
+            raise
+        # Entire batch transport failure — same accounting as all-transport.
+        return reduce_probe_outcomes(
+            [("transport", None)] * len(fee_tiers),
+            prefer_min_in=side != "sell",
+            error_label=f"fee tiers on {quoter}",
         )
-        return "ok", candidate
 
-    raw_outcomes = await asyncio.gather(
-        *(_probe_tier(fee) for fee in fee_tiers),
-        return_exceptions=True,
-    )
     outcomes: list[ProbeOutcome] = []
-    for item in raw_outcomes:
-        if isinstance(item, BaseException):
-            # Unexpected exception: treat as transport so siblings are not lost
-            # and we still degrade per WHI-799 §6.6 rather than fail the gather.
-            logger.warning("probe_quoter_v2 unexpected error: %s", item)
-            outcomes.append(("transport", None))
-        else:
-            outcomes.append(item)
+    for fee, (success, raw) in zip(fee_tiers, results, strict=True):
+        outcomes.append(
+            _quoter_v2_outcome_from_raw(
+                side=side,
+                fee=fee,
+                amount_base_raw=amount_base_raw,
+                success=success,
+                raw=raw,
+            )
+        )
     return reduce_probe_outcomes(
         outcomes,
         prefer_min_in=side != "sell",
@@ -686,7 +998,13 @@ class AmmDexAdapter(BaseAdapter):
                 f"{self.venue}: adapter not started (call startup() first)"
             )
         if self._rpc is None:
-            self._rpc = RpcClient(self.http, self._rpc_url)
+            budget = load_rpc_settings().budget_for(self.rpc_env)
+            self._rpc = RpcClient(
+                self.http,
+                self._rpc_url,
+                rpc_env=self.rpc_env,
+                budget=budget,
+            )
         return self._rpc
 
     def supported_assets(
@@ -747,6 +1065,8 @@ class AmmDexAdapter(BaseAdapter):
         try:
             result = await self._quote_best(asset_key, side, notional_usd, mid)
         except AdapterError as exc:
+            # WHI-842: exhausted RPC 429/rate-limit budget is a distinct code.
+            err_code = "rate_limited" if is_rate_limited_error(exc) else "adapter_error"
             return build_non_ok_quote(
                 venue=self.venue,
                 mid=mid,
@@ -755,7 +1075,7 @@ class AmmDexAdapter(BaseAdapter):
                 notional_usd=notional_usd,
                 instrument_type=itype,
                 status="error",
-                error_code="adapter_error",
+                error_code=err_code,
                 error_message=str(exc),
             )
 

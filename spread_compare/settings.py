@@ -107,6 +107,85 @@ class ApiSettings(BaseModel):
         return [str(v).rstrip("/") for v in value]
 
 
+class RpcChainOverride(BaseModel):
+    """Optional per-``rpc_env`` budget override under ``config/rpc.yaml`` chains."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    rps: int | None = Field(default=None, ge=1)
+    window_sec: float | None = Field(default=None, gt=0)
+    max_retries: int | None = Field(default=None, ge=1)
+    backoff_start_sec: float | None = Field(default=None, gt=0)
+    gas_price_cache_ttl_sec: float | None = Field(default=None, ge=0)
+
+
+class RpcChainBudget(BaseModel):
+    """Resolved per-endpoint RPC client budget (WHI-842)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    rps: int = Field(ge=1)
+    window_sec: float = Field(gt=0)
+    max_retries: int = Field(ge=1)
+    backoff_start_sec: float = Field(gt=0)
+    gas_price_cache_ttl_sec: float = Field(ge=0)
+
+
+class RpcSettings(BaseModel):
+    """``config/rpc.yaml`` — EVM JSON-RPC rate budget + retry (WHI-842)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    default_rps: int = Field(ge=1)
+    window_sec: float = Field(gt=0)
+    max_retries: int = Field(ge=1)
+    backoff_start_sec: float = Field(gt=0)
+    gas_price_cache_ttl_sec: float = Field(ge=0)
+    chains: dict[str, RpcChainOverride]
+
+    @field_validator("chains", mode="before")
+    @classmethod
+    def _normalize_chain_keys(cls, value: object) -> object:
+        if not isinstance(value, dict):
+            return value
+        return {str(k).strip(): v for k, v in value.items() if str(k).strip()}
+
+    def budget_for(self, rpc_env: str) -> RpcChainBudget:
+        """Resolve defaults with optional per-env overrides."""
+        override = self.chains.get(rpc_env)
+        if override is None:
+            return RpcChainBudget(
+                rps=self.default_rps,
+                window_sec=self.window_sec,
+                max_retries=self.max_retries,
+                backoff_start_sec=self.backoff_start_sec,
+                gas_price_cache_ttl_sec=self.gas_price_cache_ttl_sec,
+            )
+        return RpcChainBudget(
+            rps=override.rps if override.rps is not None else self.default_rps,
+            window_sec=(
+                override.window_sec
+                if override.window_sec is not None
+                else self.window_sec
+            ),
+            max_retries=(
+                override.max_retries
+                if override.max_retries is not None
+                else self.max_retries
+            ),
+            backoff_start_sec=(
+                override.backoff_start_sec
+                if override.backoff_start_sec is not None
+                else self.backoff_start_sec
+            ),
+            gas_price_cache_ttl_sec=(
+                override.gas_price_cache_ttl_sec
+                if override.gas_price_cache_ttl_sec is not None
+                else self.gas_price_cache_ttl_sec
+            ),
+        )
+
+
 class VenueSettings(BaseModel):
     """``config/venues.yaml`` — enable/disable + startup-retry (WHI-840)."""
 
@@ -204,6 +283,12 @@ def load_venue_settings() -> VenueSettings:
     return VenueSettings.model_validate(_merge_local("venues"))
 
 
+@lru_cache(maxsize=1)
+def load_rpc_settings() -> RpcSettings:
+    """Parse EVM JSON-RPC budget settings once; fail fast on invalid config."""
+    return RpcSettings.model_validate(_merge_local("rpc"))
+
+
 def clear_settings_cache() -> None:
     """Drop cached settings (tests that rewrite YAML)."""
     load_mid_settings.cache_clear()
@@ -211,3 +296,4 @@ def clear_settings_cache() -> None:
     load_jupiter_settings.cache_clear()
     load_api_settings.cache_clear()
     load_venue_settings.cache_clear()
+    load_rpc_settings.cache_clear()

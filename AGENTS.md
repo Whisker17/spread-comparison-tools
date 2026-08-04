@@ -82,6 +82,9 @@ errors; `config/venues.yaml` disable list + background retry; `/health`
 Frontend size selector (WHI-841): section pages show one notional at a time via
 shared `SizeSelector` + `?size=` URL; one `GET /quotes` per asset (not × tiers)
 to cut request fan-out 5× and clear TIMEOUT cells.
+Core RPC hardening (WHI-842): Multicall3-batched AMM quoter probes, per-endpoint
+`TokenBucketRateLimiter` + 429/Retry-After backoff (`config/rpc.yaml`), distinct
+`rate_limited` error_code, short-TTL `eth_gasPrice` cache; no RPC URL/key in logs.
 
 **Not implemented:** remaining venue adapters (WHI-805), collector.
 Do not assume a module exists until its issue lands.
@@ -133,7 +136,7 @@ load-bearing interfaces other modules may depend on.
 - **`spread_compare/perp_symbols.py`** — perp-DEX logical → venue coin/base + multipliers (HL HIP-3, k-prefix, 1000×).
 - **`spread_compare/bookwalk.py`** — sole walk-the-book VWAP; CEX/perp adapters import only this.
 - **`spread_compare/costs.py`** — sole `spread_bps` / `total_cost_bps` / `basis_bps`; aggregator never recomputes.
-- **`spread_compare/settings.py`** — typed YAML config loader (`config/mid.yaml`, `config/aggregator.yaml`, `config/jupiter.yaml`, `config/api.yaml`, `config/venues.yaml`).
+- **`spread_compare/settings.py`** — typed YAML config loader (`config/mid.yaml`, `config/aggregator.yaml`, `config/jupiter.yaml`, `config/api.yaml`, `config/venues.yaml`, `config/rpc.yaml`).
 - **`spread_compare/ratelimit.py`** — shared `AsyncRateLimiter` / `TokenBucketRateLimiter` / `RollingWindowRateLimiter` (WHI-836); adapters must not define their own.
 - **`spread_compare/fees.py`** — typed `config/fees/*.yaml` → `FeeSchedule` catalog; adapters + `GET /fees`.
 - **`spread_compare/mids.py`** — reference-mid service (WHI-799 §3 priority chain + cache).
