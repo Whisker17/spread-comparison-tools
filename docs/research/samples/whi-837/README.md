@@ -4,7 +4,7 @@ Captured 2026-08-04 (UTC+8 session / UTC day). Evidence for Solana prop AMM quot
 
 ## Jupiter baseline (Metis v1 `dexes` isolation)
 
-- `jup-{humidifi,tesserav,bisonfi}-sol-usdc-{1e8,1e9,1e10}.json` — direct-route isolation at 0.1 / 1 / 10 SOL
+- `jup-{humidifi,tesserav,bisonfi}-sol-usdc-{100000000,1000000000,10000000000}.json` — direct-route isolation at 0.1 / 1 / 10 SOL
 - `jup-wrong-label.json` — `dexes=NotAVenue` → 400 `No routes found`
 - `jup-v2-quote-*.json` — Swap V2 still routes; same Jupiter upstream (not a redundancy path)
 

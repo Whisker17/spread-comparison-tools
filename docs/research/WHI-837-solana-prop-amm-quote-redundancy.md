@@ -49,7 +49,7 @@
 | --- | --- | --- | --- | --- | --- | --- |
 | **Jupiter Metis v1**（现状） | ✅ | `dexes` | ✅ WHI-797 | ✅ 三家 | **主路径** | — |
 | **Jupiter Swap V2 / Ultra** | ✅ | V2 live `dexes=HumidiFi` 仍可 | ✅ 同上游 | ✅（同 upstream） | **OUT as redundancy** | 同一故障域 |
-| **Titan DART**（keyless） | ✅ | `includeDexes` | 部分 prop（BisonFi live；GoonFi V2 曾通） | **仅 BisonFi** | **OUT（不完整）** | 缺 HumidiFi / TesseraV 路由 |
+| **Titan DART**（keyless） | ✅ | `includeDexes` | 部分 prop（**BisonFi live** 隔离 + program id 旁证） | **仅 BisonFi** | **OUT（不完整）** | 缺 HumidiFi / TesseraV 路由 |
 | **Titan Gateway / Direct** | ✅ | `dexes` / `excludeDexes`（文档） | 未 live 验证 | 未测 | **OUT（key）** | Gateway 401；token 需 Triton/QuickNode/waitlist |
 | **DFlow** | ✅ | `dexes` / `excludeDexes` | 文档 + Helius：HumidiFi/SolFi 等 | 未测 | **OUT（key / 403）** | keyless 空 403；生产 key 表单 2–5 日 |
 | **OKX DEX Aggregator** | ✅ | `dexIds` / `excludeDexIds` | 文档 `forJitoBundle` 点名 HumidiFi、BisonFi | 未测 | **OUT（key）** | 签名四元组 + Project ID；get-liquidity 需 auth |
@@ -70,7 +70,7 @@
 | 项 | 值 |
 | --- | --- |
 | Endpoint | `GET https://api.jup.ag/swap/v1/quote` |
-| Filter | `dexes=HumidiFi\|TesseraV\|BisonFi`（精确 label） |
+| Filter | `dexes=<Label>` — single exact label per request: `HumidiFi` / `TesseraV` / `BisonFi` |
 | Auth | 可选 `x-api-key`；本调研用 portal key |
 | 文档 | https://developers.jup.ag/docs/api-reference/swap/v1/quote |
 
@@ -196,6 +196,7 @@ OpenAPI：无 include-only 参数。Exclude 不能把路由 **限制到单 venue
 **解读：**
 
 - 分歧 **稳定在 ~1 bps 量级**，方向一致（Titan 更差）→ 与 DART「up to 1 bps fee」叙事相容；**不是** 几十 bps 的口径错乱。
+- **Timing noise floor unquantified:** the ~3–4 s Jupiter→Titan gap can itself move SOL mid by ~1 bps; this run has no reverse-order or Jupiter-twice control. Treat the table as **indicative** comparability, not a fee attribution proof.
 - 相对「我们想分辨的 venue 间个位数 bps 价差」，**BisonFi 单家** Titan 可作为近似对照，但 **不能** 在 HumidiFi/TesseraV 缺失时当作矩阵级 failover（会引入 **aggregator 选择偏置**：只替换一家）。
 - **Drop-in 可用性（三家矩阵）：否。** Drop-in（仅 BisonFi 列）：条件性可用，**本 issue 不建议接入**（不完整覆盖 + 额外依赖 + 1 rps）。
 
@@ -256,7 +257,7 @@ HumidiFi / TesseraV：无 Q2 表（Q1 未通过）。
 ## 9. 参考
 
 - WHI-797：`docs/research/WHI-797-prop-amm-jupiter-quote-api.md` §2, §3.1, §3.5, §4, §7.7, §9  
-- WHI-799：`docs/research/WHI-799-spread-fee-data-model.md` §4.1, §4.4  
+- WHI-799：`docs/research/WHI-799-spread-fee-data-model.md` §4.1, §4.2 (reference mid), §4.4 
 - Titan DART：https://titan-exchange.gitbook.io/titan/developer-doc/dart-swap-api/overview.md  
 - Titan routing filters：https://titan-exchange.gitbook.io/titan/developer-doc/swap-api/guides/configure-routing.md  
 - DFlow quote OpenAPI：https://pond.dflow.net/resources/trading-api/imperative/quote  

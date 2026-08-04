@@ -33,7 +33,7 @@ Summary: Titan DART is the only live partial hit (**BisonFi only** among baselin
 - **Positive:** Matrix comparisons stay **single-aggregator**, so observed bps gaps remain venue-driven (within Jupiter's routing/fee semantics).
 - **Positive:** Outages fail **honestly** instead of mixing incomparable numbers.
 - **Negative:** Solana prop columns go dark if Jupiter is down or drops `dexes` / a venue.
-- **Follow-up:** If DFlow or OKX keys later prove Q1 for all three **and** Q2 divergence stays ≲ ~2 bps, supersede this ADR with an adopt-redundancy decision and a separate implementation issue. Throughput remains WHI-836's concern, not this ADR's.
+- **Follow-up:** [WHI-839](https://linear.app/whisker-personal/issue/WHI-839) re-runs Q1/Q2 with DFlow + OKX keys. If either proves all three venues **and** Q2 stays ≲ ~2 bps, supersede this ADR with an adopt-redundancy decision and a separate implementation issue. Throughput remains WHI-836's concern, not this ADR's.
 
 ## References
 
