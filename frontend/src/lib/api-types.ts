@@ -51,6 +51,9 @@ export interface paths {
         /**
          * Get Venues
          * @description Static venue registry + whether an adapter is currently registered.
+         *
+         *     Venues disabled in ``config/venues.yaml`` are omitted entirely (WHI-840) so
+         *     they do not appear as quote targets and consume no fan-out budget.
          */
         get: operations["get_venues_venues_get"];
         put?: never;
@@ -270,7 +273,7 @@ export interface components {
         };
         /**
          * HealthResponse
-         * @description Liveness payload for ``GET /health``.
+         * @description Liveness payload for ``GET /health`` (WHI-840: degradation without flap).
          */
         HealthResponse: {
             /**
@@ -283,6 +286,21 @@ export interface components {
              * @description Adapters whose startup() completed successfully.
              */
             adapters_initialized: number;
+            /**
+             * Adapters Expected
+             * @description Enabled adapters that should be started (excludes config-disabled).
+             */
+            adapters_expected: number;
+            /**
+             * Degraded
+             * @description True when at least one enabled adapter is not initialized.
+             */
+            degraded: boolean;
+            /**
+             * Unavailable Venues
+             * @description Enabled venue slugs that failed or have not completed startup.
+             */
+            unavailable_venues: string[];
         };
         /**
          * Quote

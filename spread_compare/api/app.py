@@ -116,8 +116,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             retry_task.cancel()
             try:
                 await retry_task
-            except (asyncio.CancelledError, Exception):  # noqa: BLE001 — never skip aclose
+            except asyncio.CancelledError:
+                # Expected after cancel(); do not re-raise so aclose still runs.
                 pass
+            except Exception:  # noqa: BLE001 — never skip aclose
+                logger.exception("adapter startup retry task failed during shutdown")
         await aclose_all()
         clear_disabled_venues()
         await mid_service.aclose()

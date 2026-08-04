@@ -156,6 +156,11 @@ def error_quote(
     )
 
 
+def not_initialized_message(venue: str) -> str:
+    """Canonical error_message for WHI-840 not_initialized rows."""
+    return f"{venue}: adapter startup did not complete"
+
+
 def not_initialized_quote(
     *,
     mid: ReferenceMid,
@@ -174,7 +179,7 @@ def not_initialized_quote(
         notional_usd=notional_usd,
         instrument_type=instrument_type,
         error_code="not_initialized",
-        error_message=f"{venue}: adapter startup did not complete",
+        error_message=not_initialized_message(venue),
     )
 
 
@@ -570,7 +575,7 @@ class QuoteAggregator:
                 book=None,
                 failed=True,
                 error_code="not_initialized",
-                error_message=f"{adapter.venue}: adapter startup did not complete",
+                error_message=not_initialized_message(adapter.venue),
             )
         try:
             async with asyncio.timeout(timeout):
