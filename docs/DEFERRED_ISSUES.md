@@ -62,12 +62,6 @@ defines none: `docs/GIT_WORKFLOW.md` § High-risk paths), **Medium**
   mid + catalog with WHI-810 (stocks) / a follow-up mid config ticket; adapters keep
   the mint/address map so live smoke can still probe QQQB once mid exists.
 
-- **AMM concurrent eth_call fan-out has no per-RPC rate limiter** (Low, WHI-836).
-  `probe_quoter_v2` / Aerodrome `_probe_all` issue 4–8 concurrent `eth_call`s with no
-  client-side throttle. Public RPC 429/`-32603` surfaces as transport →
-  `AdapterFetchError` when every path fails. Acceptable for Phase 1 private RPCs;
-  add a per-endpoint token bucket if public-RPC multi-tenant deploy lands.
-
 - **Jupiter header adaptation does not retune `window_sec` from `x-ratelimit-reset`**
   (Low, WHI-836). Capacity adapts from remaining+current; window stays config-fixed
   at the measured ~1s. If a plan's reset interval diverges, add reset-based window

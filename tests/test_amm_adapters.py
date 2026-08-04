@@ -1,30 +1,38 @@
-"""Unit tests for AMM DEX adapters (WHI-804 / WHI-836) — mocked eth_call, no network."""
+"""Unit tests for AMM DEX adapters (WHI-804 / WHI-836 / WHI-842) — mocked eth_call."""
 
 from __future__ import annotations
 
-import asyncio
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
+import httpx
 import pytest
 from eth_abi import encode
 
 import spread_compare.adapters  # noqa: F401 — ensure registration
 from spread_compare.adapters import get, list_venues
 from spread_compare.adapters._amm_common import (
+    MULTICALL3_ADDRESS,
     UNISWAP_FEE_TIERS,
+    JsonRpcError,
+    RpcClient,
+    clear_rpc_endpoint_state,
+    decode_multicall3_aggregate3,
     decode_quoter_v2_result,
+    encode_multicall3_aggregate3,
     encode_quote_exact_input_single,
     encode_quote_exact_output_single,
     fee_to_lp_bps,
     probe_quoter_v2,
+    rpc_endpoint_label,
 )
 from spread_compare.adapters.amm_aerodrome import AerodromeBaseAdapter
 from spread_compare.adapters.amm_pancakeswap import PancakeSwapBscAdapter
 from spread_compare.adapters.amm_uniswap import UniswapEthAdapter
 from spread_compare.models import Quote, ReferenceMid
+from spread_compare.settings import RpcChainBudget
 
 _MID_ETH = ReferenceMid(
     snapshot_id="snap-amm",
@@ -62,7 +70,7 @@ def _encode_amounts_out(amounts: list[int]) -> bytes:
 
 
 class _FakeRpc:
-    """Scripted RpcClient stand-in."""
+    """Scripted RpcClient stand-in with Multicall3-compatible eth_call_many."""
 
     def __init__(
         self,
@@ -73,15 +81,33 @@ class _FakeRpc:
         self._call_handler = call_handler
         self._gas_price_wei = gas_price_wei
         self.eth_calls: list[tuple[str, bytes]] = []
+        self.eth_call_many_count = 0
+        self.gas_price_calls = 0
 
     async def eth_call(self, to: str, data: bytes) -> bytes:
         self.eth_calls.append((to, data))
         return await self._call_handler(to, data)
 
-    async def eth_gas_price(self) -> int:
-        if self._gas_price_wei is None:
-            from spread_compare.adapters._amm_common import JsonRpcError
+    async def eth_call_many(
+        self, calls: list[tuple[str, bytes]]
+    ) -> list[tuple[bool, bytes | None]]:
+        """Simulate Multicall3: per-subcall revert stays local; transport aborts."""
+        self.eth_call_many_count += 1
+        out: list[tuple[bool, bytes | None]] = []
+        for to, data in calls:
+            try:
+                raw = await self.eth_call(to, data)
+            except JsonRpcError as exc:
+                if not exc.revert:
+                    raise
+                out.append((False, None))
+            else:
+                out.append((True, raw))
+        return out
 
+    async def eth_gas_price(self) -> int:
+        self.gas_price_calls += 1
+        if self._gas_price_wei is None:
             raise JsonRpcError("gas price unavailable")
         return self._gas_price_wei
 
@@ -485,26 +511,32 @@ async def test_no_quote_when_all_tiers_revert(
 
 
 @pytest.mark.asyncio
-async def test_probe_quoter_v2_issues_eth_calls_concurrently() -> None:
-    """Fee-tier eth_calls run concurrently (WHI-836); peak in-flight == tier count."""
-    in_flight = 0
-    peak_in_flight = 0
-    n_tiers = len(UNISWAP_FEE_TIERS)
-    barrier = asyncio.Barrier(n_tiers)
+async def test_probe_quoter_v2_batches_fee_tiers_in_one_eth_call_many() -> None:
+    """Fee tiers share one eth_call_many (WHI-842 Multicall3), not N HTTP posts."""
 
-    class _ConcurrentRpc:
+    class _BatchRpc:
+        def __init__(self) -> None:
+            self.many_count = 0
+            self.call_count = 0
+
         async def eth_call(self, to: str, data: bytes) -> bytes:
-            nonlocal in_flight, peak_in_flight
-            in_flight += 1
-            peak_in_flight = max(peak_in_flight, in_flight)
-            await barrier.wait()
-            in_flight -= 1
-            # Distinct amount_out per call so prefer_quoter_result still picks one.
-            amount = 990_000_000 + (data[-4] % 10)
-            return _encode_quoter_result(amount, gas_estimate=150_000)
+            self.call_count += 1
+            raise AssertionError("probe_quoter_v2 must use eth_call_many, not eth_call")
 
+        async def eth_call_many(
+            self, calls: list[tuple[str, bytes]]
+        ) -> list[tuple[bool, bytes | None]]:
+            self.many_count += 1
+            assert len(calls) == len(UNISWAP_FEE_TIERS)
+            out: list[tuple[bool, bytes | None]] = []
+            for i, _ in enumerate(calls):
+                amount = 990_000_000 + i
+                out.append((True, _encode_quoter_result(amount, gas_estimate=150_000)))
+            return out
+
+    rpc = _BatchRpc()
     result = await probe_quoter_v2(
-        _ConcurrentRpc(),  # type: ignore[arg-type]
+        rpc,  # type: ignore[arg-type]
         "0x0000000000000000000000000000000000000001",
         token_base="0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
         token_quote="0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
@@ -513,7 +545,39 @@ async def test_probe_quoter_v2_issues_eth_calls_concurrently() -> None:
         side="sell",
     )
     assert result is not None
-    assert peak_in_flight == n_tiers
+    assert rpc.many_count == 1
+    assert rpc.call_count == 0
+    # Highest amount_out wins (last tier).
+    assert result.amount_out == 990_000_000 + (len(UNISWAP_FEE_TIERS) - 1)
+
+
+@pytest.mark.asyncio
+async def test_probe_quoter_v2_single_tier_revert_does_not_poison_batch() -> None:
+    """One reverting fee tier stays no_quote for that tier; others still quote."""
+
+    class _PartialRpc:
+        async def eth_call_many(
+            self, calls: list[tuple[str, bytes]]
+        ) -> list[tuple[bool, bytes | None]]:
+            assert len(calls) == 3
+            return [
+                (False, None),  # fee tier 0 reverts
+                (True, _encode_quoter_result(500_000_000, gas_estimate=100_000)),
+                (True, _encode_quoter_result(400_000_000, gas_estimate=100_000)),
+            ]
+
+    result = await probe_quoter_v2(
+        _PartialRpc(),  # type: ignore[arg-type]
+        "0x0000000000000000000000000000000000000001",
+        token_base="0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+        token_quote="0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+        amount_base_raw=10**18,
+        fee_tiers=(100, 500, 3000),
+        side="sell",
+    )
+    assert result is not None
+    assert result.amount_out == 500_000_000
+    assert result.fee_label == "pool_500"
 
 
 @pytest.mark.asyncio
@@ -524,14 +588,13 @@ async def test_error_when_rpc_transport_fails(
     await adapter.startup()
 
     async def handler(to: str, data: bytes) -> bytes:
-        from spread_compare.adapters._amm_common import JsonRpcError
-
         raise JsonRpcError("eth_call transport failed: connect", transport=True)
 
     adapter._rpc = _FakeRpc(call_handler=handler)  # type: ignore[assignment]
     try:
         quote = await adapter.get_quote("ETH", "sell", Decimal("1000"), mid=_MID_ETH)
         assert quote.status == "error"
+        assert quote.error_code == "adapter_error"
         assert quote.effective_price is None
     finally:
         await adapter.aclose()
@@ -545,18 +608,229 @@ async def test_error_when_rpc_rate_limited(
     await adapter.startup()
 
     async def handler(to: str, data: bytes) -> bytes:
-        from spread_compare.adapters._amm_common import JsonRpcError
-
-        # Infra error that is NOT an execution revert.
         raise JsonRpcError(
-            "eth_call error: {'code': -32005, 'message': 'rate limited'}",
-            transport=False,
-            revert=False,
+            "eth_call rate limited after retries",
+            transport=True,
+            rate_limited=True,
         )
 
     adapter._rpc = _FakeRpc(call_handler=handler)  # type: ignore[assignment]
     try:
         quote = await adapter.get_quote("ETH", "sell", Decimal("1000"), mid=_MID_ETH)
         assert quote.status == "error"
+        assert quote.error_code == "rate_limited"
+        assert quote.effective_price is None
     finally:
         await adapter.aclose()
+
+
+def _rpc_budget(**overrides: Any) -> RpcChainBudget:
+    base = {
+        "rps": 50,
+        "window_sec": 1.0,
+        "max_attempts": 3,
+        "backoff_start_sec": 0.5,
+        "backoff_max_sec": 8.0,
+        "retry_after_floor_sec": 0.05,
+        "gas_price_cache_ttl_sec": 15.0,
+    }
+    base.update(overrides)
+    return RpcChainBudget.model_validate(base)
+
+
+@pytest.mark.asyncio
+async def test_aerodrome_get_quote_one_http_request(
+    eth_rpc_env: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Aerodrome get_quote is one HTTP: Multicall3 + eth_gasPrice batch (WHI-842)."""
+    clear_rpc_endpoint_state()
+    request_count = 0
+    fair_wei = int((Decimal("1000") / Decimal("3000")) * Decimal(10**18))
+    weth_out = fair_wei * 99 // 100
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal request_count
+        request_count += 1
+        import json
+
+        payload = json.loads(request.read())
+        # Cold path: JSON-RPC batch [eth_call Multicall3, eth_gasPrice].
+        assert isinstance(payload, list)
+        assert len(payload) == 2
+        call_req = next(p for p in payload if p["method"] == "eth_call")
+        gas_req = next(p for p in payload if p["method"] == "eth_gasPrice")
+        to = call_req["params"][0]["to"].lower()
+        assert to == MULTICALL3_ADDRESS.lower()
+        calldata = bytes.fromhex(call_req["params"][0]["data"][2:])
+        from eth_abi.abi import decode as abi_decode
+
+        assert calldata[:4].hex() == "82ad56cb"  # aggregate3
+        (calls,) = abi_decode(["(address,bool,bytes)[]"], calldata[4:])
+        assert len(calls) == 8  # 4 CL + 2 V2 + 2 router
+        results: list[tuple[bool, bytes]] = []
+        for i in range(len(calls)):
+            if i == 0:
+                results.append(
+                    (True, _encode_quoter_result(weth_out, gas_estimate=200_000))
+                )
+            else:
+                results.append((False, b""))
+        result_hex = "0x" + encode(["(bool,bytes)[]"], [results]).hex()
+        return httpx.Response(
+            200,
+            json=[
+                {"jsonrpc": "2.0", "id": call_req["id"], "result": result_hex},
+                {"jsonrpc": "2.0", "id": gas_req["id"], "result": "0x4a817c800"},
+            ],
+        )
+
+    transport = httpx.MockTransport(handler)
+    adapter = AerodromeBaseAdapter()
+    await adapter.startup()
+    await adapter.http.aclose()
+    adapter._client = httpx.AsyncClient(transport=transport, timeout=5.0)
+    adapter._rpc = RpcClient(
+        adapter.http,
+        "http://rpc.test/base",
+        rpc_env="BASE_RPC_URL",
+        budget=_rpc_budget(rps=100, max_attempts=1, gas_price_cache_ttl_sec=60.0),
+    )
+
+    async def fake_mid(http: Any, symbol: str) -> Decimal:
+        return Decimal("3000")
+
+    monkeypatch.setattr(
+        "spread_compare.adapters._amm_common.fetch_binance_mid",
+        fake_mid,
+    )
+
+    try:
+        quote = await adapter.get_quote("ETH", "buy", Decimal("1000"), mid=_MID_ETH)
+        assert quote.status == "ok"
+        assert quote.fee_breakdown.gas_unknown is False
+        assert request_count == 1
+    finally:
+        await adapter.aclose()
+        clear_rpc_endpoint_state()
+
+
+@pytest.mark.asyncio
+async def test_rpc_client_retries_429_then_rate_limited(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Injected HTTP 429 is retried; exhausted budget → rate_limited JsonRpcError."""
+    clear_rpc_endpoint_state()
+    sleeps: list[float] = []
+
+    async def fake_sleep(seconds: float) -> None:
+        sleeps.append(seconds)
+
+    monkeypatch.setattr(
+        "spread_compare.adapters._amm_common._async_sleep",
+        fake_sleep,
+    )
+
+    attempts = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal attempts
+        attempts += 1
+        return httpx.Response(
+            429,
+            headers={"Retry-After": "0.1", "x-ratelimit-remaining": "0"},
+            json={"error": "too many requests"},
+        )
+
+    transport = httpx.MockTransport(handler)
+    budget = _rpc_budget(max_attempts=3, backoff_start_sec=0.5, gas_price_cache_ttl_sec=0)
+    async with httpx.AsyncClient(transport=transport) as client:
+        rpc = RpcClient(
+            client,
+            "https://example.invalid/v2/SECRET_KEY_SHOULD_NOT_LOG",
+            rpc_env="BASE_RPC_URL",
+            budget=budget,
+        )
+        with pytest.raises(JsonRpcError) as ei:
+            await rpc.call("eth_blockNumber", [])
+        err = ei.value
+        assert err.rate_limited is True
+        assert err.transport is True
+        assert "SECRET_KEY" not in str(err)
+        assert attempts == 3
+        assert len(sleeps) == 2  # sleep between attempts, not after last
+        assert all(s == 0.1 for s in sleeps)  # Retry-After honoured
+    clear_rpc_endpoint_state()
+
+
+@pytest.mark.asyncio
+async def test_eth_gas_price_cached_per_endpoint() -> None:
+    """eth_gasPrice is fetched at most once within the cache TTL (WHI-842)."""
+    clear_rpc_endpoint_state()
+    gas_posts = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal gas_posts
+        import json
+
+        payload = json.loads(request.read())
+        assert payload["method"] == "eth_gasPrice"
+        gas_posts += 1
+        return httpx.Response(
+            200,
+            json={"jsonrpc": "2.0", "id": payload["id"], "result": "0x3b9aca00"},
+        )
+
+    budget = _rpc_budget(max_attempts=1, gas_price_cache_ttl_sec=30.0)
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(transport=transport) as client:
+        rpc = RpcClient(
+            client,
+            "http://rpc.test/shared",
+            rpc_env="ETH_RPC_URL",
+            budget=budget,
+        )
+        a = await rpc.eth_gas_price()
+        b = await rpc.eth_gas_price()
+        # Second client on same URL shares the endpoint cache.
+        rpc2 = RpcClient(
+            client,
+            "http://rpc.test/shared",
+            rpc_env="ETH_RPC_URL",
+            budget=budget,
+        )
+        c = await rpc2.eth_gas_price()
+        assert a == b == c == 1_000_000_000
+        assert gas_posts == 1
+    clear_rpc_endpoint_state()
+
+
+def test_multicall3_encode_decode_roundtrip() -> None:
+    calls = [
+        ("0x0000000000000000000000000000000000000001", b"\x11\x22"),
+        ("0x0000000000000000000000000000000000000002", b"\x33"),
+    ]
+    encoded = encode_multicall3_aggregate3(calls)
+    assert encoded[:4].hex() == "82ad56cb"
+    # Simulate aggregate3 return for two successes.
+    ret = encode(
+        ["(bool,bytes)[]"],
+        [[(True, b"\xaa"), (False, b"")]],
+    )
+    decoded = decode_multicall3_aggregate3(ret)
+    assert decoded == [(True, b"\xaa"), (False, b"")]
+
+
+def test_rpc_endpoint_label_strips_secrets() -> None:
+    label = rpc_endpoint_label("https://base-mainnet.g.alchemy.com/v2/super-secret-key")
+    assert label == "base-mainnet.g.alchemy.com"
+    assert "secret" not in label
+
+
+def test_multicall3_address_has_verification_comment() -> None:
+    """Acceptance: Multicall3 address carries verification source + date comment."""
+    common = Path(__file__).resolve().parents[1] / "spread_compare" / "adapters" / "_amm_common.py"
+    text = common.read_text(encoding="utf-8")
+    assert "0xcA11bde05977b3631167028862bE2a173976CA11" in text
+    assert "Verified 2026-08-04" in text
+    assert "multicall3.com" in text
