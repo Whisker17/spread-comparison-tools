@@ -6,6 +6,7 @@ Underscore-prefixed so adapter auto-discovery skips this module.
 
 from __future__ import annotations
 
+import asyncio
 import os
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -372,78 +373,83 @@ async def probe_quoter_v2(
     fee_tiers: tuple[int, ...],
     side: Side,
 ) -> QuoterResult | None:
-    """Probe Uniswap-family QuoterV2 fee tiers; return the best executable quote.
+    """Probe Uniswap-family QuoterV2 fee tiers concurrently; return best quote.
 
     Sell: ExactIn base → quote. Buy: ExactOut base ← quote.
     Transport/RPC outage (no successful eth_call) raises AdapterFetchError so the
     adapter can map to status=error (WHI-799 §6.6). Per-tier reverts stay no_quote.
+    Fee tiers are independent and issued via ``asyncio.gather`` (WHI-836).
     """
-    best: QuoterResult | None = None
-    saw_success = False
-    transport_failures = 0
-    revert_failures = 0
-
     if amount_base_raw is None or amount_base_raw <= 0:
         return None
 
-    async def _try_call(data: bytes) -> tuple[int, int] | None:
-        nonlocal saw_success, transport_failures, revert_failures
-        try:
-            raw = await rpc.eth_call(quoter, data)
-            saw_success = True
-            amount, _, _, gas_est = decode_quoter_v2_result(raw)
-            return amount, gas_est
-        except JsonRpcError as exc:
-            if exc.transport or not exc.revert:
-                # Transport or infra (rate-limit / -32603 / etc.) — not a pool miss.
-                transport_failures += 1
-            else:
-                revert_failures += 1
-            return None
-        except ValueError:
-            revert_failures += 1
-            return None
+    # Outcome of one tier probe: success payload or a failure classification.
+    # Using return values (not shared counters) keeps concurrent probes race-free.
+    Outcome = tuple[str, QuoterResult | None]
+    # ("ok", result) | ("transport", None) | ("revert", None)
 
-    if side == "sell":
-        for fee in fee_tiers:
+    async def _probe_tier(fee: int) -> Outcome:
+        if side == "sell":
             data = encode_quote_exact_input_single(
                 token_base, token_quote, amount_base_raw, fee
             )
-            got = await _try_call(data)
-            if got is None:
-                continue
-            amount_out, gas_est = got
-            if amount_out <= 0:
-                continue
+        else:
+            data = encode_quote_exact_output_single(
+                token_quote, token_base, amount_base_raw, fee
+            )
+        try:
+            raw = await rpc.eth_call(quoter, data)
+            amount, _, _, gas_est = decode_quoter_v2_result(raw)
+        except JsonRpcError as exc:
+            if exc.transport or not exc.revert:
+                return "transport", None
+            return "revert", None
+        except ValueError:
+            return "revert", None
+
+        if side == "sell":
+            if amount <= 0:
+                return "ok", None
             candidate = QuoterResult(
                 amount_in=amount_base_raw,
-                amount_out=amount_out,
+                amount_out=amount,
                 gas_estimate=gas_est,
                 fee_label=f"pool_{fee}",
                 lp_fee_tier_bps=fee_to_lp_bps(fee),
                 exact_out=False,
             )
-            best = prefer_quoter_result(best, candidate, prefer_min_in=False)
-    else:
-        for fee in fee_tiers:
-            data = encode_quote_exact_output_single(
-                token_quote, token_base, amount_base_raw, fee
-            )
-            got = await _try_call(data)
-            if got is None:
-                continue
-            amount_in, gas_est = got
-            if amount_in <= 0:
-                continue
-            candidate = QuoterResult(
-                amount_in=amount_in,
-                amount_out=amount_base_raw,
-                gas_estimate=gas_est,
-                fee_label=f"pool_{fee}",
-                lp_fee_tier_bps=fee_to_lp_bps(fee),
-                exact_out=True,
-            )
-            best = prefer_quoter_result(best, candidate, prefer_min_in=True)
+            return "ok", candidate
+
+        if amount <= 0:
+            return "ok", None
+        candidate = QuoterResult(
+            amount_in=amount,
+            amount_out=amount_base_raw,
+            gas_estimate=gas_est,
+            fee_label=f"pool_{fee}",
+            lp_fee_tier_bps=fee_to_lp_bps(fee),
+            exact_out=True,
+        )
+        return "ok", candidate
+
+    outcomes = await asyncio.gather(*(_probe_tier(fee) for fee in fee_tiers))
+
+    best: QuoterResult | None = None
+    saw_success = False
+    transport_failures = 0
+    revert_failures = 0
+    prefer_min_in = side != "sell"
+    for kind, candidate in outcomes:
+        if kind == "ok":
+            saw_success = True
+            if candidate is not None:
+                best = prefer_quoter_result(
+                    best, candidate, prefer_min_in=prefer_min_in
+                )
+        elif kind == "transport":
+            transport_failures += 1
+        else:
+            revert_failures += 1
 
     if best is None and not saw_success and transport_failures > 0:
         raise AdapterFetchError(

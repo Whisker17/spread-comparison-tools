@@ -8,8 +8,6 @@ as an adapter. Perp adapters import from here; walk/bps math stay in
 from __future__ import annotations
 
 import asyncio
-import time
-from collections import deque
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -37,6 +35,7 @@ from spread_compare.models import (
     Side,
     TopOfBook,
 )
+from spread_compare.ratelimit import AsyncRateLimiter, RollingWindowRateLimiter
 
 # Rate/depth defaults trace to docs/research/WHI-800-venue-api-survey.md §4
 # until DESIGN.md §2 exists (see docs/DEFERRED_ISSUES.md).
@@ -44,81 +43,8 @@ DEFAULT_FEE_TIER: str = "default_taker"
 
 OrderbookLevels = list[tuple[Decimal, Decimal]]
 
-
-class AsyncRateLimiter:
-    """Simple min-interval throttle (one request slot at a time per instance).
-
-    The lock is re-created if the running event loop changes so module-level
-    limiters stay valid across pytest-asyncio loops and Starlette TestClient.
-    """
-
-    def __init__(self, min_interval_s: float) -> None:
-        self._min_interval_s = min_interval_s
-        self._lock: asyncio.Lock | None = None
-        self._loop: asyncio.AbstractEventLoop | None = None
-        self._last_mono = 0.0
-
-    def _get_lock(self) -> asyncio.Lock:
-        loop = asyncio.get_running_loop()
-        if self._lock is None or self._loop is not loop:
-            self._lock = asyncio.Lock()
-            self._loop = loop
-        return self._lock
-
-    async def acquire(self) -> None:
-        async with self._get_lock():
-            now = time.monotonic()
-            wait = self._min_interval_s - (now - self._last_mono)
-            if wait > 0:
-                await asyncio.sleep(wait)
-            self._last_mono = time.monotonic()
-
-
-class RollingWindowRateLimiter:
-    """Cap requests in a rolling wall-clock window (e.g. 60 req / 60s)."""
-
-    def __init__(self, *, max_requests: int, window_s: float) -> None:
-        if max_requests < 1:
-            raise ValueError("max_requests must be >= 1")
-        if window_s <= 0:
-            raise ValueError("window_s must be positive")
-        self._max_requests = max_requests
-        self._window_s = window_s
-        self._lock: asyncio.Lock | None = None
-        self._loop: asyncio.AbstractEventLoop | None = None
-        self._timestamps: deque[float] = deque()
-
-    @property
-    def max_requests(self) -> int:
-        return self._max_requests
-
-    @property
-    def window_s(self) -> float:
-        return self._window_s
-
-    def _get_lock(self) -> asyncio.Lock:
-        loop = asyncio.get_running_loop()
-        if self._lock is None or self._loop is not loop:
-            self._lock = asyncio.Lock()
-            self._loop = loop
-        return self._lock
-
-    def _prune(self, now: float) -> None:
-        cutoff = now - self._window_s
-        while self._timestamps and self._timestamps[0] <= cutoff:
-            self._timestamps.popleft()
-
-    async def acquire(self) -> None:
-        async with self._get_lock():
-            while True:
-                now = time.monotonic()
-                self._prune(now)
-                if len(self._timestamps) < self._max_requests:
-                    self._timestamps.append(now)
-                    return
-                wait = self._timestamps[0] + self._window_s - now
-                if wait > 0:
-                    await asyncio.sleep(wait)
+# AsyncRateLimiter / RollingWindowRateLimiter are re-exported from
+# spread_compare.ratelimit for historical import paths.
 
 
 def parse_levels(raw: Sequence[Sequence[object]]) -> OrderbookLevels:

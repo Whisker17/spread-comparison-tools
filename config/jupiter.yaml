@@ -1,0 +1,13 @@
+# Jupiter Quote API rate budget (WHI-836 / WHI-797 §3.3).
+# Window capacities measured against api.jup.ag (keyed: remaining+current=10;
+# keyless: burst of 5 then 429). Plan upgrades are config edits only.
+# Secrets (JUPITER_API_KEY) stay in .env.
+
+# Starting estimates; live responses may refine capacity via headers when
+# adapt_from_headers is true.
+keyless_capacity: 5
+keyed_capacity: 10
+# Rolling window length implied by x-ratelimit-reset (~1s measured).
+window_sec: 1.0
+# When true, sync bucket from x-ratelimit-remaining / x-ratelimit-current.
+adapt_from_headers: true

@@ -447,10 +447,10 @@ class QuoteAggregator:
     ) -> SizeQuotePair:
         adapter = registry_get(slug)
         itype = effective_instrument_type(adapter.venue_class, instrument_type)
-        timeout = self._agg.venue_timeout_sec
+        timeout = self._agg.timeout_for(adapter.venue_class)
         stale_threshold = self._mid_settings.stale_threshold_sec
 
-        # Concurrent legs + TOB within a venue (each call bounded by venue_timeout).
+        # Concurrent legs + TOB within a venue (each call bounded by class timeout).
         side_order: list[Side] = list(sides)
         quote_coros = [
             quote_with_timeout(

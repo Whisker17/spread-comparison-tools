@@ -9,11 +9,11 @@ from decimal import Decimal
 import pytest
 
 from spread_compare.adapters._perp_common import (
-    RollingWindowRateLimiter,
     aggregate_orders_by_price,
     build_quote_from_book,
 )
 from spread_compare.costs import basis_bps
+from spread_compare.ratelimit import RollingWindowRateLimiter
 
 # WHI-799 §4.7
 _MID = Decimal("100000")

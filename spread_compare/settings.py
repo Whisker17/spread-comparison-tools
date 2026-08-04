@@ -1,10 +1,11 @@
-"""Typed runtime config loaded from ``config/*.yaml`` (WHI-807).
+"""Typed runtime config loaded from ``config/*.yaml`` (WHI-807 / WHI-836).
 
 Secrets stay in ``.env``; non-secret tunables live here. Values marked unvalidated
 in WHI-799 §3.2 / WHI-807 are engineering defaults pending DESIGN.md §2.
 
 YAML is authoritative — pydantic fields have **no** Python-side default values so a
-missing key fails at startup instead of silently diverging from the file.
+missing key fails at startup instead of silently diverging from the file
+(optional maps may use empty defaults when the file is allowed to omit them).
 """
 
 from __future__ import annotations
@@ -15,6 +16,8 @@ from typing import Any
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from spread_compare.models import VenueClass
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _CONFIG_DIR = _REPO_ROOT / "config"
@@ -45,7 +48,37 @@ class AggregatorSettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     venue_timeout_sec: float = Field(gt=0)
+    # Optional per-class overrides; empty map = always use venue_timeout_sec.
+    # Default empty so unit tests constructing AggregatorSettings(...) stay terse.
+    venue_timeout_by_class: dict[VenueClass, float] = Field(default_factory=dict)
     response_cache_ttl_sec: float = Field(ge=0)
+
+    @field_validator("venue_timeout_by_class")
+    @classmethod
+    def _positive_class_timeouts(
+        cls, value: dict[VenueClass, float]
+    ) -> dict[VenueClass, float]:
+        for key, timeout in value.items():
+            if timeout <= 0:
+                raise ValueError(
+                    f"venue_timeout_by_class[{key!r}] must be > 0, got {timeout}"
+                )
+        return value
+
+    def timeout_for(self, venue_class: VenueClass) -> float:
+        """Per-venue-class timeout, falling back to the global default."""
+        return self.venue_timeout_by_class.get(venue_class, self.venue_timeout_sec)
+
+
+class JupiterSettings(BaseModel):
+    """``config/jupiter.yaml`` — Quote API rate budget (WHI-836)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    keyless_capacity: int = Field(ge=1)
+    keyed_capacity: int = Field(ge=1)
+    window_sec: float = Field(gt=0)
+    adapt_from_headers: bool
 
 
 class ApiSettings(BaseModel):
@@ -99,6 +132,12 @@ def load_aggregator_settings() -> AggregatorSettings:
 
 
 @lru_cache(maxsize=1)
+def load_jupiter_settings() -> JupiterSettings:
+    """Parse Jupiter rate-budget settings once; fail fast on invalid config."""
+    return JupiterSettings.model_validate(_merge_local("jupiter"))
+
+
+@lru_cache(maxsize=1)
 def load_api_settings() -> ApiSettings:
     """Parse API settings once; fail fast on invalid config."""
     return ApiSettings.model_validate(_merge_local("api"))
@@ -108,4 +147,5 @@ def clear_settings_cache() -> None:
     """Drop cached settings (tests that rewrite YAML)."""
     load_mid_settings.cache_clear()
     load_aggregator_settings.cache_clear()
+    load_jupiter_settings.cache_clear()
     load_api_settings.cache_clear()

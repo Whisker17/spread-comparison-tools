@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import time
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from datetime import UTC, datetime
@@ -43,6 +42,7 @@ from spread_compare.models import (
     TopOfBook,
     VenueClass,
 )
+from spread_compare.ratelimit import AsyncRateLimiter
 
 logger = logging.getLogger(__name__)
 
@@ -50,23 +50,6 @@ DEFAULT_FEE_TIER: str = "default_taker"
 
 CexBookSide = Literal["spot", "perp"]
 OrderbookLevels = list[tuple[Decimal, Decimal]]
-
-
-class AsyncRateLimiter:
-    """Simple min-interval throttle (one request slot at a time per instance)."""
-
-    def __init__(self, min_interval_s: float) -> None:
-        self._min_interval_s = min_interval_s
-        self._lock = asyncio.Lock()
-        self._last_mono = 0.0
-
-    async def acquire(self) -> None:
-        async with self._lock:
-            now = time.monotonic()
-            wait = self._min_interval_s - (now - self._last_mono)
-            if wait > 0:
-                await asyncio.sleep(wait)
-            self._last_mono = time.monotonic()
 
 
 def parse_levels(raw: Sequence[Sequence[object]]) -> OrderbookLevels:

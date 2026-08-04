@@ -1,8 +1,11 @@
-"""Jupiter prop-AMM adapters for Solana (WHI-806 / WHI-797).
+"""Jupiter prop-AMM adapters for Solana (WHI-806 / WHI-797 / WHI-836).
 
 Three venue instances share one Quote API client pattern, filtered by
 ``dexes=<exact Jupiter label>``. Labels are case-sensitive and validated at
 startup against ``/program-id-to-label`` (wrong labels look like empty markets).
+
+Rate budget is a process-wide :class:`TokenBucketRateLimiter` sized from
+``config/jupiter.yaml`` (and optionally refined from response headers).
 """
 
 from __future__ import annotations
@@ -15,7 +18,6 @@ from typing import Any, ClassVar, Final, Literal
 
 import httpx
 
-from spread_compare.adapters._perp_common import AsyncRateLimiter
 from spread_compare.adapters._prop_common import (
     SOL_MINTS,
     PropFill,
@@ -42,16 +44,14 @@ from spread_compare.models import (
     TopOfBook,
     VenueClass,
 )
+from spread_compare.ratelimit import TokenBucketRateLimiter
+from spread_compare.settings import JupiterSettings, load_jupiter_settings
 
 logger = logging.getLogger(__name__)
 
 # Abstracted base URL — Metis v1 is in maintenance; Swap V2 migration expected.
 # Non-secret: override via env only for staging/migration; not a secret (AGENTS.md).
 JUPITER_BASE_URL: Final[str] = "https://api.jup.ag/swap/v1"
-# Keyless plan is 0.5 RPS (burst ~5); safe default ≥2s spacing (WHI-797 §3.3).
-_KEYLESS_MIN_INTERVAL_S: Final[float] = 2.0
-# With an API key, Free plan is 1 RPS.
-_KEYED_MIN_INTERVAL_S: Final[float] = 1.0
 _MAX_RETRIES: Final[int] = 4
 _DEFAULT_SLIPPAGE_BPS: Final[int] = 50
 
@@ -65,7 +65,7 @@ _EXPECTED_PROGRAM_IDS: Final[dict[str, str]] = {
 _SOLANA_ASSETS: Final[tuple[str, ...]] = ("SOL", "BTC", "ETH")
 
 # Module-level limiter shared by all three Solana prop adapters (one upstream).
-_jupiter_limiter: AsyncRateLimiter | None = None
+_jupiter_limiter: TokenBucketRateLimiter | None = None
 _jupiter_limiter_keyed: bool | None = None
 # One program-id-to-label fetch serves all three Solana prop adapters.
 _label_map_cache: dict[str, str] | None = None
@@ -95,23 +95,64 @@ def _get_meta_lock() -> asyncio.Lock:
     return _meta_lock
 
 
-async def _get_jupiter_limiter(*, has_api_key: bool) -> AsyncRateLimiter:
-    """Return the process-wide Jupiter rate limiter (created on first use).
+def _capacity_for(*, has_api_key: bool, settings: JupiterSettings) -> int:
+    return settings.keyed_capacity if has_api_key else settings.keyless_capacity
 
-    Interval is chosen from the strictest mode seen: once any keyless caller
-    has been observed, keep the 2s floor even if a later caller has a key.
+
+async def _get_jupiter_limiter(*, has_api_key: bool) -> TokenBucketRateLimiter:
+    """Return the process-wide Jupiter token-bucket limiter (created on first use).
+
+    Capacity is chosen from the strictest mode seen: once any keyless caller
+    has been observed, keep the keyless capacity even if a later caller has a key.
     """
     global _jupiter_limiter, _jupiter_limiter_keyed
+    settings = load_jupiter_settings()
     async with _get_meta_lock():
         if _jupiter_limiter is None:
-            interval = _KEYED_MIN_INTERVAL_S if has_api_key else _KEYLESS_MIN_INTERVAL_S
-            _jupiter_limiter = AsyncRateLimiter(interval)
+            capacity = _capacity_for(has_api_key=has_api_key, settings=settings)
+            _jupiter_limiter = TokenBucketRateLimiter(
+                capacity=capacity,
+                window_s=settings.window_sec,
+            )
             _jupiter_limiter_keyed = has_api_key
         elif not has_api_key and _jupiter_limiter_keyed and _jupiter_limiter is not None:
-            # Upgrade to stricter keyless spacing without resetting the clock.
-            _jupiter_limiter._min_interval_s = _KEYLESS_MIN_INTERVAL_S  # noqa: SLF001
+            # Downgrade to keyless capacity without inventing extra tokens.
+            _jupiter_limiter.set_capacity(settings.keyless_capacity)
             _jupiter_limiter_keyed = False
         return _jupiter_limiter
+
+
+def _observe_rate_limit_headers(
+    resp: httpx.Response,
+    limiter: TokenBucketRateLimiter,
+    *,
+    venue: str,
+) -> None:
+    """Log rate-limit headers and optionally sync the bucket (never logs the API key)."""
+    remaining_raw = resp.headers.get("x-ratelimit-remaining")
+    current_raw = resp.headers.get("x-ratelimit-current")
+    reset_raw = resp.headers.get("x-ratelimit-reset")
+    if remaining_raw is None and current_raw is None and reset_raw is None:
+        return
+    logger.info(
+        "%s Jupiter rate-limit headers remaining=%s current=%s reset=%s",
+        venue,
+        remaining_raw,
+        current_raw,
+        reset_raw,
+    )
+    settings = load_jupiter_settings()
+    if not settings.adapt_from_headers:
+        return
+    try:
+        remaining = int(remaining_raw) if remaining_raw is not None else None
+        current = int(current_raw) if current_raw is not None else None
+    except ValueError:
+        return
+    if remaining is not None and current is not None:
+        limiter.observe_window(remaining=remaining, current=current)
+    elif remaining is not None:
+        limiter.observe_remaining(remaining)
 
 
 def jupiter_base_url() -> str:
@@ -285,6 +326,7 @@ class JupiterPropAdapter(BaseAdapter):
             await limiter.acquire()
             try:
                 resp = await self.http.get(url, headers=headers)
+                _observe_rate_limit_headers(resp, limiter, venue=self.venue)
                 if resp.status_code == 429:
                     wait = _retry_after_seconds(resp, 0)
                     logger.warning(
@@ -293,6 +335,7 @@ class JupiterPropAdapter(BaseAdapter):
                     await asyncio.sleep(wait)
                     await limiter.acquire()
                     resp = await self.http.get(url, headers=headers)
+                    _observe_rate_limit_headers(resp, limiter, venue=self.venue)
                 resp.raise_for_status()
                 raw: Any = resp.json()
             except (httpx.HTTPError, ValueError, TypeError) as exc:
@@ -338,6 +381,8 @@ class JupiterPropAdapter(BaseAdapter):
                 raise AdapterTimeoutError(f"{self.venue}: Jupiter quote timed out") from exc
             except httpx.HTTPError as exc:
                 raise AdapterFetchError(f"{self.venue}: Jupiter transport error: {exc}") from exc
+
+            _observe_rate_limit_headers(resp, limiter, venue=self.venue)
 
             if resp.status_code == 429:
                 wait = _retry_after_seconds(resp, attempt)

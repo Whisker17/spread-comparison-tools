@@ -1,7 +1,8 @@
-"""Unit tests for AMM DEX adapters (WHI-804) — mocked eth_call, no network."""
+"""Unit tests for AMM DEX adapters (WHI-804 / WHI-836) — mocked eth_call, no network."""
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -13,10 +14,12 @@ from eth_abi import encode
 import spread_compare.adapters  # noqa: F401 — ensure registration
 from spread_compare.adapters import get, list_venues
 from spread_compare.adapters._amm_common import (
+    UNISWAP_FEE_TIERS,
     decode_quoter_v2_result,
     encode_quote_exact_input_single,
     encode_quote_exact_output_single,
     fee_to_lp_bps,
+    probe_quoter_v2,
 )
 from spread_compare.adapters.amm_aerodrome import AerodromeBaseAdapter
 from spread_compare.adapters.amm_pancakeswap import PancakeSwapBscAdapter
@@ -479,6 +482,38 @@ async def test_no_quote_when_all_tiers_revert(
         assert quote.effective_price is None
     finally:
         await adapter.aclose()
+
+
+@pytest.mark.asyncio
+async def test_probe_quoter_v2_issues_eth_calls_concurrently() -> None:
+    """Fee-tier eth_calls run concurrently (WHI-836); peak in-flight == tier count."""
+    in_flight = 0
+    peak_in_flight = 0
+    n_tiers = len(UNISWAP_FEE_TIERS)
+    barrier = asyncio.Barrier(n_tiers)
+
+    class _ConcurrentRpc:
+        async def eth_call(self, to: str, data: bytes) -> bytes:
+            nonlocal in_flight, peak_in_flight
+            in_flight += 1
+            peak_in_flight = max(peak_in_flight, in_flight)
+            await barrier.wait()
+            in_flight -= 1
+            # Distinct amount_out per call so prefer_quoter_result still picks one.
+            amount = 990_000_000 + (data[-4] % 10)
+            return _encode_quoter_result(amount, gas_estimate=150_000)
+
+    result = await probe_quoter_v2(
+        _ConcurrentRpc(),  # type: ignore[arg-type]
+        "0x0000000000000000000000000000000000000001",
+        token_base="0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+        token_quote="0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+        amount_base_raw=10**18,
+        fee_tiers=UNISWAP_FEE_TIERS,
+        side="sell",
+    )
+    assert result is not None
+    assert peak_in_flight == n_tiers
 
 
 @pytest.mark.asyncio
