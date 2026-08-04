@@ -5,12 +5,14 @@ with ``qty_method=quote_exact_in_approx`` (WHI-799 §4.4).
 
 CL candidates (with gasEstimate) are preferred over V2/router paths when they
 produce a quote, so ``total_cost_bps`` can be filled whenever CL liquidity exists.
+
+WHI-842: all probe paths (CL tick spacings + V2 + router) are issued as one
+Multicall3.aggregate3 eth_call so a page load does not burst the Base RPC.
 """
 
 from __future__ import annotations
 
-import asyncio
-import logging
+from collections.abc import Callable
 from decimal import Decimal
 
 from spread_compare.adapters._amm_common import (
@@ -20,20 +22,18 @@ from spread_compare.adapters._amm_common import (
     ProbeOutcome,
     QuoterResult,
     TokenInfo,
-    classify_json_rpc_error,
     decode_aero_v2_amount,
     decode_get_amounts_out,
     decode_quoter_v2_result,
     encode_aero_exact_in_v2,
     encode_aero_exact_in_v3,
     encode_get_amounts_out,
+    outcome_from_raw,
     reduce_probe_outcomes,
     to_raw,
 )
 from spread_compare.adapters.registry import register_adapter
 from spread_compare.models import ReferenceMid, Side
-
-logger = logging.getLogger(__name__)
 
 # MixedQuoter (Base) — covers volatile / stable / CL.
 # Doc-sourced 2026-08-03 from https://aerodrome.finance/security
@@ -55,6 +55,62 @@ _CBBTC = TokenInfo("0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf", 8, "cbBTC")
 _WETH = TokenInfo("0x4200000000000000000000000000000000000006", 18, "WETH")
 # USDC (Base native): https://basescan.org/token/0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913
 _USDC = TokenInfo("0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", 6, "USDC")
+
+_ProbeSpec = tuple[str, bytes, Callable[[bytes], QuoterResult | None]]
+
+
+def _cl_builder(amount_in: int, tick: int) -> Callable[[bytes], QuoterResult | None]:
+    def _build(raw: bytes) -> QuoterResult | None:
+        amount_out, _, _, gas_est = decode_quoter_v2_result(raw)
+        if amount_out <= 0:
+            return None
+        return QuoterResult(
+            amount_in=amount_in,
+            amount_out=amount_out,
+            gas_estimate=gas_est,
+            fee_label=f"cl_tick_{tick}",
+            # Actual CL fee is per-pool; leave null rather than invent (WHI-812).
+            lp_fee_tier_bps=None,
+            exact_out=False,
+        )
+
+    return _build
+
+
+def _v2_builder(amount_in: int, label: str) -> Callable[[bytes], QuoterResult | None]:
+    def _build(raw: bytes) -> QuoterResult | None:
+        amount_out = decode_aero_v2_amount(raw)
+        if amount_out <= 0:
+            return None
+        return QuoterResult(
+            amount_in=amount_in,
+            amount_out=amount_out,
+            gas_estimate=None,
+            fee_label=label,
+            lp_fee_tier_bps=None,
+            exact_out=False,
+        )
+
+    return _build
+
+
+def _router_builder(
+    amount_in: int, label: str
+) -> Callable[[bytes], QuoterResult | None]:
+    def _build(raw: bytes) -> QuoterResult | None:
+        amounts = decode_get_amounts_out(raw)
+        if len(amounts) < 2 or amounts[-1] <= 0:
+            return None
+        return QuoterResult(
+            amount_in=amount_in,
+            amount_out=amounts[-1],
+            gas_estimate=None,
+            fee_label=label,
+            lp_fee_tier_bps=None,
+            exact_out=False,
+        )
+
+    return _build
 
 
 @register_adapter
@@ -108,91 +164,58 @@ class AerodromeBaseAdapter(AmmDexAdapter):
         token_out: str,
         amount_in: int,
     ) -> QuoterResult | None:
-        """Probe CL + V2 + router paths concurrently (WHI-836)."""
+        """Probe CL + V2 + router paths in one Multicall3 batch (WHI-842)."""
         rpc = self._require_rpc()
 
-        async def _probe_cl(tick: int) -> ProbeOutcome:
-            data = encode_aero_exact_in_v3(token_in, token_out, amount_in, tick)
-            try:
-                raw = await rpc.eth_call(_MIXED_QUOTER, data)
-            except JsonRpcError as exc:
-                return classify_json_rpc_error(exc), None
-            try:
-                amount_out, _, _, gas_est = decode_quoter_v2_result(raw)
-            except ValueError:
-                return "ok", None
-            if amount_out <= 0:
-                return "ok", None
-            return "ok", QuoterResult(
-                amount_in=amount_in,
-                amount_out=amount_out,
-                gas_estimate=gas_est,
-                fee_label=f"cl_tick_{tick}",
-                # Actual CL fee is per-pool; leave null rather than invent (WHI-812).
-                lp_fee_tier_bps=None,
-                exact_out=False,
+        specs: list[_ProbeSpec] = []
+        for tick in AERO_TICK_SPACINGS:
+            specs.append(
+                (
+                    _MIXED_QUOTER,
+                    encode_aero_exact_in_v3(token_in, token_out, amount_in, tick),
+                    _cl_builder(amount_in, tick),
+                )
+            )
+        for stable, label in ((False, "v2_volatile"), (True, "v2_stable")):
+            specs.append(
+                (
+                    _MIXED_QUOTER,
+                    encode_aero_exact_in_v2(token_in, token_out, stable, amount_in),
+                    _v2_builder(amount_in, label),
+                )
+            )
+        for stable, label in ((False, "router_volatile"), (True, "router_stable")):
+            specs.append(
+                (
+                    _ROUTER,
+                    encode_get_amounts_out(
+                        amount_in,
+                        [(token_in, token_out, stable, _POOL_FACTORY)],
+                    ),
+                    _router_builder(amount_in, label),
+                )
             )
 
-        async def _probe_v2(stable: bool, label: str) -> ProbeOutcome:
-            data = encode_aero_exact_in_v2(token_in, token_out, stable, amount_in)
-            try:
-                raw = await rpc.eth_call(_MIXED_QUOTER, data)
-            except JsonRpcError as exc:
-                return classify_json_rpc_error(exc), None
-            try:
-                amount_out = decode_aero_v2_amount(raw)
-            except ValueError:
-                return "ok", None
-            if amount_out <= 0:
-                return "ok", None
-            return "ok", QuoterResult(
-                amount_in=amount_in,
-                amount_out=amount_out,
-                gas_estimate=None,
-                fee_label=label,
-                lp_fee_tier_bps=None,
-                exact_out=False,
+        calls = [(target, data) for target, data, _ in specs]
+        try:
+            results = await rpc.eth_call_many(calls)
+        except JsonRpcError as exc:
+            if exc.rate_limited:
+                raise
+            return reduce_probe_outcomes(
+                [("transport", None)] * len(specs),
+                prefer_min_in=False,
+                error_label="Aerodrome quote paths",
             )
 
-        async def _probe_router(stable: bool, label: str) -> ProbeOutcome:
-            data = encode_get_amounts_out(
-                amount_in,
-                [(token_in, token_out, stable, _POOL_FACTORY)],
-            )
-            try:
-                raw = await rpc.eth_call(_ROUTER, data)
-            except JsonRpcError as exc:
-                return classify_json_rpc_error(exc), None
-            try:
-                amounts = decode_get_amounts_out(raw)
-            except ValueError:
-                return "ok", None
-            if len(amounts) < 2 or amounts[-1] <= 0:
-                return "ok", None
-            return "ok", QuoterResult(
-                amount_in=amount_in,
-                amount_out=amounts[-1],
-                gas_estimate=None,
-                fee_label=label,
-                lp_fee_tier_bps=None,
-                exact_out=False,
-            )
-
-        raw_outcomes = await asyncio.gather(
-            *(_probe_cl(tick) for tick in AERO_TICK_SPACINGS),
-            _probe_v2(False, "v2_volatile"),
-            _probe_v2(True, "v2_stable"),
-            _probe_router(False, "router_volatile"),
-            _probe_router(True, "router_stable"),
-            return_exceptions=True,
-        )
         outcomes: list[ProbeOutcome] = []
-        for item in raw_outcomes:
-            if isinstance(item, BaseException):
-                logger.warning("Aerodrome probe unexpected error: %s", item)
-                outcomes.append(("transport", None))
-            else:
-                outcomes.append(item)
+        for (_target, _data, builder), (success, raw) in zip(
+            specs, results, strict=True
+        ):
+            outcomes.append(
+                outcome_from_raw(success, raw, decode_and_build=builder)
+            )
+
         return reduce_probe_outcomes(
             outcomes,
             prefer_min_in=False,
