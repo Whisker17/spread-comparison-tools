@@ -6,6 +6,7 @@ Underscore-prefixed so adapter auto-discovery skips this module.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import time
@@ -426,22 +427,24 @@ def clear_rpc_endpoint_state() -> None:
 
 
 def _retry_after_seconds(
-    response: httpx.Response,
+    response: httpx.Response | None,
     attempt: int,
     *,
     start: float,
     max_wait: float,
     floor: float,
 ) -> float:
-    """Backoff for 429; honour Retry-After when present."""
-    retry_after = response.headers.get("retry-after")
-    if retry_after:
-        try:
-            parsed = float(retry_after)
-        except ValueError:
-            pass
-        else:
-            return parsed if parsed > floor else floor
+    """Backoff for 429; honour Retry-After when present, capped at max_wait."""
+    if response is not None:
+        retry_after = response.headers.get("retry-after")
+        if retry_after:
+            try:
+                parsed = float(retry_after)
+            except ValueError:
+                pass
+            else:
+                wait = parsed if parsed > floor else floor
+                return wait if wait < max_wait else max_wait
     wait = start * float(2**attempt)
     return wait if wait < max_wait else max_wait
 
@@ -459,7 +462,7 @@ def _log_rate_limit_headers(
     retry_after = response.headers.get("retry-after")
     if remaining is None and limit is None and reset is None and retry_after is None:
         return
-    # INFO only when actively rate-limited; routine headers stay DEBUG.
+    # WARNING when actively rate-limited; routine headers stay DEBUG.
     level = logging.WARNING if response.status_code == 429 else logging.DEBUG
     logger.log(
         level,
@@ -544,50 +547,26 @@ class RpcClient:
             )
         return body.get("result")
 
+    def _backoff_wait(
+        self,
+        response: httpx.Response | None,
+        attempt: int,
+    ) -> float:
+        return _retry_after_seconds(
+            response,
+            attempt,
+            start=self._budget.backoff_start_sec,
+            max_wait=self._budget.backoff_max_sec,
+            floor=self._budget.retry_after_floor_sec,
+        )
+
     async def call(self, method: str, params: list[Any]) -> Any:
+        """Single JSON-RPC method call with HTTP + body-level rate-limit retry."""
         last_rate_limited: JsonRpcError | None = None
         max_attempts = self._budget.max_attempts
         for attempt in range(max_attempts):
-            await self._state.limiter.acquire()
             payload = self._next_payload(method, params)
-            try:
-                response = await self._http.post(self._url, json=payload)
-            except httpx.HTTPError as exc:
-                # Never interpolate the full exception — it may embed the URL/key.
-                raise JsonRpcError(
-                    f"{method} transport failed: {type(exc).__name__} (host={self._host})",
-                    transport=True,
-                ) from exc
-
-            _log_rate_limit_headers(response, host=self._host, method=method)
-
-            if response.status_code == 429:
-                wait = _retry_after_seconds(
-                    response,
-                    attempt,
-                    start=self._budget.backoff_start_sec,
-                    max_wait=self._budget.backoff_max_sec,
-                    floor=self._budget.retry_after_floor_sec,
-                )
-                last_rate_limited = JsonRpcError(
-                    f"{method} rate limited (HTTP 429) host={self._host} "
-                    f"attempt={attempt + 1}/{max_attempts}",
-                    transport=True,
-                    rate_limited=True,
-                )
-                logger.warning("%s", last_rate_limited)
-                if attempt + 1 < max_attempts:
-                    await _async_sleep(wait)
-                    continue
-                raise last_rate_limited
-
-            if response.status_code >= 400:
-                raise JsonRpcError(
-                    f"{method} transport failed: HTTP {response.status_code} "
-                    f"(host={self._host})",
-                    transport=True,
-                )
-
+            response = await self._post_json(payload)
             try:
                 body = response.json()
             except ValueError as exc:
@@ -595,19 +574,12 @@ class RpcClient:
                     f"{method} transport failed: invalid JSON (host={self._host})",
                     transport=True,
                 ) from exc
-
             try:
                 return self._parse_jsonrpc_body(body, method=method)
             except JsonRpcError as exc:
                 if not exc.rate_limited:
                     raise
-                wait = _retry_after_seconds(
-                    response,
-                    attempt,
-                    start=self._budget.backoff_start_sec,
-                    max_wait=self._budget.backoff_max_sec,
-                    floor=self._budget.retry_after_floor_sec,
-                )
+                wait = self._backoff_wait(response, attempt)
                 last_rate_limited = JsonRpcError(
                     f"{method} rate limited (rpc error) host={self._host} "
                     f"attempt={attempt + 1}/{max_attempts}",
@@ -731,7 +703,8 @@ class RpcClient:
             try:
                 raw = await self.eth_call(target, data)
             except JsonRpcError as exc:
-                if exc.rate_limited or exc.transport or not exc.revert:
+                # Preserve accounting: only pure execution reverts become no_quote.
+                if not exc.revert:
                     raise
                 return [(False, None)]
             return [(True, raw)]
@@ -747,7 +720,42 @@ class RpcClient:
         fetch_gas = warm_gas_price and not self._gas_cache_fresh()
 
         if fetch_gas:
-            # One HTTP: Multicall3 eth_call + eth_gasPrice (JSON-RPC batch body).
+            raw = await self._eth_call_many_with_gas(multicall_params)
+        else:
+            raw = await self.eth_call(MULTICALL3_ADDRESS, encoded)
+
+        try:
+            decoded = decode_multicall3_aggregate3(raw)
+        except ValueError as exc:
+            raise JsonRpcError(
+                f"Multicall3 decode failed (host={self._host}): {exc}",
+                transport=True,
+            ) from exc
+        if len(decoded) != len(calls):
+            raise JsonRpcError(
+                f"Multicall3 result length mismatch: got {len(decoded)} "
+                f"expected {len(calls)} (host={self._host})",
+                transport=True,
+            )
+        out: list[tuple[bool, bytes | None]] = []
+        for success, ret in decoded:
+            if not success:
+                out.append((False, None))
+            elif not ret:
+                out.append((True, b""))
+            else:
+                out.append((True, ret))
+        return out
+
+    async def _eth_call_many_with_gas(self, multicall_params: list[Any]) -> bytes:
+        """Multicall3 eth_call + eth_gasPrice in one JSON-RPC batch (cold gas cache).
+
+        Retries HTTP 429 via :meth:`_post_json` and body-level rate limits on the
+        Multicall3 result with the same bounded backoff as :meth:`call`.
+        """
+        last_rate_limited: JsonRpcError | None = None
+        max_attempts = self._budget.max_attempts
+        for attempt in range(max_attempts):
             call_payload = self._next_payload("eth_call", multicall_params)
             gas_payload = self._next_payload("eth_gasPrice", [])
             call_id = call_payload["id"]
@@ -775,11 +783,20 @@ class RpcClient:
             try:
                 call_result = self._parse_jsonrpc_body(call_body, method="eth_call")
             except JsonRpcError as exc:
-                if exc.rate_limited:
-                    # Exhausted only if we cannot retry — _post_json already
-                    # handled HTTP 429; body-level rate limit is terminal here.
+                if not exc.rate_limited:
                     raise
-                raise
+                wait = self._backoff_wait(response, attempt)
+                last_rate_limited = JsonRpcError(
+                    f"eth_call rate limited (rpc error) host={self._host} "
+                    f"attempt={attempt + 1}/{max_attempts}",
+                    transport=True,
+                    rate_limited=True,
+                )
+                logger.warning("%s", last_rate_limited)
+                if attempt + 1 < max_attempts:
+                    await _async_sleep(wait)
+                    continue
+                raise last_rate_limited from exc
             try:
                 gas_result = self._parse_jsonrpc_body(gas_body, method="eth_gasPrice")
                 self._store_gas_price(gas_result)
@@ -788,32 +805,12 @@ class RpcClient:
                 logger.debug(
                     "batched eth_gasPrice failed host=%s: %s", self._host, exc
                 )
-            raw = self._decode_eth_call_result(call_result)
-        else:
-            raw = await self.eth_call(MULTICALL3_ADDRESS, encoded)
+            return self._decode_eth_call_result(call_result)
 
-        try:
-            decoded = decode_multicall3_aggregate3(raw)
-        except ValueError as exc:
-            raise JsonRpcError(
-                f"Multicall3 decode failed (host={self._host}): {exc}",
-                transport=True,
-            ) from exc
-        if len(decoded) != len(calls):
-            raise JsonRpcError(
-                f"Multicall3 result length mismatch: got {len(decoded)} "
-                f"expected {len(calls)} (host={self._host})",
-                transport=True,
-            )
-        out: list[tuple[bool, bytes | None]] = []
-        for success, ret in decoded:
-            if not success:
-                out.append((False, None))
-            elif not ret:
-                out.append((True, b""))
-            else:
-                out.append((True, ret))
-        return out
+        raise last_rate_limited or JsonRpcError(
+            f"batch eth_call failed with no response (host={self._host})",
+            transport=True,
+        )
 
     async def eth_gas_price(self) -> int:
         if self._gas_cache_fresh() and self._state.gas_price_wei is not None:
@@ -824,8 +821,6 @@ class RpcClient:
 
 async def _async_sleep(seconds: float) -> None:
     """Isolated for tests that monkeypatch sleep."""
-    import asyncio
-
     await asyncio.sleep(seconds)
 
 

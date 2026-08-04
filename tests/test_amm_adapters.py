@@ -98,7 +98,7 @@ class _FakeRpc:
             try:
                 raw = await self.eth_call(to, data)
             except JsonRpcError as exc:
-                if exc.rate_limited or exc.transport or not exc.revert:
+                if not exc.revert:
                     raise
                 out.append((False, None))
             else:
