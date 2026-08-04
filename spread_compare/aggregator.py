@@ -372,26 +372,16 @@ def assemble_pair(
 
     # Priced statuses keep numbers readable (WHI-845 excessive_impact); only
     # status=ok remains §5.2 best / heat eligible (FE gates on status separately).
-    buy_spread = (
-        buy.spread_bps
-        if buy is not None and buy.status in PRICED_QUOTE_STATUSES
-        else None
-    )
-    sell_spread = (
-        sell.spread_bps
-        if sell is not None and sell.status in PRICED_QUOTE_STATUSES
-        else None
-    )
-    buy_total = (
-        buy.total_cost_bps
-        if buy is not None and buy.status in PRICED_QUOTE_STATUSES
-        else None
-    )
-    sell_total = (
-        sell.total_cost_bps
-        if sell is not None and sell.status in PRICED_QUOTE_STATUSES
-        else None
-    )
+    def _priced_bps(quote: Quote | None, attr: str) -> Decimal | None:
+        if quote is None or quote.status not in PRICED_QUOTE_STATUSES:
+            return None
+        value = getattr(quote, attr)
+        return value if isinstance(value, Decimal) else None
+
+    buy_spread = _priced_bps(buy, "spread_bps")
+    sell_spread = _priced_bps(sell, "spread_bps")
+    buy_total = _priced_bps(buy, "total_cost_bps")
+    sell_total = _priced_bps(sell, "total_cost_bps")
 
     return SizeQuotePair(
         snapshot_id=mid.snapshot_id,

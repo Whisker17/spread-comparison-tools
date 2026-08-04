@@ -54,9 +54,11 @@ def test_fraction_to_impact_bps_jupiter_fraction() -> None:
     assert fraction_to_impact_bps("0.000083") == Decimal("0.83")
 
 
-def test_derive_prefers_reported_then_abs_spread() -> None:
+def test_derive_prefers_reported_then_adverse_spread() -> None:
     assert derive_price_impact_bps(Decimal("8100"), Decimal("12")) == Decimal("8100")
-    assert derive_price_impact_bps(None, Decimal("-12.5")) == Decimal("12.5")
+    assert derive_price_impact_bps(None, Decimal("12.5")) == Decimal("12.5")
+    # Favorable (negative) mid deviation is not pool exhaustion — impact 0.
+    assert derive_price_impact_bps(None, Decimal("-12.5")) == Decimal("0")
 
 
 def test_load_impact_settings_defaults() -> None:

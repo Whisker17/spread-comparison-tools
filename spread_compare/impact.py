@@ -1,9 +1,13 @@
-"""Price-impact capture and thresholding (WHI-845).
+"""Price-impact capture and thresholding for AMM / prop-AMM quotes (WHI-845).
+
+Applied at ``build_ok_quote`` (the sole construction path for AMM DEX and prop
+AMM adapters). CEX / perp orderbook venues do not report pool impact and are
+out of scope for this guard.
 
 Adapters record ``price_impact_bps`` when the upstream reports it (or when a
-mid-relative proxy is derived). This module applies the config threshold and
-reclassifies ``status=ok`` → ``excessive_impact`` so the row stays visible with
-its numbers but never participates in §5.2 best ranking or heat ranges.
+mid-relative adverse-spread proxy is derived). This module applies the config
+threshold and reclassifies ``status=ok`` → ``excessive_impact`` so the row stays
+visible with its numbers but never participates in §5.2 best ranking or heat.
 """
 
 from __future__ import annotations
@@ -14,6 +18,7 @@ from spread_compare.models import Quote
 from spread_compare.settings import load_impact_settings
 
 _BPS = Decimal("10000")
+_ZERO = Decimal("0")
 
 
 def fraction_to_impact_bps(fraction: Decimal | float | str) -> Decimal:
@@ -33,12 +38,13 @@ def derive_price_impact_bps(
     """Resolve impact for a priced quote (WHI-799 §6.2 inv. 6 / WHI-845).
 
     Prefer the upstream-reported value (Jupiter ``priceImpactPct`` as bps).
-    When missing, use mid-relative ``|spread_bps|`` — the deviation from
-    reference mid that Kyber / on-chain quoters expose without a separate field.
+    When missing, use **adverse** mid-relative spread only
+    (``max(spread_bps, 0)``) — favorable deviations (negative spread) are not
+    pool exhaustion and must not trigger the guard.
     """
     if reported is not None:
         return abs(reported)
-    return abs(spread_bps)
+    return spread_bps if spread_bps > _ZERO else _ZERO
 
 
 def apply_impact_threshold(quote: Quote) -> Quote:

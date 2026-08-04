@@ -27,8 +27,6 @@ describe("heatClass", () => {
   });
 });
 
-
-
 describe("per-column heat isolation (WHI-838)", () => {
   /**
    * Gas-dominated $100 L1 cell must not flatten $10k colour resolution.

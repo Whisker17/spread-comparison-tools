@@ -325,15 +325,24 @@ function cellFromPair(
     const value = metricValue(pair, sideView, metric);
     const buy = pair.buy ?? null;
     const sell = pair.sell ?? null;
-    // RT metric only defined when both legs ok (WHI-799 §4.6). If partial,
+    // Prefer excessive_impact chrome when either leg is non-comparable (WHI-845)
+    // even if RT totals are non-null (priced legs still sum for readability).
+    const impactLeg =
+      buy?.status === "excessive_impact"
+        ? buy
+        : sell?.status === "excessive_impact"
+          ? sell
+          : null;
+    // RT metric only defined when both legs priced (WHI-799 §4.6). If partial,
     // surface the non-ok leg for status chrome instead of buy-ok + "—".
     if (value === null) {
       const bad =
-        buy && buy.status !== "ok"
+        impactLeg ??
+        (buy && buy.status !== "ok"
           ? buy
           : sell && sell.status !== "ok"
             ? sell
-            : (buy ?? sell);
+            : (buy ?? sell));
       return {
         displayQuote: bad,
         value: null,
@@ -342,7 +351,7 @@ function cellFromPair(
       };
     }
     return {
-      displayQuote: buy,
+      displayQuote: impactLeg ?? buy,
       value,
       formatted: formatBps(value),
       eligibleBest:

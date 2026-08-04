@@ -468,7 +468,7 @@ Quote {
 3. `snapshot_id` / `mid` / `mid_source` / `mid_timestamp` 在同快照同资产上全 venue 一致。
 4. bps 公式 **仅** §4.5 / §5.2。
 5. `mid_stale` 与 `status` 独立：`mid_stale=true` 仍可 `status=ok`。
-6. **WHI-845 价格冲击护栏**：当 adapter 测得 `price_impact_bps` 且超过 `config/impact.yaml` 的 `max_price_impact_bps`（**unvalidated** pending DESIGN.md §2）时，`status` 置为 `excessive_impact`。**不得**静默丢行——数字保留可读，但不参与 §5.2 best，也不进入 dashboard 分列 heat 范围。Jupiter 用 `priceImpactPct`（单位分数）× 10_000；Kyber / on-chain quoter 无独立字段时用 mid 相对 `|spread_bps|`。
+6. **WHI-845 价格冲击护栏**（AMM / prop-AMM 报价路径；CEX/perp 盘口不在此护栏范围）：当 adapter 测得 `price_impact_bps` 且超过 `config/impact.yaml` 的 `max_price_impact_bps`（**unvalidated** pending DESIGN.md §2）时，`status` 置为 `excessive_impact`。**不得**静默丢行——数字保留可读，但不参与 §5.2 best，也不进入 dashboard 分列 heat 范围。Jupiter 用 `priceImpactPct`（单位分数）× 10_000；Kyber / on-chain quoter 无独立字段时用 **adverse** mid 相对 spread（`max(spread_bps, 0)`，有利偏差不触发）。`price_impact_bps` 为诊断字段，非 priced status 下通常为 null（不强制与 mid_stale 同级的正交语义）。
 
 ### 6.3 `TopOfBook`
 
