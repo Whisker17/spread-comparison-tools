@@ -8,6 +8,7 @@
 
 import type { Quote, SizeQuotePair } from "@/lib/api";
 import { formatBps, formatPrice } from "@/lib/format";
+import { isPricedStatus } from "@/lib/status";
 import type { SideView } from "@/lib/summary";
 
 export type MatrixDetailModel = {
@@ -25,10 +26,15 @@ export function detailFromPair(
     return { effective: "—", fees: "—", feesTitle: undefined };
   }
   if (sideView === "round_trip") {
-    // Round-trip has no single effective price; surface leg fees if both ok.
+    // Round-trip has no single effective price; surface leg fees if both priced.
     const buy = pair.buy;
     const sell = pair.sell;
-    if (!buy || !sell || buy.status !== "ok" || sell.status !== "ok") {
+    if (
+      !buy ||
+      !sell ||
+      !isPricedStatus(buy.status) ||
+      !isPricedStatus(sell.status)
+    ) {
       return { effective: "—", fees: "—", feesTitle: undefined };
     }
     const buyFee = feeSummary(buy);
@@ -40,7 +46,7 @@ export function detailFromPair(
     };
   }
   const quote = sideView === "buy" ? pair.buy : pair.sell;
-  if (!quote || quote.status !== "ok") {
+  if (!quote || !isPricedStatus(quote.status)) {
     return { effective: "—", fees: "—", feesTitle: undefined };
   }
   const fee = feeSummary(quote);

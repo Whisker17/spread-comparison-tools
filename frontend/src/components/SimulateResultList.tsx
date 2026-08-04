@@ -108,7 +108,9 @@ function SimulateResultRow({
   const [open, setOpen] = useState(false);
   const delta = deltaVsBest(row, reference);
   const isBest = row.best === true;
-  const isOk = row.status === "ok";
+  // Show output numbers for priced rows (ok + excessive_impact); best still ok-only.
+  const showsPrices =
+    row.status === "ok" || row.status === "excessive_impact";
   const lines = feeBreakdownLines(row);
   const displayName = meta?.displayName ?? row.venue;
 
@@ -167,7 +169,7 @@ function SimulateResultRow({
         </div>
 
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 pl-6 text-sm tabular-nums sm:pl-0">
-          {isOk ? (
+          {showsPrices ? (
             <>
               <span className="min-w-[8rem] font-semibold">
                 {formatPrice(row.expected_output)}{" "}
@@ -187,6 +189,7 @@ function SimulateResultRow({
               <span className="text-xs text-zinc-500">
                 cost {formatBps(row.total_cost_bps)} bps
               </span>
+              {row.status === "excessive_impact" && <StatusInline row={row} />}
             </>
           ) : (
             <StatusInline row={row} />

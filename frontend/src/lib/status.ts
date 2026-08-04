@@ -18,6 +18,15 @@ export type QuoteStatus = Quote["status"];
 /** Alias kept for StatusCell props; same as RankMetric. */
 export type MetricKey = RankMetric;
 
+/** Backend PRICED_QUOTE_STATUSES mirror — keep numbers visible (WHI-845). */
+const PRICED_STATUSES: ReadonlySet<string> = new Set(["ok", "excessive_impact"]);
+
+export function isPricedStatus(
+  status: string | null | undefined,
+): boolean {
+  return status != null && PRICED_STATUSES.has(status);
+}
+
 /** How a cell should render given status + orthogonal flags. */
 export type CellRenderKind =
   | "value" // status=ok with a numeric metric
