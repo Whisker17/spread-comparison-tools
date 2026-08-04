@@ -3,8 +3,10 @@
 /**
  * Client-side quotes polling (TanStack Query).
  *
- * Choice note (PR): TanStack Query over SWR for explicit query-key control,
- * multi-notional fan-out, and first-class manual refetch.
+ * Choice note (PR): TanStack Query over SWR for explicit query-key control
+ * and first-class manual refetch. Section matrices (WHI-841) poll one notional
+ * at a time; `useQuotesMatrix` still supports multi-tier fan-out for callers
+ * that need it.
  */
 
 import {
@@ -106,7 +108,10 @@ export function quotesMatrixQueryKey(params: UseQuotesMatrixParams) {
   ] as const;
 }
 
-/** Multi-notional fan-out for SpreadMatrix. */
+/**
+ * Quotes fan-out across one or more notionals.
+ * Section pages pass a single-tier list (WHI-841); multi-tier still works.
+ */
 export function useQuotesMatrix(
   params: UseQuotesMatrixParams,
 ): UseQueryResult<QuotesMatrixData, Error> {

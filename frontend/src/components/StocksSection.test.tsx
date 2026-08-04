@@ -13,6 +13,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { StocksSection } from "@/components/StocksSection";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { DEFAULT_NOTIONAL_USD } from "@/config/notionals";
 import {
   BSTOCKS_REBASE_FOOTNOTE,
   equityPerpsBoard,
@@ -20,9 +21,10 @@ import {
   tokenizedStocksBoard,
 } from "@/config/sections/stocks";
 
-const { useQuotesMatrixMock, fetchAssetsMock } = vi.hoisted(() => ({
+const { useQuotesMatrixMock, fetchAssetsMock, replaceMock } = vi.hoisted(() => ({
   useQuotesMatrixMock: vi.fn(),
   fetchAssetsMock: vi.fn(),
+  replaceMock: vi.fn(),
 }));
 
 vi.mock("@/hooks/useQuotes", async (importOriginal) => ({
@@ -33,6 +35,12 @@ vi.mock("@/hooks/useQuotes", async (importOriginal) => ({
 vi.mock("@/lib/api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/api")>()),
   fetchAssets: fetchAssetsMock,
+}));
+
+vi.mock("next/navigation", () => ({
+  useSearchParams: () => new URLSearchParams(),
+  useRouter: () => ({ replace: replaceMock }),
+  usePathname: () => "/stocks",
 }));
 
 function fakeQuery(params: { asset: string }) {
@@ -82,6 +90,7 @@ beforeEach(() => {
   useQuotesMatrixMock.mockImplementation(fakeQuery);
   fetchAssetsMock.mockReset();
   fetchAssetsMock.mockResolvedValue([]);
+  replaceMock.mockReset();
 });
 
 afterEach(cleanup);
@@ -153,5 +162,34 @@ describe("StocksSection (WHI-810)", () => {
     const nvdaon = within(screen.getByTestId("asset-block-NVDAON"));
     expect(nvdaon.queryAllByText(/Binance/)).toHaveLength(0);
     expect(nvdaon.getByText(/Tessera \(BSC\)/)).toBeTruthy();
+  });
+
+  it("renders one shared size selector and fetches a single notional per asset", () => {
+    render(<StocksSection />, { wrapper: Wrapper });
+
+    // Page-level selector only — no per-block duplicate.
+    expect(screen.getAllByTestId("size-selector")).toHaveLength(1);
+
+    // Both boards share size config so page-level ?size= is not board-skewed.
+    expect(tokenizedStocksBoard.defaultNotional).toBe(
+      equityPerpsBoard.defaultNotional,
+    );
+    expect(tokenizedStocksBoard.notionals).toEqual(equityPerpsBoard.notionals);
+
+    const assets = [
+      ...tokenizedStocksBoard.assets,
+      ...equityPerpsBoard.assets,
+    ];
+    for (const asset of assets) {
+      const call = useQuotesMatrixMock.mock.calls.find(
+        ([params]) => (params as { asset: string }).asset === asset,
+      );
+      expect(call, `no /quotes request for ${asset}`).toBeDefined();
+      const params = call?.[0] as { notionals: string[] };
+      expect(params.notionals).toEqual([
+        tokenizedStocksBoard.defaultNotional,
+      ]);
+      expect(params.notionals).toEqual([DEFAULT_NOTIONAL_USD]);
+    }
   });
 });

@@ -3,8 +3,14 @@
 /**
  * Parameter-complete venues × notional-tiers matrix.
  *
- * Section agents drive venue sets, hidden columns, side view, and metric via
- * props/config — they must not edit this file (WHI-808 parallel-safety).
+ * WHI-841: when `showDetailColumns` is set (section pages' single-size view),
+ * freed horizontal space surfaces effective price + fee-breakdown summary that
+ * previously lived only in tooltips. Multi-notional columns remain available
+ * for callers that pass several tiers without detail columns.
+ *
+ * Section agents drive venue sets / side / metric via props — they should not
+ * edit this file for product content (WHI-808). Additive shared props (e.g.
+ * `showDetailColumns`) may land here when every section needs them.
  */
 
 import { useMemo } from "react";
@@ -18,6 +24,7 @@ import {
   sortNotionals,
 } from "@/lib/format";
 import { heatClass, heatRange, type HeatRange } from "@/lib/heat";
+import { detailFromPair } from "@/lib/matrixDetail";
 import { isEligibleForBest, type MetricKey } from "@/lib/status";
 import {
   bestVenueMap,
@@ -47,6 +54,12 @@ export type SpreadMatrixProps = {
   highlightBest?: boolean;
   /** Heat-color numeric cells. Default true. */
   heat?: boolean;
+  /**
+   * When true and exactly one notional column is shown, add Effective + Fees
+   * columns (WHI-841 single-size view). No-op when multiple notionals are
+   * passed — detail is single-tier only.
+   */
+  showDetailColumns?: boolean;
   className?: string;
   emptyMessage?: string;
   /** Retry handler for error-status cells. */
@@ -64,6 +77,7 @@ export function SpreadMatrix({
   venueLabels,
   highlightBest = true,
   heat = true,
+  showDetailColumns = false,
   className,
   emptyMessage = "No quote data",
   onRetry,
@@ -79,6 +93,11 @@ export function SpreadMatrix({
       ...new Set(pairs.map((p) => String(p.notional_usd))),
     ]);
   }, [notionalsProp, pairs]);
+
+  // Detail columns only make sense for a single selected size (WHI-841).
+  const detailMode = showDetailColumns && notionals.length === 1;
+  // Round-trip has no single effective price — hide that column (fees remain).
+  const showEffectiveColumn = detailMode && sideView !== "round_trip";
 
   const venues = useMemo(() => {
     if (venuesProp && venuesProp.length > 0) {
@@ -154,8 +173,13 @@ export function SpreadMatrix({
   }
 
   return (
-    <div className={cn("overflow-x-auto", className)} data-testid="spread-matrix">
-      <table className="w-full min-w-[36rem] border-collapse text-sm">
+    <div className={cn("overflow-x-auto", className)} data-testid="spread-matrix" data-detail-mode={detailMode ? "true" : "false"}>
+      <table
+        className={cn(
+          "w-full border-collapse text-sm",
+          detailMode ? "min-w-[28rem]" : "min-w-[36rem]",
+        )}
+      >
         <thead>
           <tr className="border-b border-zinc-200 dark:border-zinc-800">
             <th className="sticky left-0 bg-white py-2 pr-3 text-left text-xs font-medium uppercase tracking-wide text-zinc-500 dark:bg-zinc-950">
@@ -169,6 +193,16 @@ export function SpreadMatrix({
                 {formatNotional(n)}
               </th>
             ))}
+            {showEffectiveColumn ? (
+              <th className="px-2 py-2 text-right text-xs font-medium uppercase tracking-wide text-zinc-500">
+                Effective
+              </th>
+            ) : null}
+            {detailMode ? (
+              <th className="px-2 py-2 text-right text-xs font-medium uppercase tracking-wide text-zinc-500">
+                Fees
+              </th>
+            ) : null}
           </tr>
         </thead>
         <tbody>
@@ -217,6 +251,32 @@ export function SpreadMatrix({
                     </td>
                   );
                 })}
+                {detailMode
+                  ? (() => {
+                      const n = notionals[0]!;
+                      const pair = index.get(`${venue}::${n}`);
+                      const detail = detailFromPair(pair, sideView);
+                      return (
+                        <>
+                          {showEffectiveColumn ? (
+                            <td
+                              className="px-2 py-1 text-right text-xs tabular-nums text-zinc-600 dark:text-zinc-300"
+                              data-testid={`effective-${venue}`}
+                            >
+                              {detail.effective}
+                            </td>
+                          ) : null}
+                          <td
+                            className="px-2 py-1 text-right text-xs tabular-nums text-zinc-500"
+                            data-testid={`fees-${venue}`}
+                            title={detail.feesTitle}
+                          >
+                            {detail.fees}
+                          </td>
+                        </>
+                      );
+                    })()
+                  : null}
               </tr>
             );
           })}
@@ -225,6 +285,9 @@ export function SpreadMatrix({
       <p className="mt-2 text-[11px] text-zinc-500">
         Cells: {metric.replace(/_/g, " ")} · view: {sideView.replace("_", " ")} ·
         best highlight excludes gas_unknown / non-ok (WHI-799 §5.2)
+        {detailMode
+          ? " · single size — effective price and fee breakdown as columns; venue labels carry representation (WHI-798 §3.3)"
+          : ""}
         {heat
           ? " · heat colour is per notional column (WHI-838), so a gas-heavy $100 cell does not flatten larger tiers — compare intensity only within a column"
           : ""}

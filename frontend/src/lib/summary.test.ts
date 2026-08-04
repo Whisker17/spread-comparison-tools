@@ -392,4 +392,68 @@ describe("formatSnapshotSummary", () => {
     ];
     expect(formatSnapshotSummary(pairs, { asset: "SOL" })).toBe("");
   });
+
+  it("names the selected size explicitly for a single-tier view (WHI-841)", () => {
+    // One tier of data (what the size selector actually fetches).
+    const pairs = [
+      pair(
+        "humidifi",
+        "10000",
+        quote({
+          venue: "humidifi",
+          status: "ok",
+          total_cost_bps: "2.1",
+          notional_usd: "10000",
+        }),
+      ),
+      pair(
+        "binance",
+        "10000",
+        quote({
+          venue: "binance",
+          status: "ok",
+          total_cost_bps: "8",
+          notional_usd: "10000",
+        }),
+      ),
+      // Ineligible rows must never win (WHI-799 §5.2).
+      pair(
+        "uniswap_eth",
+        "10000",
+        quote({
+          venue: "uniswap_eth",
+          status: "ok",
+          total_cost_bps: null,
+          spread_bps: "0.1",
+          fee_breakdown: {
+            embedded_in_price: true,
+            platform_fee_bps: "0",
+            gas_unknown: true,
+            explicit_fee_bps: null,
+            gas_bps: null,
+          },
+        }),
+      ),
+      pair(
+        "bybit",
+        "10000",
+        quote({ venue: "bybit", status: "error", error_code: "timeout" }),
+      ),
+    ];
+    const text = formatSnapshotSummary(pairs, {
+      asset: "BTC",
+      side: "buy",
+      venueLabels: {
+        humidifi: "HumidiFi",
+        binance: "Binance spot",
+        uniswap_eth: "Uniswap",
+        bybit: "Bybit",
+      },
+    });
+    // Size is explicit so the number is never read as size-independent.
+    expect(text).toBe(
+      "At $10k, HumidiFi has the lowest total cost to buy BTC (2.1 bps).",
+    );
+    expect(text).not.toMatch(/Uniswap|Bybit|Binance spot/);
+  });
 });

@@ -184,6 +184,11 @@ export type SnapshotSummaryOptions = BestVenueOptions & {
  * gas_unknown / cost-incomplete venues never appear. Empty when no tier has
  * an eligible pick.
  *
+ * WHI-841 single-tier pages pass pairs for only the selected size; the prose
+ * still names that size explicitly ("At $10k, …") so the figure is never
+ * read as size-independent. Multi-tier wording is unchanged when more data
+ * is present (e.g. after server-side batching returns).
+ *
  * Example:
  *   "At $10k, HumidiFi has the lowest total cost for BTC (2.1 bps); at $1M, Binance perp (4.4 bps)."
  */

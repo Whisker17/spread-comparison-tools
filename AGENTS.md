@@ -79,6 +79,9 @@ Core startup resilience (WHI-840): `startup_all` degrades transient
 `AdapterFetchError`/`AdapterTimeoutError` (keeps serving), fails fast on config
 errors; `config/venues.yaml` disable list + background retry; `/health`
 `degraded`/`unavailable_venues`; `not_initialized` quote rows for failed venues.
+Frontend size selector (WHI-841): section pages show one notional at a time via
+shared `SizeSelector` + `?size=` URL; one `GET /quotes` per asset (not × tiers)
+to cut request fan-out 5× and clear TIMEOUT cells.
 
 **Not implemented:** remaining venue adapters (WHI-805), collector.
 Do not assume a module exists until its issue lands.
@@ -138,7 +141,7 @@ load-bearing interfaces other modules may depend on.
 - **`spread_compare/simulator.py`** — `POST /simulate` fan-out (WHI-814): pair validation, free-form notional, expected_output derivation, §5.2 best ranking; no response cache; never recomputes bps.
 - **`spread_compare/adapters/`** — async `VenueAdapter` + `BaseAdapter`, auto-discovery, `@register_adapter` registry with `startup_all`/`aclose_all` (WHI-840: degrade transient startup failures, disabled venues, background retry), `mock` + CEX (`binance`/`bybit`) + perp DEX (`perp_hyperliquid`/`perp_lighter`/`perp_apex`) + AMM DEX (`amm_uniswap`/`amm_aerodrome`/`amm_pancakeswap`) + prop AMM (`prop_jupiter`/`prop_kyberswap`), shared `_cex_common` / `_perp_common` / `_amm_common` / `_prop_common`; one module per real venue (no hand-import list).
 - **`spread_compare/api/`** — FastAPI app factory with lifespan; `/health` (degradation fields), `/quotes`, `/venues` (omits config-disabled), `/assets`, `/fees`, `POST /simulate`, `GET /simulate/pairs`; CORS for local FE.
-- **`frontend/`** — Next.js dashboard (WHI-808): typed API client, SpreadMatrix, section config modules, route shell; `/simulate` UI (WHI-815) via `SimulateSection` + `simulatePairs`/`simulateView` pure libs.
+- **`frontend/`** — Next.js dashboard (WHI-808): typed API client, SpreadMatrix, section config modules, route shell; `/simulate` UI (WHI-815) via `SimulateSection` + `simulatePairs`/`simulateView` pure libs; size selector + single-notional fetch (WHI-841).
 - **`main.py`** — CLI: `--dry-run` validates; live serves uvicorn.
 
 ## Git workflow (mandatory)
