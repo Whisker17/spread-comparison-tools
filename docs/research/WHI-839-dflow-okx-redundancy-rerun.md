@@ -14,7 +14,7 @@
 ## 1. TL;DR
 
 1. **DFlow Q1 (feasibility): PASS** for all three baseline prop venues (HumidiFi, Tessera V / product slug `tessera_solana`, BisonFi) via the **developer** Trade API host with `dexes=` include filtering. WHI-837 marked DFlow OUT because it only hit **production** `quote-api.dflow.net` (empty 403 without key) and missed the documented keyless dev base URL.
-2. **DFlow Q2 (comparability): FAIL** the issue bar of ≲ ~2 bps drop-in. Across **9** successful same-pass paired cells on WHI-799 notionals, effective-price divergence vs Jupiter ranged **about −5.8 … +4.3 bps**. Sign is not stable; several cells exceed 2 bps absolute. One additional cell (BisonFi $100k, **+2.61 bps**) is a **retry-pair** only (first pass: Jupiter 200 / DFlow `route_not_found`) and is reported separately. Not safe as a silent dual-source for matrix bps comparisons.
+2. **DFlow Q2 (comparability): FAIL** the issue bar of ≲ ~2 bps drop-in. Across **9** successful same-pass paired cells on WHI-799 notionals, effective-price divergence vs Jupiter ranged **about −5.8 … +4.3 bps**. Sign is not stable; several cells exceed 2 bps absolute. BisonFi $100k has no same-pass pair (first pass DFlow `route_not_found`); a later retry pair yields **+2.61 bps** and is stored only under `retry_pair` in the summary JSON — not mixed into top-level row fields. Not safe as a silent dual-source for matrix bps comparisons.
 3. **OKX Q1: still OUT (key).** Spec step 1 (“obtain OKX credentials”) was **not completed** in this environment — no portal keys were available. Unauth `get-liquidity` / `quote` → 401. **Acceptance criterion “live Q1 for OKX on all three venues” is unmet** (blocked), not PASS. Re-open when keys exist.
 4. **DFlow credentials:** Spec step 1 also asked for a DFlow production `x-api-key`. This re-run used the documented **keyless dev** host instead (valid for research Q1/Q2; **not** the production surface an adapter would use — prod remains 403 without key). Partial against step 1; Q1 still live-proven on dev.
 5. **Recommendation:** **Do not adopt DFlow (or OKX) as production matrix dual-source or silent failover.** Keep ADR 0001 (Jupiter sole path + honest unavailable on outage). **Amend** ADR 0001 with this evidence; **do not** open an adapter implementation issue.
@@ -48,7 +48,7 @@ Docs (primary):
 
 | Check | Result | Evidence |
 | --- | --- | --- |
-| Venue list includes baseline three | **Yes** — `HumidiFi`, `Tessera V`, `BisonFi` | `dflow-dev-venues.json` |
+| Venue list includes baseline three | **Yes** — `HumidiFi`, `Tessera V`, `BisonFi` (note: `/venues` is slightly shorter than the `invalid_dex` enumeration, which also lists e.g. `Vault`, `LemmingsFi`, `DFlow JIT Router`) | `dflow-dev-venues.json` |
 | Include filter works | **Yes** — `dexes=<label>` | Q1 JSON samples |
 | Label exactness | **Strict** — `Tessera V` works; Jupiter-style `TesseraV` → 400 `invalid_dex` | `dflow-q1-tesserav_nospace-…` |
 | Wrong label (invalid id) | 400 `invalid_dex` with enumerated valid values | `dflow-q1-notavenue-…` |
@@ -56,7 +56,7 @@ Docs (primary):
 | Isolation proof (1 SOL → USDC, `onlyDirectRoutes=true`) | All three **HTTP 200**, `routePlan[].venue` single match | `dflow-q1-{humidifi,tessera_v,bisonfi}-…` |
 | Production keyless | Still **403** empty body | `dflow-prod-venues-403.meta.txt` |
 
-**Naming note:** DFlow’s venue string is `Tessera V` (space). Product venue slug remains `tessera_solana` (`spread_compare/venues.py`). Sample `research_key` `tesserav` is filename-stable only, not a product slug.
+**Naming note:** DFlow’s venue string is `Tessera V` (space). Product venue slug remains `tessera_solana` (`spread_compare/venues.py`). Sample filenames use both `tessera_v` (Q1) and `tesserav` (Q2 / WHI-837 style) as **research keys only**, not product slugs.
 
 **Q1 verdict DFlow: PASS** (on **dev** host). Different operator from Jupiter — necessary for redundancy, not sufficient for matrix dual-sourcing (Q2).
 
@@ -98,10 +98,10 @@ Source: `samples/whi-839/q2-dflow-divergence.json`.
 | --- | ---: | ---: | ---: | ---: |
 | HumidiFi (`humidifi`) | **+4.28** | −0.79 | **−4.79** | *both sides 400 / no route* |
 | Tessera (`tessera_solana`) | **+2.14** | +1.48 | **−2.18** | −1.51 |
-| BisonFi (`bisonfi`) | **−5.76** | *no paired success*† | *retry only*‡ | −1.44 |
+| BisonFi (`bisonfi`) | **−5.76** | *no paired success*† | *no same-pass pair*‡ | −1.44 |
 
 † BisonFi $10k: pass 1 = Jupiter **400** / DFlow 200; pass 2 = Jupiter 200 / DFlow **400** (`route_not_found`). No simultaneous success pair.  
-‡ BisonFi $100k: first pass = Jupiter 200 / DFlow `route_not_found`; **retry pair** both 200 → **+2.61 bps** (retry gap not instrumented). Counted separately from same-pass successes.
+‡ BisonFi $100k: first pass = Jupiter 200 / DFlow `route_not_found` (top-level row fields). Optional `retry_pair` both 200 → **+2.61 bps** (gap not instrumented) — not counted in the 9 same-pass cells.
 
 - Same-pass successful cells: **9 / 12**.
 - Range on same-pass successes: **min −5.76 / max +4.28 bps**.
@@ -123,7 +123,7 @@ Source: `samples/whi-839/q2-dflow-divergence.json`.
 | Adopt OKX | **No** (credentials not obtained; Q1 incomplete) |
 | Keep Jupiter sole path + explicit unavailable on outage | **Yes** (reaffirm ADR 0001) |
 | Open adapter implementation issue now | **No** |
-| Production DFlow key / OKX keys for a future re-run | Optional follow-up if product wants another attempt |
+| Production DFlow key / OKX keys for a future re-run | Optional — **do not keep WHI-839 open** waiting on keys; close this issue with the partial OKX AC documented. Spawn a new issue only if keys arrive and product still wants the measurement |
 
 **One-line:** DFlow is the first **non-Jupiter** aggregator with live **full three-venue include isolation** on Solana prop AMMs, but effective prices are **not drop-in comparable** at the product’s few-bps resolution — so the correct product behavior remains honest degradation, not second-source fill.
 

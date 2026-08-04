@@ -86,12 +86,6 @@
       "dflow_route_venues": [],
       "gap_j_to_d_s": 8.087,
       "div_bps": null,
-      "retry": {
-        "jup_http": 400,
-        "dflow_http": 400,
-        "jup_out": null,
-        "dflow_out": null
-      },
       "research_key": "humidifi",
       "product_venue_slug": "humidifi",
       "first_pass": {
@@ -225,12 +219,6 @@
       ],
       "gap_j_to_d_s": 8.377,
       "div_bps": null,
-      "retry": {
-        "jup_http": 200,
-        "dflow_http": 400,
-        "jup_out": 10014826549,
-        "dflow_out": null
-      },
       "research_key": "bisonfi",
       "product_venue_slug": "bisonfi",
       "first_pass": {
@@ -246,9 +234,9 @@
       "notional_usd": 100000,
       "amount_lamports": 1362901648138,
       "jup_http": 200,
-      "dflow_http": 200,
-      "jup_out": 100133162055,
-      "dflow_out": 100159315634,
+      "dflow_http": 400,
+      "jup_out": 100143983910,
+      "dflow_out": null,
       "jup_route_labels": [
         "BisonFi"
       ],
@@ -256,13 +244,7 @@
         "BisonFi"
       ],
       "gap_j_to_d_s": null,
-      "div_bps": 2.6119,
-      "retry": {
-        "jup_http": 200,
-        "dflow_http": 200,
-        "jup_out": 100133162055,
-        "dflow_out": 100159315634
-      },
+      "div_bps": null,
       "research_key": "bisonfi",
       "product_venue_slug": "bisonfi",
       "first_pass": {
@@ -278,10 +260,12 @@
       },
       "retry_pair": {
         "jup_out": 100133162055,
-        "dflow_out": 100159315634
+        "dflow_out": 100159315634,
+        "div_bps": 2.6119
       },
-      "div_source": "retry_pair",
-      "gap_note": "gap_j_to_d_s was first-pass attempt interval; retry pair gap not instrumented"
+      "div_source": "none",
+      "gap_note": "gap_j_to_d_s was first-pass attempt interval; retry pair gap not instrumented",
+      "same_pass_success": false
     },
     {
       "jup_label": "BisonFi",
