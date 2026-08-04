@@ -617,7 +617,7 @@ async def test_error_when_rpc_rate_limited(
     adapter._rpc = _FakeRpc(call_handler=handler)  # type: ignore[assignment]
     try:
         quote = await adapter.get_quote("ETH", "sell", Decimal("1000"), mid=_MID_ETH)
-        assert quote.status == "error"
+        assert quote.status == "rate_limited"
         assert quote.error_code == "rate_limited"
         assert quote.effective_price is None
     finally:

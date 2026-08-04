@@ -1241,8 +1241,19 @@ class AmmDexAdapter(BaseAdapter):
         try:
             result = await self._quote_best(asset_key, side, notional_usd, mid)
         except AdapterError as exc:
-            # WHI-842: exhausted RPC 429/rate-limit budget is a distinct code.
-            err_code = "rate_limited" if is_rate_limited_error(exc) else "adapter_error"
+            # WHI-842/WHI-844: exhausted RPC 429 budget → status=rate_limited.
+            if is_rate_limited_error(exc):
+                return build_non_ok_quote(
+                    venue=self.venue,
+                    mid=mid,
+                    asset=asset_key,
+                    side=side,
+                    notional_usd=notional_usd,
+                    instrument_type=itype,
+                    status="rate_limited",
+                    error_code="rate_limited",
+                    error_message=str(exc),
+                )
             return build_non_ok_quote(
                 venue=self.venue,
                 mid=mid,
@@ -1251,7 +1262,7 @@ class AmmDexAdapter(BaseAdapter):
                 notional_usd=notional_usd,
                 instrument_type=itype,
                 status="error",
-                error_code=err_code,
+                error_code="adapter_error",
                 error_message=str(exc),
             )
 
