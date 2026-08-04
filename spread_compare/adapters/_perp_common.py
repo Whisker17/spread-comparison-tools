@@ -7,6 +7,7 @@ as an adapter. Perp adapters import from here; walk/bps math stay in
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -306,11 +307,17 @@ async def request_json(
     params: dict[str, str] | None = None,
     json_body: dict[str, Any] | None = None,
     retry_statuses: frozenset[int] = frozenset({429}),
+    rate_limit_statuses: frozenset[int] = frozenset({429}),
     max_retries: int = 4,
     backoff_start_s: float = 0.5,
     ok_codes: frozenset[int | None] | None = None,
 ) -> Any:
-    """Shared GET/POST JSON helper with rate-limit backoff for perp adapters."""
+    """Shared GET/POST JSON helper with rate-limit backoff for perp adapters.
+
+    ``rate_limit_statuses`` (default ``{429}``) are the only codes that map to
+    :class:`AdapterRateLimitedError` / Quote ``rate_limited``. Other members of
+    ``retry_statuses`` (e.g. Lighter 405) stay :class:`AdapterFetchError`.
+    """
     delay = backoff_start_s
     last_error: Exception | None = None
     for attempt in range(max_retries):
@@ -323,12 +330,24 @@ async def request_json(
             raise AdapterFetchError(f"{venue} HTTP error: {exc}") from exc
 
         if resp.status_code in retry_statuses:
-            last_error = AdapterRateLimitedError(
-                f"{venue} rate limited (HTTP {resp.status_code}) attempt={attempt + 1}",
-                retry_after_s=delay,
-            )
+            is_throttle = resp.status_code in rate_limit_statuses
+            if is_throttle:
+                last_error = AdapterRateLimitedError(
+                    f"{venue} rate limited (HTTP {resp.status_code}) "
+                    f"attempt={attempt + 1}",
+                    retry_after_s=delay,
+                )
+            else:
+                last_error = AdapterFetchError(
+                    f"{venue} HTTP {resp.status_code} retryable attempt={attempt + 1}"
+                )
             if attempt + 1 < max_retries:
-                await sleep_within_budget(delay, venue=venue, reason="rate limited")
+                if is_throttle:
+                    await sleep_within_budget(
+                        delay, venue=venue, reason="rate limited"
+                    )
+                else:
+                    await asyncio.sleep(delay)
                 delay *= 2
             continue
 

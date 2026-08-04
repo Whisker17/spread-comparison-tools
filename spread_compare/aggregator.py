@@ -417,6 +417,10 @@ class QuoteAggregator:
         return self._mids
 
     def clear_cache(self) -> None:
+        """Drop cached packages. In-flight single-flight work is left alone
+        (still fills the cache on completion); call sites that need a hard
+        reset should also wait for outstanding collects to finish.
+        """
         self._cache.clear()
 
     async def collect(

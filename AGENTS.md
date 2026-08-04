@@ -137,8 +137,8 @@ load-bearing interfaces other modules may depend on.
 - **`spread_compare/bookwalk.py`** — sole walk-the-book VWAP; CEX/perp adapters import only this.
 - **`spread_compare/costs.py`** — sole `spread_bps` / `total_cost_bps` / `basis_bps`; aggregator never recomputes.
 - **`spread_compare/settings.py`** — typed YAML config loader (`config/mid.yaml`, `config/aggregator.yaml`, `config/jupiter.yaml`, `config/api.yaml`, `config/venues.yaml`).
-- **`spread_compare/ratelimit.py`** — shared `AsyncRateLimiter` / `TokenBucketRateLimiter` / `RollingWindowRateLimiter` + `acquire_within_budget` (WHI-836 / WHI-844); adapters must not define their own.
-- **`spread_compare/budget.py`** — per-call quote deadline context for fail-fast rate limits (WHI-844).
+- **`spread_compare/ratelimit.py`** — shared `AsyncRateLimiter` / `TokenBucketRateLimiter` / `RollingWindowRateLimiter` with `max_wait_s` / `expected_wait_s` (WHI-836 / WHI-844); adapters must not define their own.
+- **`spread_compare/budget.py`** — per-call quote deadline + `acquire_within_budget` / `sleep_within_budget` (WHI-844).
 - **`spread_compare/fees.py`** — typed `config/fees/*.yaml` → `FeeSchedule` catalog; adapters + `GET /fees`.
 - **`spread_compare/mids.py`** — reference-mid service (WHI-799 §3 priority chain + cache).
 - **`spread_compare/aggregator.py`** — concurrent adapter fan-out, per-class timeout, SizeQuotePair assembly, response cache; also hosts shared fan-out helpers (`quote_with_timeout`, `resolve_mid_with_budget`, `effective_instrument_type`) used by the simulator; never recomputes bps.

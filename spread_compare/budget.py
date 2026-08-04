@@ -17,7 +17,6 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import Protocol
 
-from spread_compare.adapters.base import AdapterRateLimitedError
 from spread_compare.ratelimit import RateLimitWaitExceeded
 
 
@@ -28,6 +27,17 @@ class _Limiter(Protocol):
 _deadline_mono: contextvars.ContextVar[float | None] = contextvars.ContextVar(
     "quote_deadline_mono", default=None
 )
+
+
+def _rate_limited(message: str, *, retry_after_s: float | None) -> Exception:
+    """Map to AdapterRateLimitedError without a module-level adapters import.
+
+    Lazy import avoids budget ↔ adapters import cycles (adapters import budget;
+    package discovery imports all adapters at startup).
+    """
+    from spread_compare.adapters.base import AdapterRateLimitedError
+
+    return AdapterRateLimitedError(message, retry_after_s=retry_after_s)
 
 
 @contextmanager
@@ -68,7 +78,7 @@ async def acquire_within_budget(limiter: _Limiter, *, venue: str) -> None:
     try:
         await limiter.acquire(max_wait_s=remaining)
     except RateLimitWaitExceeded as exc:
-        raise AdapterRateLimitedError(
+        raise _rate_limited(
             f"{venue}: rate limiter wait {exc.wait_s:.2f}s exceeds remaining "
             f"budget {exc.max_wait_s:.2f}s",
             retry_after_s=exc.wait_s,
@@ -88,7 +98,7 @@ async def sleep_within_budget(
     if wait_s <= 0:
         return
     if would_exceed_budget(wait_s):
-        raise AdapterRateLimitedError(
+        raise _rate_limited(
             f"{venue}: {reason}; retry_after={wait_s:.2f}s exceeds remaining "
             f"quote budget",
             retry_after_s=wait_s,

@@ -7,6 +7,7 @@ own URL/parse/rate-limit details. Walk/bps math stays in ``bookwalk`` / ``costs`
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
@@ -264,6 +265,9 @@ class CexBaseAdapter(BaseAdapter, ABC):
     _max_retries: int = 4
     _backoff_start_s: float = 0.5
     _retry_http_statuses: frozenset[int] = frozenset({429})
+    # Only true throttle codes become status=rate_limited (WHI-844). Other
+    # retryable statuses (e.g. Bybit 403 WAF) stay AdapterFetchError.
+    _rate_limit_http_statuses: frozenset[int] = frozenset({429})
     # Primary + optional alternate response headers to log for rate-limit hygiene.
     _rate_limit_log_headers: tuple[str, ...] = ()
 
@@ -314,16 +318,26 @@ class CexBaseAdapter(BaseAdapter, ABC):
             self._log_rate_limit_headers(resp, url)
 
             if resp.status_code in self._retry_http_statuses:
-                last_error = AdapterRateLimitedError(
-                    f"{self.venue} rate limited (HTTP {resp.status_code}) "
-                    f"attempt={attempt + 1}",
-                    retry_after_s=delay,
-                )
+                is_throttle = resp.status_code in self._rate_limit_http_statuses
+                if is_throttle:
+                    last_error = AdapterRateLimitedError(
+                        f"{self.venue} rate limited (HTTP {resp.status_code}) "
+                        f"attempt={attempt + 1}",
+                        retry_after_s=delay,
+                    )
+                else:
+                    last_error = AdapterFetchError(
+                        f"{self.venue} HTTP {resp.status_code} retryable "
+                        f"attempt={attempt + 1}"
+                    )
                 logger.warning("%s", last_error)
                 if attempt + 1 < self._max_retries:
-                    await sleep_within_budget(
-                        delay, venue=self.venue, reason="rate limited"
-                    )
+                    if is_throttle:
+                        await sleep_within_budget(
+                            delay, venue=self.venue, reason="rate limited"
+                        )
+                    else:
+                        await asyncio.sleep(delay)
                     delay *= 2
                 continue
 
