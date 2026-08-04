@@ -70,6 +70,9 @@ class PropFill:
     amount_in: int
     amount_out: int
     gas_usd: Decimal | None = None
+    # Jupiter priceImpactPct (as bps) when reported; None → build_ok_quote falls
+    # back to |spread_bps| mid-relative proxy (WHI-845).
+    price_impact_bps: Decimal | None = None
 
 
 class PropNoQuoteError(Exception):
@@ -243,6 +246,7 @@ async def exact_in_prop_quote(
         gas_usd=gas_usd,
         gas_unknown=gas_unknown,
         venue_symbol=venue_symbol,
+        price_impact_bps=fill.price_impact_bps,
     )
 
 # Solana mint table (WHI-797 §6.2) — initial asset surface only.

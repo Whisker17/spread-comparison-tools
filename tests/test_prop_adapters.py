@@ -179,6 +179,51 @@ async def test_jupiter_dexes_and_exclude_raises_config_error() -> None:
 
 
 @pytest.mark.asyncio
+async def test_jupiter_high_price_impact_flags_excessive_impact() -> None:
+    """WHI-845: Jupiter priceImpactPct above threshold → excessive_impact, numbers kept."""
+    body = _load("quote-humidifi-sol-usdc.json")
+    # Recorded $1M-class impact (0.81 fraction = 8100 bps) from WHI-841 diagnosis.
+    body = {**body, "priceImpactPct": "0.81"}
+    adapter = await _ready_jupiter(transport=_jupiter_transport(quote_body=body))
+    try:
+        quote = await adapter.get_quote(
+            "SOL",
+            "sell",
+            Decimal("1000000"),
+            mid=_mid("SOL", "150"),
+            instrument_type="prop_amm",
+        )
+        assert quote.price_impact_bps == Decimal("8100")
+        assert quote.status == "excessive_impact"
+        assert quote.error_code == "excessive_impact"
+        assert quote.effective_price is not None
+        assert quote.spread_bps is not None
+        assert quote.total_cost_bps is not None
+        assert quote.qty_base is not None
+    finally:
+        await adapter.aclose()
+
+
+@pytest.mark.asyncio
+async def test_jupiter_low_price_impact_stays_ok() -> None:
+    """Regression: normal sample impact (≪ 500 bps) remains status=ok (WHI-845)."""
+    adapter = await _ready_jupiter()
+    try:
+        quote = await adapter.get_quote(
+            "SOL",
+            "sell",
+            Decimal("10000"),
+            mid=_mid("SOL", "150"),
+            instrument_type="prop_amm",
+        )
+        assert quote.status == "ok"
+        assert quote.price_impact_bps is not None
+        assert quote.price_impact_bps < Decimal("500")
+    finally:
+        await adapter.aclose()
+
+
+@pytest.mark.asyncio
 async def test_jupiter_sell_ok_uses_out_amount() -> None:
     adapter = await _ready_jupiter()
     try:

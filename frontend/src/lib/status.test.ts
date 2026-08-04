@@ -56,6 +56,32 @@ describe("decideCellRender", () => {
     expect(d.eligibleForBest).toBe(false);
   });
 
+  it("maps excessive_impact to number + badge, never best (WHI-845)", () => {
+    const d = decideCellRender(
+      q({
+        status: "excessive_impact",
+        error_code: "excessive_impact",
+        effective_price: "344641.67",
+        spread_bps: "44011.18",
+        total_cost_bps: "38283",
+        qty_base: "2.9",
+        price_impact_bps: "8100",
+        fee_breakdown: {
+          embedded_in_price: true,
+          platform_fee_bps: "0",
+          gas_unknown: false,
+          explicit_fee_bps: "0",
+          gas_bps: "0",
+        },
+      }),
+      { formattedMetric: "38283.00", metricKey: "total_cost_bps" },
+    );
+    expect(d.kind).toBe("excessive_impact");
+    expect(d.label).toBe("38283.00");
+    expect(d.badge).toMatch(/excessive impact/i);
+    expect(d.eligibleForBest).toBe(false);
+  });
+
   it("maps gas_unknown ok quotes to cost_incomplete for total_cost metric", () => {
     const d = decideCellRender(
       q({
@@ -141,6 +167,15 @@ describe("isEligibleForBest", () => {
     ).toBe(true);
     expect(isEligibleForBest(q({ status: "no_quote" }))).toBe(false);
     expect(isEligibleForBest(q({ status: "rate_limited" }))).toBe(false);
+    expect(
+      isEligibleForBest(
+        q({
+          status: "excessive_impact",
+          total_cost_bps: "38283",
+          price_impact_bps: "8100",
+        }),
+      ),
+    ).toBe(false);
     expect(
       isEligibleForBest(
         q({

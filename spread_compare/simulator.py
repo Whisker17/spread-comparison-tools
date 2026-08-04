@@ -205,9 +205,13 @@ def expected_output_from_quote(quote: Quote, *, side: Side) -> Decimal | None:
     differences across venue classes are not adjusted here — never recompute bps.
     ``best`` still requires §5.2 eligibility (``total_cost_bps is not null``).
 
-    Non-ok quotes return None. bps are never recomputed here.
+    Non-priced quotes return None. bps are never recomputed here.
+    ``excessive_impact`` keeps price fields readable (WHI-845) so expected_output
+    is still derived; ranking still requires status=ok for ``best``.
     """
-    if quote.status != "ok":
+    from spread_compare.models import PRICED_QUOTE_STATUSES
+
+    if quote.status not in PRICED_QUOTE_STATUSES:
         return None
     if quote.effective_price is None or quote.effective_price <= 0:
         return None

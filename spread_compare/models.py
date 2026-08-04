@@ -23,7 +23,10 @@ QuoteStatus = Literal[
     "unsupported_asset",
     "error",
     "rate_limited",  # WHI-844 / WHI-799 §6.1: wait would exceed quote budget
+    "excessive_impact",  # WHI-845 / WHI-799 §6.1: price impact over config threshold
 ]
+# Statuses that carry executable price fields (shown, but only "ok" is §5.2 best-eligible).
+PRICED_QUOTE_STATUSES: Final[frozenset[str]] = frozenset({"ok", "excessive_impact"})
 # /simulate row status (WHI-814):
 # - not_supported: venue pre-filter (asset absent from supported_assets)
 # - unsupported_asset: adapter returned that Quote status after a live call
@@ -164,12 +167,15 @@ class Quote(BaseModel):
 
     error_code: str | None = None
     error_message: str | None = None
+    # Diagnostic mid/pool impact in bps when known (WHI-845). Null when upstream
+    # does not report and no mid-relative derivation was applied.
+    price_impact_bps: Decimal | None = None
 
     @model_validator(mode="after")
     def _enforce_status_invariants(self) -> Quote:
-        """WHI-799 §6.2 invariants 1–2."""
+        """WHI-799 §6.2 invariants 1–2 (WHI-845: excessive_impact keeps prices)."""
         fb = self.fee_breakdown
-        if self.status == "ok":
+        if self.status in PRICED_QUOTE_STATUSES:
             missing = [
                 name
                 for name, value in (
@@ -181,18 +187,24 @@ class Quote(BaseModel):
             ]
             if missing:
                 raise ValueError(
-                    f"status=ok requires non-null {', '.join(missing)} (WHI-799 §6.2)"
+                    f"status={self.status!r} requires non-null "
+                    f"{', '.join(missing)} (WHI-799 §6.2)"
                 )
             if fb.gas_unknown:
                 if self.total_cost_bps is not None:
                     raise ValueError(
-                        "status=ok and gas_unknown=true requires total_cost_bps is null "
-                        "(WHI-799 §6.2)"
+                        f"status={self.status!r} and gas_unknown=true requires "
+                        "total_cost_bps is null (WHI-799 §6.2)"
                     )
             elif self.total_cost_bps is None:
                 raise ValueError(
-                    "status=ok and gas_unknown=false requires total_cost_bps non-null "
-                    "(WHI-799 §6.2)"
+                    f"status={self.status!r} and gas_unknown=false requires "
+                    "total_cost_bps non-null (WHI-799 §6.2)"
+                )
+            if self.status == "excessive_impact" and self.price_impact_bps is None:
+                raise ValueError(
+                    "status=excessive_impact requires price_impact_bps non-null "
+                    "(WHI-799 §6.2 / WHI-845)"
                 )
         else:
             non_null = [
@@ -208,7 +220,7 @@ class Quote(BaseModel):
             ]
             if non_null:
                 raise ValueError(
-                    f"status!='ok' (got {self.status!r}) requires null "
+                    f"status!='ok'/'excessive_impact' (got {self.status!r}) requires null "
                     f"{', '.join(non_null)} (WHI-799 §6.2)"
                 )
         return self

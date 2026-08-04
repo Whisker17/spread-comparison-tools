@@ -813,7 +813,8 @@
               "insufficient_liquidity",
               "unsupported_asset",
               "error",
-              "rate_limited"
+              "rate_limited",
+              "excessive_impact"
             ],
             "title": "Status"
           },
@@ -900,6 +901,18 @@
               }
             ],
             "title": "Error Message"
+          },
+          "price_impact_bps": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price Impact Bps"
           }
         },
         "additionalProperties": false,
@@ -1301,7 +1314,8 @@
                   "insufficient_liquidity",
                   "unsupported_asset",
                   "error",
-                  "rate_limited"
+                  "rate_limited",
+                  "excessive_impact"
                 ]
               },
               {

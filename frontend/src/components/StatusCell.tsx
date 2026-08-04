@@ -60,7 +60,9 @@ export function StatusCell({
       data-best={isBest ? "true" : "false"}
       data-mid-stale={decision.midStale ? "true" : "false"}
     >
-      {decision.kind === "value" || decision.kind === "cost_incomplete" ? (
+      {decision.kind === "value" ||
+      decision.kind === "cost_incomplete" ||
+      decision.kind === "excessive_impact" ? (
         <span className="font-medium">{decision.label}</span>
       ) : decision.kind === "dash" ? (
         <span className="text-zinc-400">—</span>
@@ -98,6 +100,9 @@ export function StatusCell({
       )}
       {decision.kind === "cost_incomplete" && decision.badge && (
         <Badge variant={decision.badgeVariant ?? "muted"}>{decision.badge}</Badge>
+      )}
+      {decision.kind === "excessive_impact" && decision.badge && (
+        <Badge variant={decision.badgeVariant ?? "warning"}>{decision.badge}</Badge>
       )}
 
       {decision.midStale && (
@@ -146,11 +151,16 @@ function buildTooltip(
             : ""}
         </p>
       )}
-      {kind === "value" || kind === "cost_incomplete" ? (
+      {kind === "value" ||
+      kind === "cost_incomplete" ||
+      kind === "excessive_impact" ? (
         <ul className="space-y-0.5 text-zinc-600 dark:text-zinc-300">
           <li>effective: {formatPrice(quote.effective_price)}</li>
           <li>spread: {formatBps(quote.spread_bps)} bps</li>
           <li>total cost: {formatBps(quote.total_cost_bps)} bps</li>
+          {quote.price_impact_bps != null && quote.price_impact_bps !== undefined ? (
+            <li>price impact: {formatBps(quote.price_impact_bps)} bps</li>
+          ) : null}
           <li>
             trading fee: {formatBps(quote.fee_breakdown.trading_fee_bps)} bps
             {quote.fee_breakdown.embedded_in_price ? " (embedded)" : ""}

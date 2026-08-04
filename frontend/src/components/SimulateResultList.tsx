@@ -257,6 +257,13 @@ function StatusInline({ row }: { row: SimulateRowResponse }) {
       </Badge>
     );
   }
+  if (row.status === "excessive_impact") {
+    return (
+      <Badge variant="warning" data-testid={`status-${row.venue}`}>
+        excessive impact
+      </Badge>
+    );
+  }
   if (row.status === "insufficient_liquidity") {
     return <Badge variant="warning">insufficient liquidity</Badge>;
   }

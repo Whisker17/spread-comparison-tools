@@ -27,6 +27,21 @@ describe("heatClass", () => {
   });
 });
 
+describe("excessive-impact exclusion (WHI-845)", () => {
+  /**
+   * SpreadMatrix feeds heatRange only after includeInHeat (status=ok).
+   * A 38k bps prop-AMM fill must not enter the range or it flattens the column.
+   */
+  it("documents that extreme outliers would flatten colour resolution", () => {
+    const withOutlier = heatRange([3, 5, 8, 38283]);
+    const without = heatRange([3, 5, 8]);
+    expect(withOutlier).toEqual({ min: 3, max: 38283 });
+    expect(without).toEqual({ min: 3, max: 8 });
+    expect(heatClass(3, withOutlier)).toBe(heatClass(8, withOutlier));
+    expect(heatClass(3, without)).not.toBe(heatClass(8, without));
+  });
+});
+
 describe("per-column heat isolation (WHI-838)", () => {
   /**
    * Gas-dominated $100 L1 cell must not flatten $10k colour resolution.

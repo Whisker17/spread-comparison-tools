@@ -88,6 +88,9 @@ to cut request fan-out 5× and clear TIMEOUT cells.
 Core RPC hardening (WHI-842): Multicall3-batched AMM quoter probes, per-endpoint
 `TokenBucketRateLimiter` + 429/Retry-After backoff (`config/rpc.yaml`), distinct
 `rate_limited` error_code, short-TTL `eth_gasPrice` cache; no RPC URL/key in logs.
+Price-impact guard (WHI-845): `price_impact_bps` on Quote + `status=excessive_impact`
+when over `config/impact.yaml` threshold (unvalidated); numbers stay readable, never
+§5.2 best / heat; Jupiter `priceImpactPct`, AMM/Kyber mid-relative `|spread_bps|`.
 
 **Not implemented:** remaining venue adapters (WHI-805), collector.
 Do not assume a module exists until its issue lands.
@@ -139,7 +142,8 @@ load-bearing interfaces other modules may depend on.
 - **`spread_compare/perp_symbols.py`** — perp-DEX logical → venue coin/base + multipliers (HL HIP-3, k-prefix, 1000×).
 - **`spread_compare/bookwalk.py`** — sole walk-the-book VWAP; CEX/perp adapters import only this.
 - **`spread_compare/costs.py`** — sole `spread_bps` / `total_cost_bps` / `basis_bps`; aggregator never recomputes.
-- **`spread_compare/settings.py`** — typed YAML config loader (`config/mid.yaml`, `config/aggregator.yaml`, `config/jupiter.yaml`, `config/api.yaml`, `config/venues.yaml`, `config/rpc.yaml`).
+- **`spread_compare/impact.py`** — price-impact bps conversion + threshold reclassification to `excessive_impact` (WHI-845).
+- **`spread_compare/settings.py`** — typed YAML config loader (`config/mid.yaml`, `config/aggregator.yaml`, `config/jupiter.yaml`, `config/api.yaml`, `config/venues.yaml`, `config/rpc.yaml`, `config/impact.yaml`).
 - **`spread_compare/ratelimit.py`** — shared `AsyncRateLimiter` / `TokenBucketRateLimiter` / `RollingWindowRateLimiter` with `max_wait_s` / `expected_wait_s` (WHI-836 / WHI-844); adapters must not define their own.
 - **`spread_compare/budget.py`** — per-call quote deadline + `acquire_within_budget` / `sleep_within_budget` (WHI-844).
 - **`spread_compare/fees.py`** — typed `config/fees/*.yaml` → `FeeSchedule` catalog; adapters + `GET /fees`.

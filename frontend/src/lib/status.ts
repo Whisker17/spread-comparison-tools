@@ -2,7 +2,8 @@
  * Single source of truth for quote status rendering (WHI-808 / WHI-799 §5.2 / §6.2).
  *
  * Status values on Quote.status:
- *   ok | no_quote | insufficient_liquidity | unsupported_asset | error | rate_limited
+ *   ok | no_quote | insufficient_liquidity | unsupported_asset | error |
+ *   rate_limited | excessive_impact
  *
  * Orthogonal flags (not status enum values):
  *   fee_breakdown.gas_unknown → "cost incomplete"; excluded from best-venue ranking
@@ -24,6 +25,7 @@ export type CellRenderKind =
   | "insufficient_liquidity"
   | "error"
   | "rate_limited" // WHI-844: distinguishable from timeout/error
+  | "excessive_impact" // WHI-845: number still shown, never best / heat
   | "cost_incomplete"; // gas_unknown (may still show spread_bps)
 
 /** Badge color variant owned by the status SSOT (StatusCell must not re-derive). */
@@ -110,6 +112,18 @@ export function decideCellRender(
         badge: "RATE LIMITED",
         badgeVariant: "warning",
         hint: "Retry later",
+        midStale,
+        midTimestamp,
+        eligibleForBest: false,
+      };
+    case "excessive_impact":
+      // Keep the magnitude legible (WHI-845); exclude from best / heat via
+      // eligibleForBest=false and includeInHeat requiring status=ok.
+      return {
+        kind: "excessive_impact",
+        label: options.formattedMetric ?? "—",
+        badge: "excessive impact",
+        badgeVariant: "warning",
         midStale,
         midTimestamp,
         eligibleForBest: false,
@@ -212,6 +226,13 @@ export const STATUS_LEGEND: ReadonlyArray<{
     description:
       'Venue rate limit would exceed remaining quote budget (WHI-844) — "RATE LIMITED", distinct from timeout. Never best-venue eligible.',
     exampleKind: "rate_limited",
+  },
+  {
+    id: "excessive_impact",
+    title: "excessive_impact",
+    description:
+      "Price impact over config threshold (WHI-845) — bps number stays visible with badge; never best-venue eligible and excluded from heat range.",
+    exampleKind: "excessive_impact",
   },
   {
     id: "gas_unknown",

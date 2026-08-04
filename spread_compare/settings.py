@@ -107,6 +107,15 @@ class ApiSettings(BaseModel):
         return [str(v).rstrip("/") for v in value]
 
 
+class ImpactSettings(BaseModel):
+    """``config/impact.yaml`` — price-impact guard threshold (WHI-845)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    # Quotes with price_impact_bps above this become status=excessive_impact.
+    max_price_impact_bps: float = Field(gt=0)
+
+
 # Known AMM adapter ``rpc_env`` names (must stay aligned with amm_*.py).
 _KNOWN_RPC_ENVS: frozenset[str] = frozenset(
     {"ETH_RPC_URL", "BASE_RPC_URL", "BSC_RPC_URL"}
@@ -304,6 +313,12 @@ def load_rpc_settings() -> RpcSettings:
     return RpcSettings.model_validate(_merge_local("rpc"))
 
 
+@lru_cache(maxsize=1)
+def load_impact_settings() -> ImpactSettings:
+    """Parse price-impact guard settings once; fail fast on invalid config."""
+    return ImpactSettings.model_validate(_merge_local("impact"))
+
+
 def clear_settings_cache() -> None:
     """Drop cached settings (tests that rewrite YAML)."""
     load_mid_settings.cache_clear()
@@ -312,3 +327,4 @@ def clear_settings_cache() -> None:
     load_api_settings.cache_clear()
     load_venue_settings.cache_clear()
     load_rpc_settings.cache_clear()
+    load_impact_settings.cache_clear()
