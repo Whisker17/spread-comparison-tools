@@ -625,7 +625,7 @@ class VenueAdapter(Protocol):
 | CEX | L2 walk `q_star`；`instrument_type` spot\|perp | 成功→`TopOfBook`；失败→raise | 默认 taker（按 instrument）；`embedded_in_price=false`；`gas_bps=0` |
 | Perp DEX | L2 walk；lot/tick；默认 `perp` | 成功→`TopOfBook`；失败→raise | 同上 + `funding_rate_8h`；可选 `venue_mark` |
 | AMM DEX | Quoter + gas | `None` | 价内嵌 LP；gas 可知则填，否则 `gas_unknown=true` |
-| Prop AMM（Solana：`humidifi` / `tessera_solana` / `bisonfi`） | Jupiter `dexes=<Label>` 净输出 | `None` | `embedded_in_price=true`；platform 0；`gas_bps=0`（Solana 交易费对五档名义均 <0.1 bps，约定忽略）；无路由 → `no_quote` |
+| Prop AMM（Solana：`humidifi` / `tessera_solana` / `bisonfi`） | Jupiter `dexes=<Label>` 净输出 | `None` | `embedded_in_price=true`；platform 0；`gas_bps=0`（base fee 对 ≥$1k 档 <0.1 bps，约定忽略；`$100` 档若 priority fee 显著则仍可能 ≥0.1 bps，但不改 `gas_bps=0` 约定 — Solana 侧相对 EVM L1 仍可忽略）；无路由 → `no_quote` |
 | Prop AMM（EVM：`tessera_base` / `tessera_bsc`，v2） | KyberSwap `includedSources=tessera` 净输出（§4.4） | `None` | `embedded_in_price=true`；platform 0；**gas 用响应 `gasUsd`**（`gas_unknown=false`）；4008→`no_quote`，4000（token 不在集）→`unsupported_asset`，40011→fail-fast |
 
 ---

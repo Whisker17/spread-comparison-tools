@@ -17,7 +17,7 @@ import {
   parseDecimal,
   sortNotionals,
 } from "@/lib/format";
-import { heatClass, heatRange } from "@/lib/heat";
+import { heatClass, heatRange, type HeatRange } from "@/lib/heat";
 import { isEligibleForBest, type MetricKey } from "@/lib/status";
 import {
   bestVenueMap,
@@ -123,7 +123,7 @@ export function SpreadMatrix({
    * fully legible as numbers — only the colour mapping is column-local.
    */
   const rangesByNotional = useMemo(() => {
-    const map = new Map<string, ReturnType<typeof heatRange>>();
+    const map = new Map<string, HeatRange | null>();
     if (!heat) return map;
     for (const n of notionals) {
       const values: (number | null)[] = [];
