@@ -98,7 +98,11 @@ async def test_startup_all_initializes_mock() -> None:
 
 @pytest.mark.asyncio
 async def test_startup_all_failure_is_visible(monkeypatch: pytest.MonkeyPatch) -> None:
-    """A venue whose startup raises must fail the group, not register as healthy."""
+    """A venue whose startup raises fatally must fail the group, not register as healthy.
+
+    WHI-840 narrows blast radius for *transient* errors; config/programmer errors
+    (RuntimeError) still refuse boot — WHI-823 property preserved.
+    """
 
     class BoomAdapter(StubAdapter):
         venue: str = "binance"
@@ -115,6 +119,29 @@ async def test_startup_all_failure_is_visible(monkeypatch: pytest.MonkeyPatch) -
 
     assert any(isinstance(e, RuntimeError) for e in exc_info.value.exceptions)
     assert "binance" not in _INITIALIZED
+
+    await aclose_all()
+
+
+@pytest.mark.asyncio
+async def test_startup_all_transient_failure_degrades_only(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """AdapterFetchError degrades the venue without raising (WHI-840)."""
+    from spread_compare.adapters.base import AdapterFetchError
+
+    class BoomAdapter(StubAdapter):
+        venue: str = "lighter"
+
+        async def startup(self) -> None:
+            raise AdapterFetchError("simulated upstream blip")
+
+    monkeypatch.setitem(_REGISTRY, "lighter", BoomAdapter())
+    _INITIALIZED.discard("lighter")
+
+    report = await startup_all(slugs=["lighter"])
+    assert "lighter" in report.degraded
+    assert "lighter" not in _INITIALIZED
 
     await aclose_all()
 

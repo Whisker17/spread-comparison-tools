@@ -151,7 +151,7 @@
           "quotes"
         ],
         "summary": "Get Venues",
-        "description": "Static venue registry + whether an adapter is currently registered.",
+        "description": "Static venue registry + whether an adapter is currently registered.\n\nVenues disabled in ``config/venues.yaml`` are omitted entirely (WHI-840) so\nthey do not appear as quote targets and consume no fan-out budget.",
         "operationId": "get_venues_venues_get",
         "responses": {
           "200": {
@@ -654,15 +654,36 @@
             "type": "integer",
             "title": "Adapters Initialized",
             "description": "Adapters whose startup() completed successfully."
+          },
+          "adapters_expected": {
+            "type": "integer",
+            "title": "Adapters Expected",
+            "description": "Enabled adapters that should be started (excludes config-disabled)."
+          },
+          "degraded": {
+            "type": "boolean",
+            "title": "Degraded",
+            "description": "True when at least one enabled adapter is not initialized."
+          },
+          "unavailable_venues": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Unavailable Venues",
+            "description": "Enabled venue slugs that failed or have not completed startup."
           }
         },
         "type": "object",
         "required": [
           "status",
-          "adapters_initialized"
+          "adapters_initialized",
+          "adapters_expected",
+          "degraded",
+          "unavailable_venues"
         ],
         "title": "HealthResponse",
-        "description": "Liveness payload for ``GET /health``."
+        "description": "Liveness payload for ``GET /health`` (WHI-840: degradation without flap)."
       },
       "Quote": {
         "properties": {

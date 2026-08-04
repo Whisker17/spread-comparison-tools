@@ -12,12 +12,25 @@ from pathlib import Path
 
 from spread_compare.adapters.base import AdapterError, BaseAdapter, VenueAdapter
 from spread_compare.adapters.registry import (
+    StartupReport,
     aclose_all,
+    allowed_adapter_slugs,
+    clear_disabled_venues,
+    disabled_venues,
+    expected_adapter_count,
     get,
     initialized_count,
+    is_available,
+    is_degradable_startup_error,
+    is_degraded,
+    is_initialized,
     list_venues,
     register_adapter,
+    retry_uninitialized,
+    run_startup_retry_loop,
+    set_disabled_venues,
     startup_all,
+    unavailable_venues,
 )
 
 # Infrastructure modules — not venue adapters. Spec WHI-823: skip base/registry/__init__.
@@ -47,12 +60,25 @@ discover_adapters()
 __all__ = [
     "AdapterError",
     "BaseAdapter",
+    "StartupReport",
     "VenueAdapter",
     "aclose_all",
+    "allowed_adapter_slugs",
+    "clear_disabled_venues",
+    "disabled_venues",
     "discover_adapters",
+    "expected_adapter_count",
     "get",
     "initialized_count",
+    "is_available",
+    "is_degradable_startup_error",
+    "is_degraded",
+    "is_initialized",
     "list_venues",
     "register_adapter",
+    "retry_uninitialized",
+    "run_startup_retry_loop",
+    "set_disabled_venues",
     "startup_all",
+    "unavailable_venues",
 ]

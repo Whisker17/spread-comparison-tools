@@ -1,0 +1,14 @@
+# Venue enable/disable + startup-retry policy (WHI-840).
+# Defaults are unvalidated pending DESIGN.md §2 — engineering starting points.
+#
+# disabled: venue slugs that must not start or receive fan-out traffic (geo-block,
+# permanent outage on this host, etc.). Empty = all discovered adapters enabled.
+# Override per deploy via venues.local.yaml (gitignored).
+disabled: []
+
+# Background retry for venues whose startup() failed transiently (AdapterFetchError /
+# AdapterTimeoutError). Interval grows by backoff_multiplier up to max_interval_sec.
+# Set startup_retry_interval_sec to 0 to disable background retry.
+startup_retry_interval_sec: 60.0
+startup_retry_backoff_multiplier: 2.0
+startup_retry_max_interval_sec: 300.0

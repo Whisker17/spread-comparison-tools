@@ -16,11 +16,12 @@ from decimal import Decimal
 from typing import Literal
 
 from spread_compare.adapters.registry import get as registry_get
-from spread_compare.adapters.registry import list_venues
+from spread_compare.adapters.registry import is_available, list_venues
 from spread_compare.aggregator import (
     UnknownVenueError,
     apply_mid_stale,
     effective_instrument_type,
+    not_initialized_quote,
     quote_with_timeout,
     resolve_mid_with_budget,
 )
@@ -393,6 +394,22 @@ class TradeSimulator:
     ) -> SimulateRow:
         adapter = registry_get(slug)
         itype = effective_instrument_type(adapter.venue_class, instrument_type)
+        # WHI-840: failed startup must not collapse to not_supported via empty
+        # warm-up caches (HL meta / lighter markets / apex symbols).
+        if not is_available(slug):
+            quote = not_initialized_quote(
+                mid=mid,
+                venue=slug,
+                asset=pair.asset,
+                side=pair.side,
+                notional_usd=notional_usd,
+                instrument_type=itype,
+            )
+            quote = apply_mid_stale(
+                quote, stale_threshold_sec=self._mid_settings.stale_threshold_sec
+            )
+            return _row_from_quote(quote, side=pair.side)
+
         supported = {a.upper() for a in adapter.supported_assets(instrument_type=itype)}
         if pair.asset not in supported:
             return _not_supported_row(

@@ -107,6 +107,52 @@ class ApiSettings(BaseModel):
         return [str(v).rstrip("/") for v in value]
 
 
+class VenueSettings(BaseModel):
+    """``config/venues.yaml`` — enable/disable + startup-retry (WHI-840)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    disabled: list[str]
+    startup_retry_interval_sec: float = Field(ge=0)
+    startup_retry_backoff_multiplier: float = Field(gt=1)
+    startup_retry_max_interval_sec: float = Field(gt=0)
+
+    @field_validator("disabled", mode="before")
+    @classmethod
+    def _normalize_disabled(cls, value: object) -> object:
+        if not isinstance(value, list):
+            return value
+        return [str(v).strip() for v in value if str(v).strip()]
+
+    @field_validator("disabled")
+    @classmethod
+    def _known_disabled_slugs(cls, value: list[str]) -> list[str]:
+        # Lazy import: settings must stay importable before adapter discovery.
+        from spread_compare.adapters.registry import allowed_adapter_slugs
+
+        allowed = allowed_adapter_slugs()
+        unknown = sorted({s for s in value if s not in allowed})
+        if unknown:
+            raise ValueError(
+                f"unknown venue slug(s) in disabled: {unknown}; "
+                f"allowed: {sorted(allowed)}"
+            )
+        return value
+
+    @model_validator(mode="after")
+    def _max_not_below_interval(self) -> VenueSettings:
+        if (
+            self.startup_retry_interval_sec > 0
+            and self.startup_retry_max_interval_sec < self.startup_retry_interval_sec
+        ):
+            raise ValueError(
+                "startup_retry_max_interval_sec must be >= startup_retry_interval_sec "
+                f"(got max={self.startup_retry_max_interval_sec}, "
+                f"interval={self.startup_retry_interval_sec})"
+            )
+        return self
+
+
 def _read_yaml(path: Path) -> dict[str, Any]:
     if not path.is_file():
         return {}
@@ -152,9 +198,16 @@ def load_api_settings() -> ApiSettings:
     return ApiSettings.model_validate(_merge_local("api"))
 
 
+@lru_cache(maxsize=1)
+def load_venue_settings() -> VenueSettings:
+    """Parse venue enable/disable + retry settings once; fail fast on invalid config."""
+    return VenueSettings.model_validate(_merge_local("venues"))
+
+
 def clear_settings_cache() -> None:
     """Drop cached settings (tests that rewrite YAML)."""
     load_mid_settings.cache_clear()
     load_aggregator_settings.cache_clear()
     load_jupiter_settings.cache_clear()
     load_api_settings.cache_clear()
+    load_venue_settings.cache_clear()
