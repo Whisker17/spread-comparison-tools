@@ -8,7 +8,7 @@ disabled: []
 
 # Background retry for venues whose startup() failed transiently (AdapterFetchError /
 # AdapterTimeoutError). Interval grows by backoff_multiplier up to max_interval_sec.
-# Set interval_sec to 0 to disable background retry.
+# Set startup_retry_interval_sec to 0 to disable background retry.
 startup_retry_interval_sec: 60.0
 startup_retry_backoff_multiplier: 2.0
 startup_retry_max_interval_sec: 300.0

@@ -44,6 +44,11 @@ _DEGRADABLE_STARTUP_ERRORS: tuple[type[BaseException], ...] = (
 )
 
 
+def allowed_adapter_slugs() -> frozenset[str]:
+    """Venue slugs that may appear in config or the registry (WHI-799 §6.5 + scaffold)."""
+    return known_slugs() | _EXTRA_ALLOWED_SLUGS
+
+
 @dataclass(frozen=True, slots=True)
 class StartupReport:
     """Per-boot outcome of :func:`startup_all` (WHI-840)."""
@@ -65,7 +70,7 @@ def register_adapter[T: VenueAdapter](cls: type[T]) -> type[T]:
     """Instantiate ``cls`` and register it under ``instance.venue``."""
     instance = cls()
     slug = instance.venue
-    allowed = known_slugs() | _EXTRA_ALLOWED_SLUGS
+    allowed = allowed_adapter_slugs()
     if slug not in allowed:
         raise ValueError(
             f"adapter slug {slug!r} is not in the WHI-799 §6.5 venue registry "
@@ -113,7 +118,7 @@ def set_disabled_venues(slugs: Iterable[str]) -> None:
     Unknown slugs raise :class:`ValueError` (fail-fast; typo must not silently
     leave a venue live).
     """
-    allowed = known_slugs() | _EXTRA_ALLOWED_SLUGS
+    allowed = allowed_adapter_slugs()
     cleaned: list[str] = []
     for raw in slugs:
         slug = str(raw).strip()

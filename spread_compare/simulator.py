@@ -21,7 +21,7 @@ from spread_compare.aggregator import (
     UnknownVenueError,
     apply_mid_stale,
     effective_instrument_type,
-    error_quote,
+    not_initialized_quote,
     quote_with_timeout,
     resolve_mid_with_budget,
 )
@@ -397,15 +397,13 @@ class TradeSimulator:
         # WHI-840: failed startup must not collapse to not_supported via empty
         # warm-up caches (HL meta / lighter markets / apex symbols).
         if not is_available(slug):
-            quote = error_quote(
+            quote = not_initialized_quote(
                 mid=mid,
                 venue=slug,
                 asset=pair.asset,
                 side=pair.side,
                 notional_usd=notional_usd,
                 instrument_type=itype,
-                error_code="not_initialized",
-                error_message=f"{slug}: adapter startup did not complete",
             )
             quote = apply_mid_stale(
                 quote, stale_threshold_sec=self._mid_settings.stale_threshold_sec

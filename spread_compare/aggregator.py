@@ -156,6 +156,28 @@ def error_quote(
     )
 
 
+def not_initialized_quote(
+    *,
+    mid: ReferenceMid,
+    venue: str,
+    asset: str,
+    side: Side,
+    notional_usd: Decimal,
+    instrument_type: InstrumentType,
+) -> Quote:
+    """``error_code=not_initialized`` row for venues whose startup() failed (WHI-840)."""
+    return error_quote(
+        mid=mid,
+        venue=venue,
+        asset=asset,
+        side=side,
+        notional_usd=notional_usd,
+        instrument_type=instrument_type,
+        error_code="not_initialized",
+        error_message=f"{venue}: adapter startup did not complete",
+    )
+
+
 async def resolve_mid_with_budget(
     mid_service: MidService,
     asset: str,
@@ -202,15 +224,13 @@ async def quote_with_timeout(
             adapter.venue,
             suffix,
         )
-        return error_quote(
+        return not_initialized_quote(
             mid=mid,
             venue=adapter.venue,
             asset=asset,
             side=side,
             notional_usd=notional_usd,
             instrument_type=instrument_type,
-            error_code="not_initialized",
-            error_message=f"{adapter.venue}: adapter startup did not complete",
         )
     try:
         async with asyncio.timeout(timeout):

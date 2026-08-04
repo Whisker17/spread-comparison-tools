@@ -228,19 +228,21 @@ def test_disabled_venue_absent_from_get_venues_and_not_started(
         ),
     )
 
-    with TestClient(create_app()) as client:
-        venues = client.get("/venues").json()
-        slugs = {row["slug"] for row in venues}
-        assert "binance" not in slugs
-        # Health should not expect a disabled venue.
-        health = client.get("/health").json()
-        assert "binance" not in health["unavailable_venues"]
-        assert health["adapters_expected"] == expected_adapter_count()
+    try:
+        with TestClient(create_app()) as client:
+            venues = client.get("/venues").json()
+            slugs = {row["slug"] for row in venues}
+            assert "binance" not in slugs
+            # Health should not expect a disabled venue.
+            health = client.get("/health").json()
+            assert "binance" not in health["unavailable_venues"]
+            assert health["adapters_expected"] == expected_adapter_count()
 
-    # TrackAdapter.startup must never have run (disabled before startup_all).
-    assert "binance" not in started
-    clear_disabled_venues()
-    clear_settings_cache()
+        # TrackAdapter.startup must never have run (disabled before startup_all).
+        assert "binance" not in started
+    finally:
+        clear_disabled_venues()
+        clear_settings_cache()
 
 
 def test_health_reports_degradation_with_transient_failure(

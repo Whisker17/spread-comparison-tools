@@ -128,10 +128,9 @@ class VenueSettings(BaseModel):
     @classmethod
     def _known_disabled_slugs(cls, value: list[str]) -> list[str]:
         # Lazy import: settings must stay importable before adapter discovery.
-        from spread_compare.venues import known_slugs
+        from spread_compare.adapters.registry import allowed_adapter_slugs
 
-        # Match registry._EXTRA_ALLOWED_SLUGS (scaffold/test slugs).
-        allowed = known_slugs() | frozenset({"mock", "_test_discovery"})
+        allowed = allowed_adapter_slugs()
         unknown = sorted({s for s in value if s not in allowed})
         if unknown:
             raise ValueError(

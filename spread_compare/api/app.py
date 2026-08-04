@@ -99,16 +99,16 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                     slug,
                     exc,
                 )
-        if venue_settings.startup_retry_interval_sec > 0:
-            retry_task = asyncio.create_task(
-                run_startup_retry_loop(
-                    interval_sec=venue_settings.startup_retry_interval_sec,
-                    backoff_multiplier=venue_settings.startup_retry_backoff_multiplier,
-                    max_interval_sec=venue_settings.startup_retry_max_interval_sec,
-                    stop_event=retry_stop,
-                ),
-                name="adapter-startup-retry",
-            )
+            if venue_settings.startup_retry_interval_sec > 0:
+                retry_task = asyncio.create_task(
+                    run_startup_retry_loop(
+                        interval_sec=venue_settings.startup_retry_interval_sec,
+                        backoff_multiplier=venue_settings.startup_retry_backoff_multiplier,
+                        max_interval_sec=venue_settings.startup_retry_max_interval_sec,
+                        stop_event=retry_stop,
+                    ),
+                    name="adapter-startup-retry",
+                )
         yield
     finally:
         retry_stop.set()
@@ -116,7 +116,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             retry_task.cancel()
             try:
                 await retry_task
-            except asyncio.CancelledError:
+            except (asyncio.CancelledError, Exception):  # noqa: BLE001 — never skip aclose
                 pass
         await aclose_all()
         clear_disabled_venues()
