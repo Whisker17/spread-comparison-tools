@@ -1,0 +1,41 @@
+{
+  "inputMint": "So11111111111111111111111111111111111111112",
+  "inAmount": "100000000",
+  "outputMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+  "outAmount": "7373257",
+  "otherAmountThreshold": "7336391",
+  "swapMode": "ExactIn",
+  "slippageBps": 50,
+  "platformFee": null,
+  "priceImpactPct": "0",
+  "routePlan": [
+    {
+      "swapInfo": {
+        "ammKey": "8sKQHfjNhvmAw94PhfvfMcytmqW6jmxvwieYyzXCCPu",
+        "label": "HumidiFi",
+        "inputMint": "So11111111111111111111111111111111111111112",
+        "outputMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "inAmount": "100000000",
+        "outAmount": "7373257",
+        "updateContextSlot": "437089813"
+      },
+      "percent": 100,
+      "bps": null
+    }
+  ],
+  "contextSlot": 437089813,
+  "timeTaken": 0.000215516,
+  "swapUsdValue": "7.37163834791280",
+  "mostReliableAmmsQuoteReport": {
+    "info": {
+      "BZtgQEyS6eXUXicYPHecYQ7PybqodXQMvkjUbP4R8mUU": "Not used RG: FullLiquidIntermediate, contains ALT: true",
+      "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE": "Amm is excluded from request's dexes_selection."
+    }
+  },
+  "longtailMarketQuoteReport": null,
+  "useIncurredSlippageForQuoting": null,
+  "useRewards": null,
+  "otherRoutePlans": null,
+  "loadedLongtailToken": false,
+  "instructionVersion": null
+}

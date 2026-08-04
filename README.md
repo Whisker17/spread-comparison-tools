@@ -14,6 +14,7 @@ Early research phase (M1). No application runtime yet.
 | WHI-798 — Asset category inventory, v2 asset-first stocks (blue chips / stocks / others) | [docs/research/WHI-798-asset-category-inventory.md](docs/research/WHI-798-asset-category-inventory.md) |
 | WHI-799 — Spread & fee metrics + unified data model (spec) | [docs/research/WHI-799-spread-fee-data-model.md](docs/research/WHI-799-spread-fee-data-model.md) |
 | WHI-800 — Venue API survey (endpoint / rate limit / auth) | [docs/research/WHI-800-venue-api-survey.md](docs/research/WHI-800-venue-api-survey.md) |
+| WHI-837 — Solana prop AMM quote redundancy (Jupiter SPOF) | [docs/research/WHI-837-solana-prop-amm-quote-redundancy.md](docs/research/WHI-837-solana-prop-amm-quote-redundancy.md) |
 
 ## Baseline prop AMMs (confirmed — venue × chain)
 
