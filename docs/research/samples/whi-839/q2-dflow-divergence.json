@@ -92,7 +92,8 @@
         "jup_http": 400,
         "dflow_http": 400,
         "note": "both sides no route / 400 on first and retry"
-      }
+      },
+      "div_source": "none"
     },
     {
       "jup_label": "TesseraV",
@@ -240,9 +241,7 @@
       "jup_route_labels": [
         "BisonFi"
       ],
-      "dflow_route_venues": [
-        "BisonFi"
-      ],
+      "dflow_route_venues": [],
       "gap_j_to_d_s": null,
       "div_bps": null,
       "research_key": "bisonfi",
@@ -264,8 +263,7 @@
         "div_bps": 2.6119
       },
       "div_source": "none",
-      "gap_note": "gap_j_to_d_s was first-pass attempt interval; retry pair gap not instrumented",
-      "same_pass_success": false
+      "gap_note": "first-pass DFlow failed; no same-pass gap for a successful pair; retry_pair gap not instrumented"
     },
     {
       "jup_label": "BisonFi",
