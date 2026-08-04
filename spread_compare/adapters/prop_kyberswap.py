@@ -13,7 +13,6 @@ from typing import Any, ClassVar, Final, Literal
 
 import httpx
 
-from spread_compare.adapters._perp_common import AsyncRateLimiter
 from spread_compare.adapters._prop_common import (
     BASE_TOKENS,
     BSC_TOKENS,
@@ -41,6 +40,7 @@ from spread_compare.models import (
     TopOfBook,
     VenueClass,
 )
+from spread_compare.ratelimit import AsyncRateLimiter
 
 logger = logging.getLogger(__name__)
 

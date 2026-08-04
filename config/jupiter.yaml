@@ -1,0 +1,14 @@
+# Jupiter Quote API rate budget (WHI-836).
+# Defaults are **unvalidated** pending docs/DESIGN.md §2 — engineering starting
+# points derived from live probing (2026-08-04 against api.jup.ag):
+#   keyed headers remaining+current=10, x-ratelimit-reset ~1s → ~10 RPS
+#   keyless burst of 5 then 429 (WHI-797 §3.3); window length re-measured as ~1s
+#   under the keyed plan. Token bucket: capacity N, refill N/window_sec.
+# Plan upgrades are config edits only. Secrets (JUPITER_API_KEY) stay in .env.
+
+keyless_capacity: 5
+keyed_capacity: 10
+window_sec: 1.0
+# When true, sync bucket from x-ratelimit-remaining / x-ratelimit-current
+# (never raised above the configured capacity for the active mode).
+adapt_from_headers: true

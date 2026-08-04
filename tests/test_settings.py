@@ -1,9 +1,11 @@
-"""Typed config loading (WHI-807)."""
+"""Typed config loading (WHI-807 / WHI-836)."""
 
 from spread_compare.settings import (
+    AggregatorSettings,
     clear_settings_cache,
     load_aggregator_settings,
     load_api_settings,
+    load_jupiter_settings,
     load_mid_settings,
 )
 
@@ -22,7 +24,47 @@ def test_load_aggregator_settings_defaults() -> None:
     clear_settings_cache()
     agg = load_aggregator_settings()
     assert agg.venue_timeout_sec == 3.0
-    assert agg.response_cache_ttl_sec == 2.0
+    assert agg.response_cache_ttl_sec == 20.0
+    assert agg.venue_timeout_by_class["prop_amm"] == 8.0
+    assert agg.venue_timeout_by_class["amm_dex"] == 6.0
+    assert agg.timeout_for("cex") == 3.0
+    assert agg.timeout_for("prop_amm") == 8.0
+    assert agg.timeout_for("amm_dex") == 6.0
+    assert agg.timeout_for("perp_dex") == 3.0
+
+
+def test_load_jupiter_settings_defaults() -> None:
+    clear_settings_cache()
+    jup = load_jupiter_settings()
+    assert jup.keyless_capacity == 5
+    assert jup.keyed_capacity == 10
+    assert jup.window_sec == 1.0
+    assert jup.adapt_from_headers is True
+
+
+def test_jupiter_keyless_cannot_exceed_keyed() -> None:
+    import pytest
+    from pydantic import ValidationError
+
+    from spread_compare.settings import JupiterSettings
+
+    with pytest.raises(ValidationError, match="keyless_capacity"):
+        JupiterSettings(
+            keyless_capacity=20,
+            keyed_capacity=10,
+            window_sec=1.0,
+            adapt_from_headers=True,
+        )
+
+
+def test_aggregator_timeout_for_fallback() -> None:
+    agg = AggregatorSettings(
+        venue_timeout_sec=2.5,
+        venue_timeout_by_class={"prop_amm": 9.0},
+        response_cache_ttl_sec=0,
+    )
+    assert agg.timeout_for("prop_amm") == 9.0
+    assert agg.timeout_for("cex") == 2.5
 
 
 def test_load_api_settings_cors_defaults() -> None:

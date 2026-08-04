@@ -16,7 +16,6 @@ from typing import Any, Literal
 
 from spread_compare.adapters._perp_common import (
     DEFAULT_FEE_TIER,
-    AsyncRateLimiter,
     OrderbookLevels,
     build_quote_from_book,
     build_top_of_book,
@@ -49,6 +48,7 @@ from spread_compare.perp_symbols import (
     hl_logical_id,
     resolve_hl_coin,
 )
+from spread_compare.ratelimit import AsyncRateLimiter
 
 logger = logging.getLogger(__name__)
 

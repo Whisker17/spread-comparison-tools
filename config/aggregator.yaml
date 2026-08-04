@@ -1,8 +1,17 @@
-# Quote aggregator (WHI-807).
+# Quote aggregator (WHI-807 / WHI-836).
 # Defaults are **unvalidated** pending docs/DESIGN.md §2 — engineering starting points only.
 
-# Per-venue asyncio timeout around adapter.get_quote / get_orderbook_spread.
+# Default per-venue asyncio timeout around adapter.get_quote / get_orderbook_spread.
 venue_timeout_sec: 3.0
 
-# Short-TTL response cache to protect upstream rate limits (Jupiter keyless ~0.5 RPS).
-response_cache_ttl_sec: 2.0
+# Per-class overrides for multi-round-trip / shared-limiter venues (WHI-836).
+# Classes absent here use venue_timeout_sec. Do not raise the global default
+# just to fit the slowest class — that delays every CEX/perp response.
+venue_timeout_by_class:
+  prop_amm: 8.0
+  amm_dex: 6.0
+
+# Response cache TTL. Frontend section poll interval is 30s; keep this below
+# that so repeated dashboard loads reuse a snapshot without freezing data
+# across a full poll cycle. Raised from 2s (WHI-836) so cache can actually hit.
+response_cache_ttl_sec: 20.0
