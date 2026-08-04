@@ -42,6 +42,16 @@ def pytest_collection_modifyitems(
 
 
 @pytest.fixture(autouse=True)
+def clear_orderbook_snapshot_cache() -> Iterator[None]:
+    """Isolate the process-wide WHI-843 book cache between tests."""
+    from spread_compare.orderbook_cache import default_orderbook_cache
+
+    default_orderbook_cache().clear()
+    yield
+    default_orderbook_cache().clear()
+
+
+@pytest.fixture(autouse=True)
 def offline_perp_http(request: pytest.FixtureRequest) -> Iterator[None]:
     """Wire mock HTTP for registered perp adapters in non-live tests."""
     if request.node.get_closest_marker("live"):

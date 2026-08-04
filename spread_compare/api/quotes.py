@@ -35,7 +35,13 @@ router = APIRouter(tags=["quotes"])
 
 
 class QuotesResponse(BaseModel):
-    """``GET /quotes`` payload."""
+    """``GET /quotes`` payload.
+
+    Single-tier calls set ``notional_usd`` to that tier and ``notionals`` to a
+    one-element list. Multi-tier calls (``?notionals=…``) return every tier's
+    pairs under one ``snapshot_id`` / mid; ``notional_usd`` is the first
+    (sorted) tier for back-compat (WHI-843).
+    """
 
     model_config = ConfigDict(extra="forbid")
 
@@ -44,6 +50,10 @@ class QuotesResponse(BaseModel):
     notional_usd: Decimal
     mid: ReferenceMid
     pairs: list[SizeQuotePair]
+    notionals: list[Decimal] = Field(
+        min_length=1,
+        description="Requested notional tiers (USD); always non-empty.",
+    )
 
 
 class VenueResponse(BaseModel):
@@ -71,12 +81,18 @@ class AssetResponse(BaseModel):
 
 
 def _package_to_response(package: QuotesPackage) -> QuotesResponse:
+    notionals = (
+        list(package.notionals)
+        if package.notionals
+        else [package.notional_usd]
+    )
     return QuotesResponse(
         snapshot_id=package.snapshot_id,
         asset=package.asset,
         notional_usd=package.notional_usd,
         mid=package.mid,
         pairs=package.pairs,
+        notionals=notionals,
     )
 
 
@@ -92,15 +108,24 @@ async def get_quotes(
     request: Request,
     asset: Annotated[str, Query(min_length=1, description="Logical asset id, e.g. BTC")],
     notional: Annotated[
-        str,
+        str | None,
         Query(
             description=(
-                "USD notional; one of "
+                "Single USD notional; one of "
                 + " / ".join(str(t) for t in NOTIONAL_TIERS_USD)
-                + " (WHI-799 §4.1)"
+                + " (WHI-799 §4.1). Mutually exclusive with ``notionals``."
             ),
         ),
-    ],
+    ] = None,
+    notionals: Annotated[
+        str | None,
+        Query(
+            description=(
+                "Comma-separated USD notionals (multi-tier package, WHI-843); "
+                "each must be a §4.1 tier. Mutually exclusive with ``notional``."
+            ),
+        ),
+    ] = None,
     venues: Annotated[
         str | None,
         Query(description="Comma-separated venue slugs; default = all registered adapters"),
@@ -111,13 +136,11 @@ async def get_quotes(
         Query(description="Override adapter default instrument type"),
     ] = None,
 ) -> QuotesResponse:
-    """Fan out to adapters and return SizeQuotePair rows for one asset/notional."""
+    """Fan out to adapters; one asset, one or many notional tiers (WHI-843)."""
     try:
-        notional_usd = Decimal(notional)
-    except (InvalidOperation, ValueError) as exc:
-        raise HTTPException(
-            status_code=422, detail=f"invalid notional: {notional!r}"
-        ) from exc
+        notional_arg = _parse_notional_params(notional=notional, notionals=notionals)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     venue_list = (
         [v.strip() for v in venues.split(",") if v.strip()] if venues else None
@@ -127,7 +150,7 @@ async def get_quotes(
     try:
         package = await aggregator.collect(
             asset,
-            notional_usd,
+            notional_arg,
             venues=venue_list,
             side=side,
             instrument_type=instrument_type,
@@ -142,6 +165,39 @@ async def get_quotes(
         ) from exc
 
     return _package_to_response(package)
+
+
+def _parse_notional_params(
+    *,
+    notional: str | None,
+    notionals: str | None,
+) -> Decimal | list[Decimal]:
+    """Resolve ``notional`` XOR ``notionals`` query params into aggregator input."""
+    has_single = notional is not None and notional != ""
+    has_multi = notionals is not None and notionals != ""
+    if has_single and has_multi:
+        raise ValueError("pass either notional or notionals, not both")
+    if not has_single and not has_multi:
+        raise ValueError("notional or notionals is required")
+
+    if has_single:
+        assert notional is not None
+        try:
+            return Decimal(notional)
+        except (InvalidOperation, ValueError) as exc:
+            raise ValueError(f"invalid notional: {notional!r}") from exc
+
+    assert notionals is not None
+    parts = [p.strip() for p in notionals.split(",") if p.strip()]
+    if not parts:
+        raise ValueError("notionals must list at least one tier")
+    out: list[Decimal] = []
+    for part in parts:
+        try:
+            out.append(Decimal(part))
+        except (InvalidOperation, ValueError) as exc:
+            raise ValueError(f"invalid notional: {part!r}") from exc
+    return out
 
 
 @router.get("/venues", response_model=list[VenueResponse])

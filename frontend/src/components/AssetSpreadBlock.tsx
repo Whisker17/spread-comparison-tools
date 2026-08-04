@@ -1,12 +1,13 @@
 "use client";
 
 /**
- * One logical asset: live single-notional matrix + TOB + snapshot summary.
- * Section-agnostic — callers pass venue order, labels, selected notional, and
+ * One logical asset: live multi-notional matrix + TOB + snapshot summary.
+ * Section-agnostic — callers pass venue order, labels, size view, and
  * orderbook rows so WHI-809/810/811 do not share section-config imports.
  *
- * WHI-841: fetches exactly one notional tier (the size selector selection)
- * so a page issues one `/quotes` request per asset, not per asset × tier.
+ * WHI-843: one multi-tier `/quotes` request per asset (all section notionals).
+ * The size selector is a view preference — ``all`` shows every column; a
+ * concrete size focuses one column with detail (WHI-841 focus mode).
  */
 
 import { Info, RefreshCw } from "lucide-react";
@@ -21,6 +22,10 @@ import type { SectionConfig } from "@/config/sections/types";
 import { useQuotesMatrix } from "@/hooks/useQuotes";
 import type { InstrumentType, TopOfBook } from "@/lib/api";
 import { formatNotional, formatTimestamp } from "@/lib/format";
+import {
+  isSizeAll,
+  notionalsForSizeView,
+} from "@/lib/notionalSize";
 import type { SideView } from "@/lib/summary";
 import { cn } from "@/lib/utils";
 import {
@@ -38,8 +43,9 @@ export type AssetSpreadBlockProps = {
   section: SectionConfig;
   asset: string;
   /**
-   * Selected notional tier (USD string). Parent owns size selection via the
-   * shared SizeSelector + `?size=` URL (WHI-841) — one request per asset.
+   * Size view preference (WHI-843): ``all`` = multi-column matrix; a tier USD
+   * string = single-size focus with detail columns. Parent owns selection via
+   * SizeSelector + `?size=` URL. Fetch always covers `section.notionals`.
    */
   notional: string;
   /** Visible venue row order (already filtered for this asset). */
@@ -108,19 +114,34 @@ export function AssetSpreadBlock({
 }: AssetSpreadBlockProps) {
   const [sideView, setSideView] = useState<SideView>(section.defaultSideView);
 
-  // Single tier only — never fan out across section.notionals (WHI-841).
-  const notionals = useMemo(() => [notional], [notional]);
+  // Always fetch every section tier in one multi-tier request (WHI-843).
+  const fetchNotionals = useMemo(
+    () => [...section.notionals],
+    [section.notionals],
+  );
+  // View preference: all columns vs single-size focus.
+  const displayNotionals = useMemo(
+    () => notionalsForSizeView(notional, section.notionals),
+    [notional, section.notionals],
+  );
+  const multiColumn = isSizeAll(notional);
 
   const query = useQuotesMatrix({
     asset,
-    notionals,
+    notionals: fetchNotionals,
     // Pin to the section venue set so we don't surface mock/other adapters.
     venues: venues.length > 0 ? venues : undefined,
     instrument_type: instrumentType ?? section.instrumentType,
     refetchInterval: section.pollIntervalMs,
   });
 
-  const pairs = useMemo(() => query.data?.pairs ?? [], [query.data?.pairs]);
+  const pairs = useMemo(() => {
+    const all = query.data?.pairs ?? [];
+    if (multiColumn) return all;
+    const focus = displayNotionals[0];
+    if (!focus) return all;
+    return all.filter((p) => String(p.notional_usd) === focus);
+  }, [query.data?.pairs, multiColumn, displayNotionals]);
 
   const orderbookVenues = useMemo(
     () => orderbookVenuesProp ?? venues,
@@ -130,7 +151,11 @@ export function AssetSpreadBlock({
   const tobByVenue = useMemo(() => {
     const map: Record<string, TopOfBook | null> = {};
     for (const v of orderbookVenues) map[v] = null;
-    for (const pair of pairs) {
+    // Prefer TOB from the smallest notional row (same book snapshot per venue).
+    const ordered = [...(query.data?.pairs ?? [])].sort(
+      (a, b) => Number(a.notional_usd) - Number(b.notional_usd),
+    );
+    for (const pair of ordered) {
       if (
         pair.top_of_book &&
         Object.prototype.hasOwnProperty.call(map, pair.venue) &&
@@ -140,7 +165,7 @@ export function AssetSpreadBlock({
       }
     }
     return map;
-  }, [pairs, orderbookVenues]);
+  }, [query.data?.pairs, orderbookVenues]);
 
   const mid = query.data?.mids?.[0];
   const snapshotId = query.data?.snapshotIds?.[0];
@@ -167,12 +192,14 @@ export function AssetSpreadBlock({
 
   const proseLabels = summaryVenueLabels ?? venueLabels;
   const pollMs = section.pollIntervalMs;
-  const sizeLabel = formatNotional(notional);
+  const sizeLabel = multiColumn
+    ? `${section.notionals.length} sizes`
+    : formatNotional(notional);
   const subtitleText =
     subtitle ??
-    `All venue classes · size ${sizeLabel} · ${sideView.replace("_", " ")}`;
+    `All venue classes · ${sizeLabel} · ${sideView.replace("_", " ")}`;
 
-  // Cold size (no cache): isLoading. Warm size: cached data shows immediately.
+  // Cold load: isLoading. Warm size-focus still has data immediately.
   const showSkeleton = query.isLoading;
 
   return (
@@ -309,7 +336,7 @@ export function AssetSpreadBlock({
 
       {showSkeleton && (
         <p className="text-sm text-zinc-500">
-          Loading {asset} quotes at {sizeLabel}…
+          Loading {asset} quotes ({sizeLabel})…
         </p>
       )}
       {query.isError && (
@@ -343,12 +370,12 @@ export function AssetSpreadBlock({
           />
           <SpreadMatrix
             pairs={pairs}
-            notionals={notionals}
+            notionals={displayNotionals}
             venues={venues}
             sideView={sideView}
             metric={section.cellMetric}
             venueLabels={venueLabels}
-            showDetailColumns
+            showDetailColumns={!multiColumn}
             onRetry={() => void query.refetch()}
           />
           {section.showTopOfBook && orderbookVenues.length > 0 && (

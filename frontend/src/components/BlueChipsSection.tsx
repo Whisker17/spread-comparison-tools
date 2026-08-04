@@ -16,13 +16,15 @@ import { venuesForAsset } from "@/config/sections/helpers";
 import { useNotionalSize } from "@/hooks/useNotionalSize";
 import { fetchAssets } from "@/lib/api";
 import { formatNotional } from "@/lib/format";
+import { isSizeAll } from "@/lib/notionalSize";
 
 /**
  * Full `/blue-chips` content: BTC / ETH / SOL blocks with live data (WHI-809).
  * Owns section-config helpers so AssetSpreadBlock stays section-agnostic.
  * Representation labels prefer GET /assets (backend SSOT) with static fallback.
  *
- * WHI-841: page-level size selector → one `/quotes` per asset (not × tiers).
+ * WHI-843: page-level size selector is a view preference; one multi-tier
+ * `/quotes` per asset restores the side-by-side matrix.
  */
 export function BlueChipsSection() {
   // useSearchParams requires a Suspense boundary in the App Router.
@@ -73,11 +75,23 @@ function BlueChipsSectionInner() {
           />
         </div>
         <p className="text-xs text-zinc-500">
-          Showing size{" "}
-          <strong className="font-medium text-zinc-700 dark:text-zinc-300">
-            {formatNotional(notional)}
-          </strong>
-          .
+          {isSizeAll(notional) ? (
+            <>
+              Showing{" "}
+              <strong className="font-medium text-zinc-700 dark:text-zinc-300">
+                all sizes
+              </strong>{" "}
+              (one multi-tier request per asset).
+            </>
+          ) : (
+            <>
+              Focus size{" "}
+              <strong className="font-medium text-zinc-700 dark:text-zinc-300">
+                {formatNotional(notional)}
+              </strong>
+              .
+            </>
+          )}
         </p>
       </header>
 

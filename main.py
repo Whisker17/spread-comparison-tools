@@ -45,12 +45,14 @@ def main(argv: list[str] | None = None) -> int:
         load_aggregator_settings,
         load_impact_settings,
         load_mid_settings,
+        load_orderbook_cache_settings,
     )
 
     # Fail-fast typed config (including fee YAML) without starting the server.
     load_mid_settings()
     load_aggregator_settings()
     load_impact_settings()
+    load_orderbook_cache_settings()
     get_fee_catalog()
 
     app = create_app()

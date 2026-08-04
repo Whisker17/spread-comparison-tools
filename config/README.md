@@ -18,7 +18,7 @@ loaded into a typed, validated model at startup.
 Loaders:
 - `spread_compare/settings.py` — `load_mid_settings`, `load_aggregator_settings`,
   `load_jupiter_settings`, `load_api_settings`, `load_venue_settings`,
-  `load_rpc_settings`, `load_impact_settings`
+  `load_rpc_settings`, `load_impact_settings`, `load_orderbook_cache_settings`
 - `spread_compare/fees.py` — `get_fee_catalog` / `get_fee_schedule` (one YAML per venue)
 
 Checked-in files:
@@ -30,6 +30,9 @@ Checked-in files:
 - `rpc.yaml` — EVM JSON-RPC client budget (WHI-842): per-endpoint token-bucket RPS,
   429 retry/backoff, `eth_gasPrice` cache TTL. Shared across AMM adapters on the
   same RPC URL. Override with `rpc.local.yaml` for keyed provider tiers.
+- `orderbook_cache.yaml` — short-TTL orderbook snapshot reuse (WHI-843). Depth is
+  part of the cache key so a shallow $100 book is never walked for $1M. Unvalidated
+  pending DESIGN.md §2; override with `orderbook_cache.local.yaml`.
 - `venues.yaml` — per-host venue disable list + startup-retry backoff (WHI-840).
   Disabled slugs are omitted from `GET /venues` and never started; unknown slugs
   fail fast at load. Use for geo-blocked hosts (e.g. Binance/Bybit 451 from US

@@ -30,7 +30,7 @@ export interface paths {
         };
         /**
          * Get Quotes
-         * @description Fan out to adapters and return SizeQuotePair rows for one asset/notional.
+         * @description Fan out to adapters; one asset, one or many notional tiers (WHI-843).
          */
         get: operations["get_quotes_quotes_get"];
         put?: never;
@@ -381,6 +381,11 @@ export interface components {
         /**
          * QuotesResponse
          * @description ``GET /quotes`` payload.
+         *
+         *     Single-tier calls set ``notional_usd`` to that tier and ``notionals`` to a
+         *     one-element list. Multi-tier calls (``?notionals=…``) return every tier's
+         *     pairs under one ``snapshot_id`` / mid; ``notional_usd`` is the first
+         *     (sorted) tier for back-compat (WHI-843).
          */
         QuotesResponse: {
             /** Snapshot Id */
@@ -392,6 +397,11 @@ export interface components {
             mid: components["schemas"]["ReferenceMid"];
             /** Pairs */
             pairs: components["schemas"]["SizeQuotePair"][];
+            /**
+             * Notionals
+             * @description Requested notional tiers (USD); always non-empty.
+             */
+            notionals: string[];
         };
         /**
          * ReferenceMid
@@ -696,8 +706,10 @@ export interface operations {
             query: {
                 /** @description Logical asset id, e.g. BTC */
                 asset: string;
-                /** @description USD notional; one of 100 / 1000 / 10000 / 100000 / 1000000 (WHI-799 §4.1) */
-                notional: string;
+                /** @description Single USD notional; one of 100 / 1000 / 10000 / 100000 / 1000000 (WHI-799 §4.1). Mutually exclusive with ``notionals``. */
+                notional?: string | null;
+                /** @description Comma-separated USD notionals (multi-tier package, WHI-843); each must be a §4.1 tier. Mutually exclusive with ``notional``. */
+                notionals?: string | null;
                 /** @description Comma-separated venue slugs; default = all registered adapters */
                 venues?: string | null;
                 /** @description If set, only that leg is fetched */

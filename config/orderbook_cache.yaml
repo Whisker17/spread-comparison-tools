@@ -1,0 +1,7 @@
+# Short-TTL orderbook snapshot cache (WHI-843).
+# Unvalidated pending DESIGN.md §2 — engineering default for one multi-tier
+# fan-out + TOB without serving a stale book across FE poll intervals (15–30s).
+# Override with orderbook_cache.local.yaml if needed.
+
+# Seconds a fetched book remains reusable for concurrent multi-tier walks.
+ttl_sec: 2.5

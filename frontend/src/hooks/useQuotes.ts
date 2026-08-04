@@ -4,9 +4,8 @@
  * Client-side quotes polling (TanStack Query).
  *
  * Choice note (PR): TanStack Query over SWR for explicit query-key control
- * and first-class manual refetch. Section matrices (WHI-841) poll one notional
- * at a time; `useQuotesMatrix` still supports multi-tier fan-out for callers
- * that need it.
+ * and first-class manual refetch. Section matrices (WHI-843) poll one multi-
+ * tier `/quotes` package per asset; size selector only changes the view.
  */
 
 import {
@@ -109,8 +108,7 @@ export function quotesMatrixQueryKey(params: UseQuotesMatrixParams) {
 }
 
 /**
- * Quotes fan-out across one or more notionals.
- * Section pages pass a single-tier list (WHI-841); multi-tier still works.
+ * Quotes for one or more notionals via one multi-tier package (WHI-843).
  */
 export function useQuotesMatrix(
   params: UseQuotesMatrixParams,

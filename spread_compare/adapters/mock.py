@@ -5,6 +5,7 @@ Registered as ``mock`` so WHI-807 can develop aggregation without live venues.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Literal
@@ -201,6 +202,34 @@ class MockAdapter(BaseAdapter):
             qty_base=q_star,
             qty_method="base_from_mid",
         )
+
+    async def get_quotes_batch(
+        self,
+        asset: str,
+        sides: Sequence[Side],
+        notionals: Sequence[Decimal],
+        *,
+        mid: ReferenceMid,
+        instrument_type: InstrumentType | None = None,
+        fee_tier: str | None = None,
+    ) -> list[Quote]:
+        """Walk the fixture book at every notional × side (shared timestamp)."""
+        if not notionals or not sides:
+            raise AdapterError("get_quotes_batch requires notionals and sides")
+        shared_ts = datetime.now(tz=UTC)
+        out: list[Quote] = []
+        for n in notionals:
+            for side in sides:
+                q = await self.get_quote(
+                    asset,
+                    side,
+                    n,
+                    mid=mid,
+                    instrument_type=instrument_type,
+                    fee_tier=fee_tier,
+                )
+                out.append(q.model_copy(update={"timestamp": shared_ts}))
+        return out
 
     async def get_orderbook_spread(
         self,

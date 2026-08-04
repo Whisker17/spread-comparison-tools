@@ -7,6 +7,7 @@ never the config ``symbol`` field (``BTC-USDT``) which returns null books.
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any, Literal
@@ -15,8 +16,10 @@ from spread_compare.adapters._perp_common import (
     DEFAULT_FEE_TIER,
     OrderbookLevels,
     build_quote_from_book,
+    build_quotes_from_book_batch,
     build_top_of_book,
     build_unsupported_quote,
+    cached_book_fetch,
     parse_levels,
     request_json,
     require_mid_asset,
@@ -263,33 +266,117 @@ class ApexAdapter(BaseAdapter):
                     f"apex markPrice not numeric for {cross_symbol}: {exc}"
                 ) from exc
 
+    async def get_quotes_batch(
+        self,
+        asset: str,
+        sides: Sequence[Side],
+        notionals: Sequence[Decimal],
+        *,
+        mid: ReferenceMid,
+        instrument_type: InstrumentType | None = None,
+        fee_tier: str | None = None,
+    ) -> list[Quote]:
+        """One depth fetch, walk every notional × side (WHI-843)."""
+        if not notionals or not sides:
+            raise AdapterError("get_quotes_batch requires notionals and sides")
+
+        itype_default = instrument_type or default_instrument_type(self.venue_class)
+        asset_key = asset.upper()
+        resolved = resolve_apex_base(asset_key)
+        tier = fee_tier or DEFAULT_FEE_TIER
+        require_mid_asset(mid, asset_key)
+
+        try:
+            itype = resolve_perp_instrument(itype_default)
+        except AdapterError as exc:
+            return [
+                build_unsupported_quote(
+                    venue=self.venue,
+                    asset=asset_key,
+                    side=side,
+                    notional_usd=n,
+                    mid=mid,
+                    instrument_type=itype_default,
+                    message=str(exc),
+                    fee_tier=tier,
+                )
+                for n in notionals
+                for side in sides
+            ]
+
+        sym = self._symbols_by_base.get(resolved.venue_symbol)
+        if sym is None:
+            return [
+                build_unsupported_quote(
+                    venue=self.venue,
+                    asset=asset_key,
+                    side=side,
+                    notional_usd=n,
+                    mid=mid,
+                    instrument_type=itype,
+                    message=f"{asset} not in apex symbols table (run startup)",
+                    fee_tier=tier,
+                )
+                for n in notionals
+                for side in sides
+            ]
+
+        bids, asks = await self._fetch_depth(sym.cross_symbol_name)
+        mark = self._mark_by_cross.get(sym.cross_symbol_name)
+        schedule = self.get_fees(asset_key, instrument_type=itype)
+        return build_quotes_from_book_batch(
+            venue=self.venue,
+            asset=asset_key,
+            sides=sides,
+            notionals=notionals,
+            mid=mid,
+            instrument_type=itype,
+            venue_symbol=sym.cross_symbol_name,
+            bids=bids,
+            asks=asks,
+            fee_tier=tier,
+            trading_fee_bps=require_taker_bps(self.venue, schedule),
+            funding_rate_8h=None,
+            venue_mark=mark,
+            multiplier=resolved.multiplier,
+        )
+
     async def _fetch_depth(
         self, cross_symbol: str
     ) -> tuple[OrderbookLevels, OrderbookLevels]:
-        payload = await self._get_json(
-            f"{_BASE}{_DEPTH_PATH}",
-            params={"symbol": cross_symbol, "limit": str(_DEPTH_LIMIT)},
+        async def _raw() -> tuple[OrderbookLevels, OrderbookLevels]:
+            payload = await self._get_json(
+                f"{_BASE}{_DEPTH_PATH}",
+                params={"symbol": cross_symbol, "limit": str(_DEPTH_LIMIT)},
+            )
+            try:
+                data = payload["data"]
+                if data is None:
+                    raise AdapterFetchError(
+                        f"apex depth data is null for symbol={cross_symbol!r} "
+                        "(wrong symbol form? use crossSymbolName)"
+                    )
+                raw_asks = data["a"]
+                raw_bids = data["b"]
+                if raw_asks is None or raw_bids is None:
+                    raise AdapterFetchError(
+                        f"apex depth a/b null for symbol={cross_symbol!r}"
+                    )
+                asks = parse_levels(raw_asks)
+                bids = parse_levels(raw_bids)
+            except (KeyError, TypeError, AdapterError) as exc:
+                raise AdapterFetchError(f"apex depth parse failed: {exc}") from exc
+            if not bids or not asks:
+                raise AdapterFetchError(f"apex empty book for {cross_symbol}")
+            return bids, asks
+
+        return await cached_book_fetch(
+            venue=self.venue,
+            symbol=cross_symbol,
+            instrument_type="perp",
+            depth=_DEPTH_LIMIT,
+            fetch=_raw,
         )
-        try:
-            data = payload["data"]
-            if data is None:
-                raise AdapterFetchError(
-                    f"apex depth data is null for symbol={cross_symbol!r} "
-                    "(wrong symbol form? use crossSymbolName)"
-                )
-            raw_asks = data["a"]
-            raw_bids = data["b"]
-            if raw_asks is None or raw_bids is None:
-                raise AdapterFetchError(
-                    f"apex depth a/b null for symbol={cross_symbol!r}"
-                )
-            asks = parse_levels(raw_asks)
-            bids = parse_levels(raw_bids)
-        except (KeyError, TypeError, AdapterError) as exc:
-            raise AdapterFetchError(f"apex depth parse failed: {exc}") from exc
-        if not bids or not asks:
-            raise AdapterFetchError(f"apex empty book for {cross_symbol}")
-        return bids, asks
 
     async def _get_json(
         self, url: str, *, params: dict[str, str] | None = None

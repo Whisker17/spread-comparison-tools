@@ -1,5 +1,5 @@
 import {
-  DEFAULT_NOTIONAL_USD,
+  DEFAULT_SIZE_VIEW,
   NOTIONAL_TIERS_USD,
 } from "@/config/notionals";
 import {
@@ -133,7 +133,7 @@ export const blueChipsSection: SectionConfig = {
     ETH: ["tessera_bsc"],
   },
   notionals: [...NOTIONAL_TIERS_USD],
-  defaultNotional: DEFAULT_NOTIONAL_USD,
+  defaultNotional: DEFAULT_SIZE_VIEW,
   defaultSideView: "buy",
   cellMetric: "total_cost_bps",
   showTopOfBook: true,
