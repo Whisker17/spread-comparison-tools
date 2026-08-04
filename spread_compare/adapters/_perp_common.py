@@ -18,9 +18,11 @@ import httpx
 from spread_compare.adapters.base import (
     AdapterError,
     AdapterFetchError,
+    AdapterRateLimitedError,
     AdapterTimeoutError,
 )
 from spread_compare.bookwalk import scale_book_to_canonical, walk_book
+from spread_compare.budget import would_exceed_budget
 from spread_compare.costs import (
     basis_bps,
     spread_bps,
@@ -35,7 +37,11 @@ from spread_compare.models import (
     Side,
     TopOfBook,
 )
-from spread_compare.ratelimit import AsyncRateLimiter, RollingWindowRateLimiter
+from spread_compare.ratelimit import (
+    AsyncRateLimiter,
+    RollingWindowRateLimiter,
+    acquire_within_budget,
+)
 
 # Rate/depth defaults trace to docs/research/WHI-800-venue-api-survey.md §4
 # until DESIGN.md §2 exists (see docs/DEFERRED_ISSUES.md).
@@ -313,7 +319,7 @@ async def request_json(
     delay = backoff_start_s
     last_error: Exception | None = None
     for attempt in range(max_retries):
-        await limiter.acquire()
+        await acquire_within_budget(limiter, venue=venue)
         try:
             resp = await client.request(method, url, params=params, json=json_body)
         except httpx.TimeoutException as exc:
@@ -322,9 +328,16 @@ async def request_json(
             raise AdapterFetchError(f"{venue} HTTP error: {exc}") from exc
 
         if resp.status_code in retry_statuses:
-            last_error = AdapterFetchError(
-                f"{venue} rate limited (HTTP {resp.status_code}) attempt={attempt + 1}"
+            last_error = AdapterRateLimitedError(
+                f"{venue} rate limited (HTTP {resp.status_code}) attempt={attempt + 1}",
+                retry_after_s=delay,
             )
+            if would_exceed_budget(delay):
+                raise AdapterRateLimitedError(
+                    f"{venue} rate limited; backoff {delay:.2f}s exceeds "
+                    f"remaining quote budget",
+                    retry_after_s=delay,
+                )
             await asyncio.sleep(delay)
             delay *= 2
             continue

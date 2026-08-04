@@ -47,6 +47,15 @@ describe("decideCellRender", () => {
     expect(d.hint).toMatch(/retry/i);
   });
 
+  it("maps rate_limited to distinct RATE LIMITED badge (WHI-844)", () => {
+    const d = decideCellRender(
+      q({ status: "rate_limited", error_code: "rate_limited" }),
+    );
+    expect(d.kind).toBe("rate_limited");
+    expect(d.badge).toBe("RATE LIMITED");
+    expect(d.eligibleForBest).toBe(false);
+  });
+
   it("maps gas_unknown ok quotes to cost_incomplete for total_cost metric", () => {
     const d = decideCellRender(
       q({
@@ -131,6 +140,7 @@ describe("isEligibleForBest", () => {
       ),
     ).toBe(true);
     expect(isEligibleForBest(q({ status: "no_quote" }))).toBe(false);
+    expect(isEligibleForBest(q({ status: "rate_limited" }))).toBe(false);
     expect(
       isEligibleForBest(
         q({

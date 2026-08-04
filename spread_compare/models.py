@@ -22,6 +22,7 @@ QuoteStatus = Literal[
     "insufficient_liquidity",
     "unsupported_asset",
     "error",
+    "rate_limited",  # WHI-844 / WHI-799 §6.1: wait would exceed quote budget
 ]
 # /simulate row status (WHI-814):
 # - not_supported: venue pre-filter (asset absent from supported_assets)

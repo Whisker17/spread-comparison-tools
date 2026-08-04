@@ -117,3 +117,33 @@ def test_token_bucket_rejects_invalid_args() -> None:
         TokenBucketRateLimiter(capacity=0, window_s=1.0)
     with pytest.raises(ValueError):
         TokenBucketRateLimiter(capacity=1, window_s=0.0)
+
+
+@pytest.mark.asyncio
+async def test_token_bucket_max_wait_raises_when_exceeded() -> None:
+    """WHI-844: acquire(max_wait_s=...) fails fast instead of long sleep."""
+    from spread_compare.ratelimit import RateLimitWaitExceeded
+
+    limiter = TokenBucketRateLimiter(capacity=1, window_s=10.0)
+    await limiter.acquire()
+    # Next token needs ~10s; max_wait 0.05 must raise.
+    t0 = time.monotonic()
+    with pytest.raises(RateLimitWaitExceeded) as exc_info:
+        await limiter.acquire(max_wait_s=0.05)
+    assert time.monotonic() - t0 < 0.2
+    assert exc_info.value.wait_s > 0.05
+
+
+@pytest.mark.asyncio
+async def test_acquire_within_budget_maps_to_adapter_error() -> None:
+    from spread_compare.adapters.base import AdapterRateLimitedError
+    from spread_compare.budget import quote_deadline
+    from spread_compare.ratelimit import acquire_within_budget
+
+    limiter = TokenBucketRateLimiter(capacity=1, window_s=5.0)
+    await limiter.acquire()
+    with quote_deadline(0.05):
+        t0 = time.monotonic()
+        with pytest.raises(AdapterRateLimitedError):
+            await acquire_within_budget(limiter, venue="humidifi")
+        assert time.monotonic() - t0 < 0.15

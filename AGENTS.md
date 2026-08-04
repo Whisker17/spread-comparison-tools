@@ -74,7 +74,10 @@ skeleton loading, collapsed `not_supported` section, structured 422 inline error
 OpenAPI client regenerated for simulate paths.
 Core timeout fix (WHI-836): shared `ratelimit.py` token bucket, config-driven
 Jupiter budget + header adaptation, concurrent AMM fee-tier probes, per-class
-venue timeouts, response-cache TTL aligned with FE poll.
+venue timeouts, response-cache TTL. Aggregator load hygiene (WHI-844):
+`rate_limited` status + fail-fast when limiter/429 wait exceeds remaining
+budget, response-cache single-flight + TTL 35s (above FE 30s poll), rate-limit
+header logging at info.
 Core startup resilience (WHI-840): `startup_all` degrades transient
 `AdapterFetchError`/`AdapterTimeoutError` (keeps serving), fails fast on config
 errors; `config/venues.yaml` disable list + background retry; `/health`
@@ -134,7 +137,8 @@ load-bearing interfaces other modules may depend on.
 - **`spread_compare/bookwalk.py`** — sole walk-the-book VWAP; CEX/perp adapters import only this.
 - **`spread_compare/costs.py`** — sole `spread_bps` / `total_cost_bps` / `basis_bps`; aggregator never recomputes.
 - **`spread_compare/settings.py`** — typed YAML config loader (`config/mid.yaml`, `config/aggregator.yaml`, `config/jupiter.yaml`, `config/api.yaml`, `config/venues.yaml`).
-- **`spread_compare/ratelimit.py`** — shared `AsyncRateLimiter` / `TokenBucketRateLimiter` / `RollingWindowRateLimiter` (WHI-836); adapters must not define their own.
+- **`spread_compare/ratelimit.py`** — shared `AsyncRateLimiter` / `TokenBucketRateLimiter` / `RollingWindowRateLimiter` + `acquire_within_budget` (WHI-836 / WHI-844); adapters must not define their own.
+- **`spread_compare/budget.py`** — per-call quote deadline context for fail-fast rate limits (WHI-844).
 - **`spread_compare/fees.py`** — typed `config/fees/*.yaml` → `FeeSchedule` catalog; adapters + `GET /fees`.
 - **`spread_compare/mids.py`** — reference-mid service (WHI-799 §3 priority chain + cache).
 - **`spread_compare/aggregator.py`** — concurrent adapter fan-out, per-class timeout, SizeQuotePair assembly, response cache; also hosts shared fan-out helpers (`quote_with_timeout`, `resolve_mid_with_budget`, `effective_instrument_type`) used by the simulator; never recomputes bps.

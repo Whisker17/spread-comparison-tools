@@ -17,9 +17,15 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Literal
 
-from spread_compare.adapters.base import AdapterError, VenueAdapter, default_instrument_type
+from spread_compare.adapters.base import (
+    AdapterError,
+    AdapterRateLimitedError,
+    VenueAdapter,
+    default_instrument_type,
+)
 from spread_compare.adapters.registry import get as registry_get
 from spread_compare.adapters.registry import is_available, list_venues
+from spread_compare.budget import quote_deadline
 from spread_compare.costs import (
     half_spread_bps,
     round_trip_spread_bps,
@@ -135,8 +141,9 @@ def error_quote(
     error_code: str,
     error_message: str,
     timestamp: datetime | None = None,
+    status: Literal["error", "rate_limited"] = "error",
 ) -> Quote:
-    """Build a ``status=error`` Quote row (WHI-799 §6.6)."""
+    """Build a non-ok Quote row (WHI-799 §6.6 / WHI-844 ``rate_limited``)."""
     return Quote(
         snapshot_id=mid.snapshot_id,
         venue=venue,
@@ -150,9 +157,35 @@ def error_quote(
         mid_stale=False,
         fee_breakdown=_error_fee_breakdown(),
         timestamp=timestamp or datetime.now(tz=UTC),
-        status="error",
+        status=status,
         error_code=error_code,
         error_message=error_message,
+    )
+
+
+def rate_limited_quote(
+    *,
+    mid: ReferenceMid,
+    venue: str,
+    asset: str,
+    side: Side,
+    notional_usd: Decimal,
+    instrument_type: InstrumentType,
+    error_message: str,
+    timestamp: datetime | None = None,
+) -> Quote:
+    """Build a ``status=rate_limited`` Quote row (WHI-844 / WHI-799 §6.1)."""
+    return error_quote(
+        mid=mid,
+        venue=venue,
+        asset=asset,
+        side=side,
+        notional_usd=notional_usd,
+        instrument_type=instrument_type,
+        error_code="rate_limited",
+        error_message=error_message,
+        timestamp=timestamp,
+        status="rate_limited",
     )
 
 
@@ -238,14 +271,16 @@ async def quote_with_timeout(
             instrument_type=instrument_type,
         )
     try:
-        async with asyncio.timeout(timeout):
-            return await adapter.get_quote(
-                asset,
-                side,
-                notional_usd,
-                mid=mid,
-                instrument_type=instrument_type,
-            )
+        # Bind remaining budget so limiters / 429 sleeps can fail fast (WHI-844).
+        with quote_deadline(timeout):
+            async with asyncio.timeout(timeout):
+                return await adapter.get_quote(
+                    asset,
+                    side,
+                    notional_usd,
+                    mid=mid,
+                    instrument_type=instrument_type,
+                )
     except TimeoutError:
         logger.warning(
             "venue %s get_quote timed out after %ss (%s %s)%s",
@@ -264,6 +299,19 @@ async def quote_with_timeout(
             instrument_type=instrument_type,
             error_code="timeout",
             error_message=f"get_quote timed out after {timeout}s",
+        )
+    except AdapterRateLimitedError as exc:
+        logger.warning(
+            "venue %s rate limited%s: %s", adapter.venue, suffix, exc
+        )
+        return rate_limited_quote(
+            mid=mid,
+            venue=adapter.venue,
+            asset=asset,
+            side=side,
+            notional_usd=notional_usd,
+            instrument_type=instrument_type,
+            error_message=str(exc),
         )
     except AdapterError as exc:
         logger.warning("venue %s get_quote error%s: %s", adapter.venue, suffix, exc)
@@ -361,6 +409,8 @@ class QuoteAggregator:
         self._mid_settings = mid_settings if mid_settings is not None else mid_service.settings
         self._clock = clock or time.monotonic
         self._cache: dict[str, _CacheEntry] = {}
+        # Single-flight: concurrent collect() for the same cache key share one fan-out.
+        self._inflight: dict[str, asyncio.Future[QuotesPackage]] = {}
 
     @property
     def mid_service(self) -> MidService:
@@ -410,7 +460,58 @@ class QuoteAggregator:
             hit = self._cache.get(cache_key)
             if hit is not None and hit.expires_at > self._clock():
                 return hit.package
+            # Coalesce in-flight work for the same package key (WHI-844).
+            existing = self._inflight.get(cache_key)
+            if existing is not None:
+                return await asyncio.shield(existing)
 
+            loop = asyncio.get_running_loop()
+            future: asyncio.Future[QuotesPackage] = loop.create_future()
+            self._inflight[cache_key] = future
+            try:
+                package = await self._collect_uncached(
+                    asset_key=asset_key,
+                    notional=notional,
+                    venue_slugs=venue_slugs,
+                    sides=sides,
+                    instrument_type=instrument_type,
+                    snapshot_id=snapshot_id,
+                )
+                if cache_eligible:
+                    self._cache[cache_key] = _CacheEntry(
+                        expires_at=self._clock() + self._agg.response_cache_ttl_sec,
+                        package=package,
+                    )
+                future.set_result(package)
+                return package
+            except BaseException as exc:
+                if not future.done():
+                    future.set_exception(exc)
+                raise
+            finally:
+                # Only clear if we still own the slot (avoid racing a replacement).
+                if self._inflight.get(cache_key) is future:
+                    del self._inflight[cache_key]
+
+        return await self._collect_uncached(
+            asset_key=asset_key,
+            notional=notional,
+            venue_slugs=venue_slugs,
+            sides=sides,
+            instrument_type=instrument_type,
+            snapshot_id=snapshot_id,
+        )
+
+    async def _collect_uncached(
+        self,
+        *,
+        asset_key: str,
+        notional: Decimal,
+        venue_slugs: Sequence[str],
+        sides: Sequence[Side],
+        instrument_type: InstrumentType | None,
+        snapshot_id: str | None,
+    ) -> QuotesPackage:
         snap = snapshot_id or str(uuid.uuid4())
         mid = await resolve_mid_with_budget(
             self._mids,
@@ -433,20 +534,13 @@ class QuoteAggregator:
             )
         )
 
-        package = QuotesPackage(
+        return QuotesPackage(
             snapshot_id=snap,
             asset=asset_key,
             notional_usd=notional,
             mid=mid,
             pairs=list(pairs),
         )
-
-        if cache_eligible:
-            self._cache[cache_key] = _CacheEntry(
-                expires_at=self._clock() + self._agg.response_cache_ttl_sec,
-                package=package,
-            )
-        return package
 
     def _resolve_venues(self, venues: Sequence[str] | None) -> list[str]:
         if not venues:
@@ -578,14 +672,15 @@ class QuoteAggregator:
                 error_message=not_initialized_message(adapter.venue),
             )
         try:
-            async with asyncio.timeout(timeout):
-                if instrument_type in ("spot", "perp"):
-                    tob_itype: Literal["spot", "perp"] = instrument_type
-                    book = await adapter.get_orderbook_spread(
-                        asset, mid=mid, instrument_type=tob_itype
-                    )
-                else:
-                    book = await adapter.get_orderbook_spread(asset, mid=mid)
+            with quote_deadline(timeout):
+                async with asyncio.timeout(timeout):
+                    if instrument_type in ("spot", "perp"):
+                        tob_itype: Literal["spot", "perp"] = instrument_type
+                        book = await adapter.get_orderbook_spread(
+                            asset, mid=mid, instrument_type=tob_itype
+                        )
+                    else:
+                        book = await adapter.get_orderbook_spread(asset, mid=mid)
             return _TobOutcome(book=book, failed=False)
         except TimeoutError:
             logger.warning(
@@ -598,6 +693,16 @@ class QuoteAggregator:
                 failed=True,
                 error_code="timeout",
                 error_message=f"get_orderbook_spread timed out after {timeout}s",
+            )
+        except AdapterRateLimitedError as exc:
+            logger.warning(
+                "venue %s get_orderbook_spread rate limited: %s", adapter.venue, exc
+            )
+            return _TobOutcome(
+                book=None,
+                failed=True,
+                error_code="rate_limited",
+                error_message=str(exc),
             )
         except AdapterError as exc:
             logger.warning("venue %s get_orderbook_spread error: %s", adapter.venue, exc)

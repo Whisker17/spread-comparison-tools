@@ -69,9 +69,14 @@ export function StatusCell({
       {decision.kind === "insufficient_liquidity" && (
         <Badge variant="warning">{decision.badge}</Badge>
       )}
-      {decision.kind === "error" && (
+      {(decision.kind === "error" || decision.kind === "rate_limited") && (
         <div className="flex flex-col items-center gap-0.5">
-          <Badge variant="danger">{decision.badge ?? "error"}</Badge>
+          <Badge
+            variant={decision.kind === "rate_limited" ? "warning" : "danger"}
+          >
+            {decision.badge ??
+              (decision.kind === "rate_limited" ? "RATE LIMITED" : "error")}
+          </Badge>
           {onRetry ? (
             <Button
               type="button"

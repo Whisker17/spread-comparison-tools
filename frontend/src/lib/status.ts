@@ -2,7 +2,7 @@
  * Single source of truth for quote status rendering (WHI-808 / WHI-799 §5.2 / §6.2).
  *
  * Status values on Quote.status:
- *   ok | no_quote | insufficient_liquidity | unsupported_asset | error
+ *   ok | no_quote | insufficient_liquidity | unsupported_asset | error | rate_limited
  *
  * Orthogonal flags (not status enum values):
  *   fee_breakdown.gas_unknown → "cost incomplete"; excluded from best-venue ranking
@@ -23,6 +23,7 @@ export type CellRenderKind =
   | "dash" // no_quote / unsupported_asset
   | "insufficient_liquidity"
   | "error"
+  | "rate_limited" // WHI-844: distinguishable from timeout/error
   | "cost_incomplete"; // gas_unknown (may still show spread_bps)
 
 export type CellRenderDecision = {
@@ -91,6 +92,16 @@ export function decideCellRender(
         label: "error",
         badge: quote.error_code ?? "error",
         hint: "Retry refresh",
+        midStale,
+        midTimestamp,
+        eligibleForBest: false,
+      };
+    case "rate_limited":
+      return {
+        kind: "rate_limited",
+        label: "RATE LIMITED",
+        badge: "RATE LIMITED",
+        hint: "Retry later",
         midStale,
         midTimestamp,
         eligibleForBest: false,
@@ -185,6 +196,13 @@ export const STATUS_LEGEND: ReadonlyArray<{
     title: "error",
     description: "Adapter/transport failure — badge with retry hint.",
     exampleKind: "error",
+  },
+  {
+    id: "rate_limited",
+    title: "rate_limited",
+    description:
+      'Venue rate limit would exceed remaining quote budget (WHI-844) — "RATE LIMITED", distinct from timeout. Never best-venue eligible.',
+    exampleKind: "rate_limited",
   },
   {
     id: "gas_unknown",

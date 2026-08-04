@@ -40,6 +40,18 @@ class AdapterTimeoutError(AdapterError):
     """Upstream call timed out."""
 
 
+class AdapterRateLimitedError(AdapterError):
+    """Upstream rate limit or local limiter wait exceeds remaining quote budget (WHI-844).
+
+    Mapped to ``Quote.status=rate_limited`` so the UI can distinguish it from
+    a genuine timeout. ``retry_after_s`` is optional operator telemetry.
+    """
+
+    def __init__(self, message: str, *, retry_after_s: float | None = None) -> None:
+        super().__init__(message)
+        self.retry_after_s = retry_after_s
+
+
 class UnsupportedAssetError(AdapterError):
     """Asset is not supported by this venue for the requested instrument type."""
 

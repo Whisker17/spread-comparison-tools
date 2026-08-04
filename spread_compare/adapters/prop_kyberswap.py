@@ -27,11 +27,13 @@ from spread_compare.adapters.base import (
     AdapterConfigError,
     AdapterError,
     AdapterFetchError,
+    AdapterRateLimitedError,
     AdapterTimeoutError,
     BaseAdapter,
     default_instrument_type,
 )
 from spread_compare.adapters.registry import register_adapter
+from spread_compare.budget import would_exceed_budget
 from spread_compare.models import (
     InstrumentType,
     Quote,
@@ -40,7 +42,7 @@ from spread_compare.models import (
     TopOfBook,
     VenueClass,
 )
-from spread_compare.ratelimit import AsyncRateLimiter
+from spread_compare.ratelimit import AsyncRateLimiter, acquire_within_budget
 
 logger = logging.getLogger(__name__)
 
@@ -246,7 +248,7 @@ class KyberSwapPropAdapter(BaseAdapter):
 
         last_err: Exception | None = None
         for attempt in range(_MAX_RETRIES):
-            await _kyber_limiter.acquire()
+            await acquire_within_budget(_kyber_limiter, venue=self.venue)
             try:
                 resp = await self.http.get(url, params=params, headers=headers)
             except httpx.TimeoutException as exc:
@@ -266,8 +268,17 @@ class KyberSwapPropAdapter(BaseAdapter):
                     attempt + 1,
                     wait,
                 )
+                if would_exceed_budget(wait):
+                    raise AdapterRateLimitedError(
+                        f"{self.venue}: KyberSwap rate limited; retry_after="
+                        f"{wait:.1f}s exceeds remaining quote budget",
+                        retry_after_s=wait,
+                    )
                 await asyncio.sleep(wait)
-                last_err = AdapterFetchError(f"{self.venue}: KyberSwap rate limited")
+                last_err = AdapterRateLimitedError(
+                    f"{self.venue}: KyberSwap rate limited",
+                    retry_after_s=wait,
+                )
                 continue
 
             try:
@@ -316,6 +327,12 @@ class KyberSwapPropAdapter(BaseAdapter):
 
             if resp.status_code >= 500:
                 wait = min(2.0 * (2**attempt), 8.0)
+                if would_exceed_budget(wait):
+                    raise AdapterRateLimitedError(
+                        f"{self.venue}: KyberSwap 5xx backoff {wait:.1f}s exceeds "
+                        f"remaining quote budget",
+                        retry_after_s=wait,
+                    )
                 await asyncio.sleep(wait)
                 last_err = AdapterFetchError(
                     f"{self.venue}: KyberSwap HTTP {resp.status_code}"

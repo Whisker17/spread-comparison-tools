@@ -812,7 +812,8 @@
               "no_quote",
               "insufficient_liquidity",
               "unsupported_asset",
-              "error"
+              "error",
+              "rate_limited"
             ],
             "title": "Status"
           },
@@ -1299,7 +1300,8 @@
                   "no_quote",
                   "insufficient_liquidity",
                   "unsupported_asset",
-                  "error"
+                  "error",
+                  "rate_limited"
                 ]
               },
               {

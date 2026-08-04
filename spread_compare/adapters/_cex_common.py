@@ -20,6 +20,7 @@ import httpx
 from spread_compare.adapters.base import (
     AdapterError,
     AdapterFetchError,
+    AdapterRateLimitedError,
     AdapterTimeoutError,
     BaseAdapter,
     UnsupportedAssetError,
@@ -27,6 +28,7 @@ from spread_compare.adapters.base import (
     require_taker_bps,
 )
 from spread_compare.bookwalk import scale_book_to_canonical, walk_book
+from spread_compare.budget import would_exceed_budget
 from spread_compare.cex_symbols import (
     resolve_cex_multiplier,
     resolve_cex_symbol,
@@ -42,7 +44,7 @@ from spread_compare.models import (
     TopOfBook,
     VenueClass,
 )
-from spread_compare.ratelimit import AsyncRateLimiter
+from spread_compare.ratelimit import AsyncRateLimiter, acquire_within_budget
 
 logger = logging.getLogger(__name__)
 
@@ -302,7 +304,7 @@ class CexBaseAdapter(BaseAdapter, ABC):
         delay = self._backoff_start_s
         last_error: Exception | None = None
         for attempt in range(self._max_retries):
-            await self._limiter.acquire()
+            await acquire_within_budget(self._limiter, venue=self.venue)
             try:
                 resp = await self.http.get(url, params=params)
             except httpx.TimeoutException as exc:
@@ -313,12 +315,19 @@ class CexBaseAdapter(BaseAdapter, ABC):
             self._log_rate_limit_headers(resp, url)
 
             if resp.status_code in self._retry_http_statuses:
-                last_error = AdapterFetchError(
+                last_error = AdapterRateLimitedError(
                     f"{self.venue} rate limited (HTTP {resp.status_code}) "
-                    f"attempt={attempt + 1}"
+                    f"attempt={attempt + 1}",
+                    retry_after_s=delay,
                 )
                 logger.warning("%s", last_error)
                 if attempt + 1 < self._max_retries:
+                    if would_exceed_budget(delay):
+                        raise AdapterRateLimitedError(
+                            f"{self.venue} rate limited; backoff {delay:.2f}s "
+                            f"exceeds remaining quote budget",
+                            retry_after_s=delay,
+                        )
                     await asyncio.sleep(delay)
                     delay *= 2
                 continue
@@ -338,11 +347,18 @@ class CexBaseAdapter(BaseAdapter, ABC):
                 )
 
             if self._payload_is_rate_limited(payload):
-                last_error = AdapterFetchError(
-                    f"{self.venue} body rate-limit attempt={attempt + 1}"
+                last_error = AdapterRateLimitedError(
+                    f"{self.venue} body rate-limit attempt={attempt + 1}",
+                    retry_after_s=delay,
                 )
                 logger.warning("%s", last_error)
                 if attempt + 1 < self._max_retries:
+                    if would_exceed_budget(delay):
+                        raise AdapterRateLimitedError(
+                            f"{self.venue} body rate-limit; backoff {delay:.2f}s "
+                            f"exceeds remaining quote budget",
+                            retry_after_s=delay,
+                        )
                     await asyncio.sleep(delay)
                     delay *= 2
                 continue
