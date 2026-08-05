@@ -73,11 +73,14 @@ cd "${APP_DIR}"
 prev_sha="$(git rev-parse HEAD 2>/dev/null || echo none)"
 log "current HEAD: ${prev_sha}"
 
-run git fetch --tags --prune origin
-# Resolve ref after fetch so tags/SHAs that only exist on origin work.
 if [[ "${DRY_RUN}" == "1" ]]; then
+  log "DRY_RUN: git fetch --tags --prune origin"
   new_sha="(dry-run)"
 else
+  # Fetch is best-effort: re-deploy of an already-local SHA must work offline.
+  if ! git fetch --tags --prune origin; then
+    log "warning: git fetch origin failed; continuing with already-local refs only"
+  fi
   if ! new_sha="$(git rev-parse --verify "${DEPLOY_REF}^{commit}" 2>/dev/null)"; then
     if ! new_sha="$(git rev-parse --verify "origin/${DEPLOY_REF}^{commit}" 2>/dev/null)"; then
       die "cannot resolve DEPLOY_REF=${DEPLOY_REF} after fetch"
@@ -197,6 +200,10 @@ fi
 if [[ "${SKIP_RESTART}" == "1" ]]; then
   log "SKIP_RESTART=1 — skipping health poll"
 else
+  # Liveness gate: process must answer /health with HTTP 200 and status=ok.
+  # WHI-840 may report degraded=true (some venues down) while still serving —
+  # that is not a deploy failure. We do fail when the process is up but no
+  # enabled adapter initialized (adapters_initialized=0 with adapters_expected>0).
   deadline=$((SECONDS + HEALTH_TIMEOUT_SEC))
   body=""
   http_code=""
@@ -207,10 +214,19 @@ else
       -w '%{http_code}' --max-time 5 "${HEALTH_URL}" || true)"
     if [[ "${http_code}" == "200" ]]; then
       body="$(cat "${health_tmp}" 2>/dev/null || true)"
-      # Require JSON status field "ok" without depending on jq.
       if printf '%s' "${body}" | grep -q '"status"[[:space:]]*:[[:space:]]*"ok"'; then
-        log "health ok: ${body}"
-        break
+        # Optional zero-adapter guard when fields are present (no jq).
+        if printf '%s' "${body}" | grep -q '"adapters_expected"[[:space:]]*:[[:space:]]*[1-9]'; then
+          if printf '%s' "${body}" | grep -q '"adapters_initialized"[[:space:]]*:[[:space:]]*0[^0-9]'; then
+            log "health liveness ok but zero adapters initialized; treating as not ready"
+          else
+            log "health ok: ${body}"
+            break
+          fi
+        else
+          log "health ok: ${body}"
+          break
+        fi
       fi
     fi
     log "health not ready yet (http=${http_code:-none}); retrying..."
@@ -218,6 +234,10 @@ else
   done
   if [[ "${http_code}" != "200" ]] || ! printf '%s' "${body}" | grep -q '"status"[[:space:]]*:[[:space:]]*"ok"'; then
     die "service unhealthy after ${HEALTH_TIMEOUT_SEC}s (http=${http_code:-none} body=${body:-<empty>})"
+  fi
+  if printf '%s' "${body}" | grep -q '"adapters_expected"[[:space:]]*:[[:space:]]*[1-9]' \
+    && printf '%s' "${body}" | grep -q '"adapters_initialized"[[:space:]]*:[[:space:]]*0[^0-9]'; then
+    die "service unhealthy: adapters_initialized=0 with adapters_expected>0 (body=${body})"
   fi
 fi
 

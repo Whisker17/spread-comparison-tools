@@ -116,3 +116,90 @@ def test_adr_0002_and_deployment_docs_exist() -> None:
     assert (REPO_ROOT / "docs" / "adr" / "0002-packaging-systemd-uv-venv.md").is_file()
     assert (REPO_ROOT / "docs" / "DEPLOYMENT.md").is_file()
     assert (REPO_ROOT / ".github" / "workflows" / "backend.yml").is_file()
+
+
+def _init_git_app(app: Path) -> str:
+    app.mkdir(parents=True, exist_ok=True)
+    (app / "config").mkdir(exist_ok=True)
+    subprocess.run(["git", "init"], cwd=app, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.com"],
+        cwd=app,
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "test"],
+        cwd=app,
+        check=True,
+        capture_output=True,
+    )
+    (app / "README").write_text("x\n", encoding="utf-8")
+    subprocess.run(["git", "add", "README"], cwd=app, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "commit", "-m", "init"],
+        cwd=app,
+        check=True,
+        capture_output=True,
+    )
+    return subprocess.check_output(
+        ["git", "rev-parse", "HEAD"], cwd=app, text=True
+    ).strip()
+
+
+def test_deploy_script_fails_when_health_never_ok(tmp_path: Path) -> None:
+    """AC: non-zero exit when /health never becomes healthy (WHI-849)."""
+    app = tmp_path / "app"
+    sha = _init_git_app(app)
+    secrets = tmp_path / "env"
+    secrets.write_text("ETH_RPC_URL=https://example.invalid\n", encoding="utf-8")
+    secrets.chmod(0o600)
+
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    # Fake systemctl / uv / curl so the script reaches the health gate offline.
+    (bin_dir / "systemctl").write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    (bin_dir / "uv").write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    (bin_dir / "curl").write_text(
+        "#!/bin/sh\n"
+        "# emulate: curl -sS -o FILE -w '%{http_code}' --max-time N URL\n"
+        "out=''\n"
+        "while [ $# -gt 0 ]; do\n"
+        "  if [ \"$1\" = \"-o\" ]; then out=$2; shift 2; continue; fi\n"
+        "  if [ \"$1\" = \"-w\" ] || [ \"$1\" = \"--max-time\" ]; then shift 2; continue; fi\n"
+        "  if [ \"$1\" = \"-sS\" ]; then shift; continue; fi\n"
+        "  shift\n"
+        "done\n"
+        "if [ -n \"$out\" ]; then printf '%s\\n' '{\"status\":\"down\"}' >\"$out\"; fi\n"
+        "printf '503'\n",
+        encoding="utf-8",
+    )
+    for name in ("systemctl", "uv", "curl"):
+        (bin_dir / name).chmod(0o755)
+
+    env = os.environ.copy()
+    env.update(
+        {
+            "PATH": f"{bin_dir}:{env.get('PATH', '')}",
+            "DEPLOY_REF": sha,
+            "APP_DIR": str(app),
+            "ENV_FILE": str(secrets),
+            "HOST_CONFIG_DIR": str(tmp_path / "missing-host-config"),
+            "REVISION_FILE": str(tmp_path / "deployed-revision"),
+            "HEALTH_URL": "http://127.0.0.1:9/health",
+            "HEALTH_TIMEOUT_SEC": "2",
+            "DRY_RUN": "0",
+            "SKIP_RESTART": "0",
+        }
+    )
+    result = subprocess.run(
+        ["bash", str(DEPLOY_SH)],
+        check=False,
+        capture_output=True,
+        text=True,
+        env=env,
+        cwd=str(REPO_ROOT),
+    )
+    assert result.returncode != 0, result.stdout + result.stderr
+    assert "unhealthy" in (result.stderr + result.stdout).lower()
+    assert not (tmp_path / "deployed-revision").exists()

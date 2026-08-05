@@ -78,8 +78,11 @@ The script always performs, in order:
    `/etc/spread-comparison/config/`
 4. **`uv sync --locked --no-dev`**
 5. **`systemctl restart spread-comparison`**
-6. **Verify** `GET http://127.0.0.1:8000/health` returns HTTP 200 and
-   `"status":"ok"`; write `/etc/spread-comparison/deployed-revision`
+6. **Verify** `GET http://127.0.0.1:8000/health` is **live**: HTTP 200,
+   `"status":"ok"`, and not `adapters_initialized=0` when
+   `adapters_expected>0`. WHI-840 **degraded** (some venues down, process still
+   serving) is allowed — that is not a deploy failure. Then write
+   `/etc/spread-comparison/deployed-revision`
 
 Idempotency (end state): running the same `DEPLOY_REF` twice with unchanged
 `SECRETS_SRC` / host overlays leaves the git tree and secrets file byte-identical

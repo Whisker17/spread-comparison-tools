@@ -40,25 +40,12 @@ def test_get_venues_omits_mock_when_production_disabled(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """WHI-849 AC: committed ``disabled: [mock]`` keeps mock off GET /venues."""
-    from pathlib import Path
-
-    import yaml
-
     from spread_compare import settings as settings_mod
     from spread_compare.settings import clear_settings_cache
-
-    config_dir = Path(__file__).resolve().parents[1] / "config"
-
-    def _merge_committed_only(name: str) -> dict:
-        """Load committed YAML only (no offline suite mock re-enable)."""
-        base_path = config_dir / f"{name}.yaml"
-        raw = yaml.safe_load(base_path.read_text(encoding="utf-8")) or {}
-        if not isinstance(raw, dict):
-            raise TypeError(f"config {base_path} must be a mapping")
-        return dict(raw)
+    from tests.conftest import load_committed_config
 
     clear_settings_cache()
-    monkeypatch.setattr(settings_mod, "_merge_local", _merge_committed_only)
+    monkeypatch.setattr(settings_mod, "_merge_local", load_committed_config)
     clear_settings_cache()
     with TestClient(create_app()) as client:
         resp = client.get("/venues")

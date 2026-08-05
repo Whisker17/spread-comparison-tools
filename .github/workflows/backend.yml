@@ -2,7 +2,7 @@ name: backend
 
 on:
   push:
-    paths:
+    paths: &backend_paths
       - "spread_compare/**"
       - "tests/**"
       - "config/**"
@@ -13,16 +13,7 @@ on:
       - "deploy/**"
       - ".github/workflows/backend.yml"
   pull_request:
-    paths:
-      - "spread_compare/**"
-      - "tests/**"
-      - "config/**"
-      - "main.py"
-      - "pyproject.toml"
-      - "uv.lock"
-      - "scripts/**"
-      - "deploy/**"
-      - ".github/workflows/backend.yml"
+    paths: *backend_paths
 
 jobs:
   check:
