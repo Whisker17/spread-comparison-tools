@@ -34,7 +34,8 @@ class AdapterError(Exception):
 
 
 class AdapterFetchError(AdapterError):
-    """Upstream HTTP/RPC fetch or parse failed."""
+    """Upstream HTTP/RPC fetch or parse failed, or a required transport extra
+    is unavailable at client construction (WHI-858)."""
 
 
 class AdapterTimeoutError(AdapterError):
@@ -158,9 +159,26 @@ class BaseAdapter:
 
     @property
     def http(self) -> httpx.AsyncClient:
-        """Lazily create a shared async HTTP client."""
+        """Lazily create a shared async HTTP client.
+
+        A missing optional transport dependency (``ImportError`` — notably
+        ``socksio`` when ``ALL_PROXY`` selects SOCKS) is re-raised as
+        :class:`AdapterFetchError` so WHI-840 degrades this venue instead of
+        treating raw ``ImportError`` as a fatal config/programmer error
+        (WHI-858). Other construction failures (e.g. bad proxy URL
+        ``ValueError``) are not remapped and remain fatal.
+        """
         if self._client is None:
-            self._client = httpx.AsyncClient(timeout=self._timeout)
+            try:
+                self._client = httpx.AsyncClient(timeout=self._timeout)
+            except ImportError as exc:
+                raise AdapterFetchError(
+                    f"{self.venue}: cannot construct HTTP client ({exc}). "
+                    "If you use a SOCKS proxy (ALL_PROXY/HTTPS_PROXY), install "
+                    "the optional transport: `uv sync` (project depends on "
+                    "httpx[socks]) or `pip install 'httpx[socks]'` / socksio; "
+                    "or unset the proxy env for this process."
+                ) from exc
         return self._client
 
     async def startup(self) -> None:
