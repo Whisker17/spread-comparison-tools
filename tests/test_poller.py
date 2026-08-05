@@ -862,7 +862,7 @@ async def test_freshest_leg_wins_pair_identity() -> None:
     assert pair.sell is not None
     assert pair.sell.snapshot_id == "new-snap"
     assert pair.sell.spread_bps == Decimal("2")
-    # Buy dropped as foreign snapshot; truthful mismatch, not not_yet_sampled.
+    # Buy dropped as foreign snapshot; truthful mismatch, not not_sampled.
     assert pair.buy is not None
     assert pair.buy.status == "error"
     assert pair.buy.error_code == "snapshot_mismatch"
@@ -957,6 +957,9 @@ async def test_unsampled_tier_is_not_sampled_not_error() -> None:
     assert unsampled.buy is not None
     assert unsampled.buy.status == "not_sampled"
     assert unsampled.buy.error_code == "not_sampled"
+    # Sparse-matrix miss: message names the gap, not a transport failure.
+    assert unsampled.buy.error_message is not None
+    assert "outside this group's sample matrix" in unsampled.buy.error_message
     # Non-priced: numbers null (WHI-799 §6.2 inv. 2); never best-eligible.
     assert unsampled.buy.spread_bps is None
     assert unsampled.buy.total_cost_bps is None
@@ -964,7 +967,26 @@ async def test_unsampled_tier_is_not_sampled_not_error() -> None:
     assert unsampled.sell is not None
     assert unsampled.sell.status == "not_sampled"
 
-    # Direct constructor pin (same path the store miss uses).
+    # Sampled-tier miss (matrix includes $10k but store empty) → warmup wording.
+    warmup = pair_from_store(
+        QuoteStore(clock=lambda: 100.0),
+        mid=_MID,
+        venue="humidifi",
+        asset="BTC",
+        instrument_type="prop_amm",
+        notional_usd=Decimal("10000"),
+        sides=("buy",),
+        poller_settings=settings,
+        stale_threshold_sec=150.0,
+        adapter=adapter,
+        clock=lambda: 100.0,
+    )
+    assert warmup.buy is not None
+    assert warmup.buy.status == "not_sampled"
+    assert warmup.buy.error_message is not None
+    assert "has not produced a sample" in warmup.buy.error_message
+
+    # Direct constructor pin.
     direct = not_sampled_quote(
         mid=_MID,
         venue="humidifi",
@@ -1011,8 +1033,6 @@ async def test_unsampled_tier_is_not_sampled_not_error() -> None:
     assert pkg_ok.pairs[0].buy.status == "ok"
     assert pkg_ok.pairs[0].buy.spread_bps == Decimal("3")
 
-    # Orderbook (live) path is not store-backed — an "unsampled" notional
-    # for a CEX venue still prices from the book, never not_sampled.
-    # mock is disabled in prod config but registered for tests; use live
-    # class cex path by collecting without poller serving that class.
-    assert "cex" not in settings.poller_served_classes
+    # Live (non-poller) classes never hit the store path → no not_sampled.
+    assert not is_poller_class("cex", settings)
+    assert not is_poller_class("perp_dex", settings)

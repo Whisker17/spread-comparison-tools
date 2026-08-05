@@ -595,6 +595,29 @@ class PullQuotePoller:
             return
         await asyncio.sleep(seconds)
 
+
+def _not_sampled_message(
+    *,
+    venue: str,
+    notional_usd: Decimal,
+    side: Side,
+    venue_class: VenueClass,
+    poller_settings: PollerSettings,
+) -> str:
+    """Honest message for a store miss: matrix skip vs pre-first-sweep (WHI-865)."""
+    gname = group_for_venue(venue, venue_class)
+    gcfg = poller_settings.groups.get(gname) if gname is not None else None
+    if gcfg is not None and notional_usd not in gcfg.notionals_usd:
+        return (
+            f"{venue}: notional {notional_usd} is outside this group's "
+            f"sample matrix (group={gname})"
+        )
+    return (
+        f"{venue}: pull poller has not produced a sample for this key yet "
+        f"(notional={notional_usd}, side={side})"
+    )
+
+
 def pair_from_store(
     store: QuoteStore,
     *,
@@ -611,7 +634,7 @@ def pair_from_store(
 ) -> SizeQuotePair:
     """Build a store-backed SizeQuotePair for the aggregator.
 
-    Uses the package ``mid`` only for *missing* legs (not_yet_sampled /
+    Uses the package ``mid`` only for *missing* legs (not_sampled /
     not_initialized). Present legs keep their sweep mid and snapshot_id —
     ``assemble_pair`` is adjusted via direct construction when snapshot ids
     differ from the package mid.
@@ -656,6 +679,13 @@ def pair_from_store(
                     side=side,
                     notional_usd=notional_usd,
                     instrument_type=itype,
+                    error_message=_not_sampled_message(
+                        venue=venue,
+                        notional_usd=notional_usd,
+                        side=side,
+                        venue_class=adapter.venue_class,
+                        poller_settings=poller_settings,
+                    ),
                 )
         else:
             gcfg = poller_settings.groups.get(entry.group)

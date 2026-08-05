@@ -555,7 +555,7 @@ SizeQuotePair {
 | 超时 / 上游失败 | `error` | 200 + 该 venue 错误；不整包失败 |
 | 限流等待会超过本 call 剩余 budget（本地 limiter 或上游 429） | `rate_limited` | 200 + 该 venue 错误；**不得**与 `timeout` 混淆；不参与 §5.2 best（WHI-844） |
 | 价格冲击超过 config 阈值（池深度被吃穿等） | `excessive_impact` | 200；**保留** effective/spread/total 数字可读；不参与 §5.2 best；排除出 heat 范围（WHI-845） |
-| pull poller 未采样该 (notional, side)（稀疏矩阵或进程内尚未 sweep） | `not_sampled` | 200；**不得**写成 `error`；不参与 §5.2 best；**不计入** per-venue error-rate / WHI-819 失败信号（WHI-865） |
+| pull poller 未采样该 (notional, side)（稀疏矩阵或进程内尚未 sweep） | `not_sampled` | 200；**不得**写成 `error`（`error` = tried and failed）；不参与 §5.2 best；非 priced 故不进 WHI-819 fresh-quote 探针（与 `PRICED_QUOTE_STATUSES` 对齐，WHI-865） |
 | mid 不可用 | — | 整包 503/422 |
 
 #### 6.6.1 Venue minimums at the $100 tier (WHI-838)
