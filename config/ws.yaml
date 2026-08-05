@@ -1,0 +1,28 @@
+# WebSocket orderbook ingest (WHI-847).
+# Defaults are **unvalidated** pending docs/DESIGN.md §2 — engineering starting points only.
+# YAML is the sole source of these values (no silent Python Field defaults).
+
+enabled: true
+
+# Max age of a local book before serve returns error (not a stale price).
+max_book_age_sec: 5.0
+
+# Reconnect backoff (seconds) with jitter; doubles until max.
+reconnect_min_sec: 1.0
+reconnect_max_sec: 30.0
+
+# Lighter REST resync budget: min seconds between snapshot fetches (60 req/min Standard).
+lighter_min_resync_interval_sec: 2.0
+
+# Fast mid path: poll Binance USDM premiumIndex at this interval (1 Hz verified).
+fast_mid_poll_interval_sec: 1.0
+
+# Venue streams: enabled independently; disabled → REST-only for that stream.
+streams:
+  binance_spot: true
+  binance_futures: true
+  bybit_spot: true
+  bybit_linear: true
+  hyperliquid: true
+  lighter: true
+  apex: true

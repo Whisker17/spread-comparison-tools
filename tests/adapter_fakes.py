@@ -33,6 +33,7 @@ TEST_MID_SETTINGS = MidSettings(
     stale_threshold_sec=5,
     cache_max_age_sec=30,
     http_timeout_sec=5,
+    max_age_for_ws_quote_sec=2.0,
     pyth_feed_ids={},
 )
 

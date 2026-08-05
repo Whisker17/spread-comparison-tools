@@ -188,7 +188,7 @@ async def test_hl_hard_caps_levels_at_20_per_side() -> None:
     fat_asks = [{**_THIN_LEVEL, "px": str(100010 + i)} for i in range(25)]
     adapter = await _ready_adapter(book_levels=[fat_bids, fat_asks])
     try:
-        bids, asks = await adapter._fetch_l2_book("BTC")
+        bids, asks, _from_ws, _age = await adapter._fetch_l2_book("BTC")
         assert len(bids) == 20
         assert len(asks) == 20
     finally:

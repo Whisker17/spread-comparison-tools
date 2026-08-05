@@ -51,6 +51,12 @@ from spread_compare.orderbook_cache import (
     default_orderbook_cache,
 )
 from spread_compare.ratelimit import AsyncRateLimiter
+from spread_compare.ws_registry import WsBookRegistry, default_ws_registry
+from spread_compare.ws_serve import (
+    LocalBookUnavailable,
+    stamp_ws_quote_fields,
+    try_local_book,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -109,6 +115,8 @@ def build_quote_from_book(
     fee_tier: str = DEFAULT_FEE_TIER,
     timestamp: datetime | None = None,
     multiplier: Decimal = Decimal(1),
+    from_ws: bool = False,
+    book_age_sec: float | None = None,
 ) -> Quote:
     """Walk the book and assemble a ``Quote`` (shared CEX path).
 
@@ -121,6 +129,9 @@ def build_quote_from_book(
     q_star = notional_usd / mid.mid
     levels = asks if side == "buy" else bids
     p_star = walk_book(levels, q_star)
+    ws_extra: dict[str, object] = {}
+    if from_ws and book_age_sec is not None:
+        ws_extra = stamp_ws_quote_fields(mid=mid, book_age_sec=book_age_sec, quote_timestamp=now)
     if p_star is None:
         return Quote(
             snapshot_id=mid.snapshot_id,
@@ -139,6 +150,7 @@ def build_quote_from_book(
             qty_method="base_from_mid",
             error_code="insufficient_liquidity",
             error_message=f"depth < q_star={q_star}",
+            **ws_extra,
         )
 
     sp = spread_bps(side, p_star, mid.mid)
@@ -182,6 +194,7 @@ def build_quote_from_book(
         status="ok",
         qty_base=q_star,
         qty_method="base_from_mid",
+        **ws_extra,
     )
 
 
@@ -282,6 +295,7 @@ class CexBaseAdapter(BaseAdapter, ABC):
         *,
         timeout: float = 10.0,
         book_cache: OrderbookSnapshotCache | None = None,
+        ws_registry: WsBookRegistry | None = None,
     ) -> None:
         super().__init__(timeout=timeout)
         self._limiter = AsyncRateLimiter(self._min_interval_s)
@@ -289,6 +303,31 @@ class CexBaseAdapter(BaseAdapter, ABC):
         self._book_cache = (
             book_cache if book_cache is not None else default_orderbook_cache()
         )
+        # Optional inject for tests; production uses the process WS registry.
+        self._ws_registry = ws_registry
+
+    def _registry(self) -> WsBookRegistry:
+        return self._ws_registry if self._ws_registry is not None else default_ws_registry()
+
+    async def _resolve_book(
+        self,
+        symbol: str,
+        book_side: CexBookSide,
+        *,
+        side: Side | None = None,
+        q_star: Decimal | None = None,
+    ) -> tuple[OrderbookLevels, OrderbookLevels, bool, float | None]:
+        """Prefer local WS book; fall back to REST. Returns ``(bids, asks, from_ws, age)``."""
+        local = try_local_book(
+            self.venue, symbol, book_side, registry=self._registry()
+        )
+        # LocalBookUnavailable propagates (typed) so callers map book_stale.
+        if local is not None:
+            return local.bids, local.asks, True, local.age_sec
+        bids, asks = await self._fetch_book(
+            symbol, book_side, side=side, q_star=q_star
+        )
+        return bids, asks, False, None
 
     @abstractmethod
     async def _fetch_book(
@@ -475,9 +514,24 @@ class CexBaseAdapter(BaseAdapter, ABC):
         multiplier = resolve_cex_multiplier(asset_key, book_side)
 
         q_star = notional_usd / mid.mid
-        bids, asks = await self._fetch_book(
-            symbol, book_side, side=side, q_star=q_star
-        )
+        try:
+            bids, asks, from_ws, book_age = await self._resolve_book(
+                symbol, book_side, side=side, q_star=q_star
+            )
+        except LocalBookUnavailable as exc:
+            return build_error_quote(
+                venue=self.venue,
+                asset=asset_key,
+                side=side,
+                notional_usd=notional_usd,
+                mid=mid,
+                instrument_type=book_side,
+                error_code=exc.code,
+                message=exc.message,
+                fee_tier=tier,
+                venue_symbol=symbol,
+                status="error",
+            )
         return build_quote_from_book(
             venue=self.venue,
             asset=asset_key,
@@ -491,6 +545,8 @@ class CexBaseAdapter(BaseAdapter, ABC):
             fee_tier=tier,
             trading_fee_bps=trading_fee,
             multiplier=multiplier,
+            from_ws=from_ws,
+            book_age_sec=book_age,
         )
 
     async def get_quotes_batch(
@@ -587,30 +643,50 @@ class CexBaseAdapter(BaseAdapter, ABC):
         max_notional = max(notionals)
         q_max = max_notional / mid.mid
         side_order = list(sides)
-        bids, asks = await self._fetch_book(
-            symbol, book_side, side=side_order[0], q_star=q_max
-        )
-        for extra_side in side_order[1:]:
-            levels = asks if extra_side == "buy" else bids
-            if walk_book(levels, q_max) is not None:
-                continue
-            # Re-escalate for the under-filled side; only adopt the new book if
-            # it still fills every side that already filled on the prior book.
-            new_bids, new_asks = await self._fetch_book(
-                symbol, book_side, side=extra_side, q_star=q_max
+        try:
+            bids, asks, from_ws, book_age = await self._resolve_book(
+                symbol, book_side, side=side_order[0], q_star=q_max
             )
-            ok_to_swap = True
-            for prior in side_order:
-                prior_levels = asks if prior == "buy" else bids
-                new_levels = new_asks if prior == "buy" else new_bids
-                if (
-                    walk_book(prior_levels, q_max) is not None
-                    and walk_book(new_levels, q_max) is None
-                ):
-                    ok_to_swap = False
-                    break
-            if ok_to_swap:
-                bids, asks = new_bids, new_asks
+        except LocalBookUnavailable as exc:
+            return [
+                build_error_quote(
+                    venue=self.venue,
+                    asset=asset_key,
+                    side=side,
+                    notional_usd=n,
+                    mid=mid,
+                    instrument_type=book_side,
+                    error_code=exc.code,
+                    message=exc.message,
+                    fee_tier=tier,
+                    venue_symbol=symbol,
+                    status="error",
+                )
+                for n in notionals
+                for side in sides
+            ]
+        if not from_ws:
+            for extra_side in side_order[1:]:
+                levels = asks if extra_side == "buy" else bids
+                if walk_book(levels, q_max) is not None:
+                    continue
+                # Re-escalate for the under-filled side; only adopt the new book if
+                # it still fills every side that already filled on the prior book.
+                new_bids, new_asks = await self._fetch_book(
+                    symbol, book_side, side=extra_side, q_star=q_max
+                )
+                ok_to_swap = True
+                for prior in side_order:
+                    prior_levels = asks if prior == "buy" else bids
+                    new_levels = new_asks if prior == "buy" else new_bids
+                    if (
+                        walk_book(prior_levels, q_max) is not None
+                        and walk_book(new_levels, q_max) is None
+                    ):
+                        ok_to_swap = False
+                        break
+                if ok_to_swap:
+                    bids, asks = new_bids, new_asks
         shared_ts = datetime.now(tz=UTC)
 
         out: list[Quote] = []
@@ -631,6 +707,8 @@ class CexBaseAdapter(BaseAdapter, ABC):
                         trading_fee_bps=trading_fee,
                         timestamp=shared_ts,
                         multiplier=multiplier,
+                        from_ws=from_ws,
+                        book_age_sec=book_age,
                     )
                 )
         return out
@@ -650,7 +728,7 @@ class CexBaseAdapter(BaseAdapter, ABC):
                 f"{asset} not supported by {self.venue} as {book_side}"
             )
         multiplier = resolve_cex_multiplier(asset_key, book_side)
-        bids, asks = await self._fetch_book(symbol, book_side)
+        bids, asks, _from_ws, _age = await self._resolve_book(symbol, book_side)
         return build_top_of_book(
             venue=self.venue,
             asset=asset_key,

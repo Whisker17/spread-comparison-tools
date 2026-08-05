@@ -32,6 +32,8 @@ class MidSettings(BaseModel):
     stale_threshold_sec: float = Field(gt=0)
     cache_max_age_sec: float = Field(gt=0)
     http_timeout_sec: float = Field(gt=0)
+    # WHI-847: tighter mid freshness for quotes walked from WS books.
+    max_age_for_ws_quote_sec: float = Field(gt=0)
     pyth_feed_ids: dict[str, str]
 
     @field_validator("pyth_feed_ids", mode="before")
@@ -125,6 +127,43 @@ class OrderbookCacheSettings(BaseModel):
 
     # Seconds a fetched book remains reusable for multi-tier / TOB walks.
     ttl_sec: float = Field(ge=0)
+
+
+class WsStreamFlags(BaseModel):
+    """Per-stream enable flags under ``config/ws.yaml`` streams."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    binance_spot: bool
+    binance_futures: bool
+    bybit_spot: bool
+    bybit_linear: bool
+    hyperliquid: bool
+    lighter: bool
+    apex: bool
+
+
+class WsSettings(BaseModel):
+    """``config/ws.yaml`` — WebSocket orderbook ingest (WHI-847)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool
+    max_book_age_sec: float = Field(gt=0)
+    reconnect_min_sec: float = Field(gt=0)
+    reconnect_max_sec: float = Field(gt=0)
+    lighter_min_resync_interval_sec: float = Field(gt=0)
+    fast_mid_poll_interval_sec: float = Field(gt=0)
+    streams: WsStreamFlags
+
+    @model_validator(mode="after")
+    def _reconnect_max_not_below_min(self) -> WsSettings:
+        if self.reconnect_max_sec < self.reconnect_min_sec:
+            raise ValueError(
+                "reconnect_max_sec must be >= reconnect_min_sec "
+                f"(got max={self.reconnect_max_sec}, min={self.reconnect_min_sec})"
+            )
+        return self
 
 
 class PollerGroupSettings(BaseModel):
@@ -442,6 +481,12 @@ def load_poller_settings() -> PollerSettings:
     return PollerSettings.model_validate(_merge_local("poller"))
 
 
+@lru_cache(maxsize=1)
+def load_ws_settings() -> WsSettings:
+    """Parse WebSocket orderbook ingest settings once; fail fast on invalid config."""
+    return WsSettings.model_validate(_merge_local("ws"))
+
+
 def clear_settings_cache() -> None:
     """Drop cached settings (tests that rewrite YAML)."""
     load_mid_settings.cache_clear()
@@ -453,3 +498,4 @@ def clear_settings_cache() -> None:
     load_impact_settings.cache_clear()
     load_orderbook_cache_settings.cache_clear()
     load_poller_settings.cache_clear()
+    load_ws_settings.cache_clear()

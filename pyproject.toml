@@ -13,6 +13,7 @@ dependencies = [
     "eth-hash[pycryptodome]>=0.8.0",
     "eth-utils>=6.0.0",
     "python-dotenv>=1.2.2",
+    "websockets>=14",
 ]
 
 [dependency-groups]

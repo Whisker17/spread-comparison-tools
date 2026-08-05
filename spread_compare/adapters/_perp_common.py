@@ -43,6 +43,8 @@ from spread_compare.orderbook_cache import (
     default_orderbook_cache,
 )
 from spread_compare.ratelimit import AsyncRateLimiter, RollingWindowRateLimiter
+from spread_compare.ws_registry import WsBookRegistry, default_ws_registry
+from spread_compare.ws_serve import stamp_ws_quote_fields, try_local_book
 
 # Rate/depth defaults trace to docs/research/WHI-800-venue-api-survey.md §4
 # until DESIGN.md §2 exists (see docs/DEFERRED_ISSUES.md).
@@ -131,6 +133,8 @@ def build_quote_from_book(
     venue_mark: Decimal | None = None,
     timestamp: datetime | None = None,
     multiplier: Decimal = Decimal(1),
+    from_ws: bool = False,
+    book_age_sec: float | None = None,
 ) -> Quote:
     """Walk the book and assemble a ``Quote`` (shared perp path).
 
@@ -154,6 +158,10 @@ def build_quote_from_book(
     if mark is not None:
         basis = basis_bps(mark, mid.mid)
 
+    ws_extra: dict[str, object] = {}
+    if from_ws and book_age_sec is not None:
+        ws_extra = stamp_ws_quote_fields(mid=mid, book_age_sec=book_age_sec, quote_timestamp=now)
+
     if p_star is None:
         return Quote(
             snapshot_id=mid.snapshot_id,
@@ -174,6 +182,7 @@ def build_quote_from_book(
             basis_bps=basis,
             error_code="insufficient_liquidity",
             error_message=f"depth < q_star={q_star}",
+            **ws_extra,
         )
 
     sp = spread_bps(side, p_star, mid.mid)
@@ -218,6 +227,7 @@ def build_quote_from_book(
         qty_method="base_from_mid",
         venue_mark=mark,
         basis_bps=basis,
+        **ws_extra,
     )
 
 
@@ -251,6 +261,40 @@ def build_unsupported_quote(
     )
 
 
+def build_error_quote(
+    *,
+    venue: str,
+    asset: str,
+    side: Side,
+    notional_usd: Decimal,
+    mid: ReferenceMid,
+    instrument_type: InstrumentType,
+    error_code: str,
+    message: str,
+    fee_tier: str = DEFAULT_FEE_TIER,
+    venue_symbol: str | None = None,
+) -> Quote:
+    """Non-ok quote for typed failures (e.g. book_stale — WHI-847)."""
+    now = datetime.now(tz=UTC)
+    return Quote(
+        snapshot_id=mid.snapshot_id,
+        venue=venue,
+        asset=asset,
+        venue_symbol=venue_symbol,
+        instrument_type=instrument_type,
+        side=side,
+        notional_usd=notional_usd,
+        mid=mid.mid,
+        mid_source=mid.mid_source,
+        mid_timestamp=mid.timestamp,
+        fee_breakdown=non_ok_fees(fee_tier=fee_tier),
+        timestamp=now,
+        status="error",
+        error_code=error_code,
+        error_message=message,
+    )
+
+
 def build_quotes_from_book_batch(
     *,
     venue: str,
@@ -268,6 +312,8 @@ def build_quotes_from_book_batch(
     venue_mark: Decimal | None = None,
     timestamp: datetime | None = None,
     multiplier: Decimal = Decimal(1),
+    from_ws: bool = False,
+    book_age_sec: float | None = None,
 ) -> list[Quote]:
     """Walk one book at every notional × side with a shared timestamp (WHI-843)."""
     if not notionals:
@@ -295,9 +341,32 @@ def build_quotes_from_book_batch(
                     venue_mark=venue_mark,
                     timestamp=shared_ts,
                     multiplier=multiplier,
+                    from_ws=from_ws,
+                    book_age_sec=book_age_sec,
                 )
             )
     return out
+
+
+async def resolve_orderbook_levels(
+    *,
+    venue: str,
+    symbol: str,
+    instrument_type: str,
+    fetch_rest: Callable[[], Awaitable[tuple[OrderbookLevels, OrderbookLevels]]],
+    registry: WsBookRegistry | None = None,
+) -> tuple[OrderbookLevels, OrderbookLevels, bool, float | None]:
+    """Prefer local WS book; fall back to ``fetch_rest`` (WHI-847).
+
+    Returns ``(bids, asks, from_ws, book_age_sec)``.
+    """
+    reg = registry if registry is not None else default_ws_registry()
+    # LocalBookUnavailable propagates (typed) so adapters map book_stale uniformly.
+    local = try_local_book(venue, symbol, instrument_type, registry=reg)
+    if local is not None:
+        return local.bids, local.asks, True, local.age_sec
+    bids, asks = await fetch_rest()
+    return bids, asks, False, None
 
 
 async def cached_book_fetch(
@@ -308,12 +377,23 @@ async def cached_book_fetch(
     depth: object,
     fetch: Callable[[], Awaitable[tuple[OrderbookLevels, OrderbookLevels]]],
     cache: OrderbookSnapshotCache | None = None,
-) -> tuple[OrderbookLevels, OrderbookLevels]:
-    """Shared short-TTL single-flight book fetch for perp adapters (WHI-843)."""
-    store = cache if cache is not None else default_orderbook_cache()
-    key = book_cache_key(venue, symbol, instrument_type, depth)
-    snap = await store.get_or_fetch(key, fetch, depth=depth)
-    return snap.bids, snap.asks
+    registry: WsBookRegistry | None = None,
+) -> tuple[OrderbookLevels, OrderbookLevels, bool, float | None]:
+    """WS-first then short-TTL REST cache (WHI-843 / WHI-847)."""
+
+    async def _rest() -> tuple[OrderbookLevels, OrderbookLevels]:
+        store = cache if cache is not None else default_orderbook_cache()
+        key = book_cache_key(venue, symbol, instrument_type, depth)
+        snap = await store.get_or_fetch(key, fetch, depth=depth)
+        return snap.bids, snap.asks
+
+    return await resolve_orderbook_levels(
+        venue=venue,
+        symbol=symbol,
+        instrument_type=instrument_type,
+        fetch_rest=_rest,
+        registry=registry,
+    )
 
 
 def build_top_of_book(

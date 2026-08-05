@@ -349,6 +349,26 @@ class MidService:
             sources_detail=source.sources_detail,
         )
 
+    def seed_cache(
+        self,
+        asset: str,
+        *,
+        mid: Decimal,
+        mid_source: MidSource,
+        timestamp: datetime,
+    ) -> None:
+        """Inject a fresh mid into the short-lived cache (WHI-847 fast mid path).
+
+        Does not invent a ``snapshot_id`` — that is stamped at :meth:`resolve` time.
+        """
+        asset_key = asset.upper()
+        if mid <= 0:
+            raise ValueError(f"mid must be positive, got {mid}")
+        self._cache[asset_key] = (
+            self._clock(),
+            _SourceResult(mid, mid_source, timestamp),
+        )
+
     async def _resolve_source(self, asset: str) -> _SourceResult:
         now = self._clock()
         cached = self._cache.get(asset)

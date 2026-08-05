@@ -28,7 +28,7 @@ Loaders:
 - `spread_compare/settings.py` — `load_mid_settings`, `load_aggregator_settings`,
   `load_jupiter_settings`, `load_api_settings`, `load_venue_settings`,
   `load_rpc_settings`, `load_impact_settings`, `load_orderbook_cache_settings`,
-  `load_poller_settings`
+  `load_poller_settings`, `load_ws_settings`
 - `spread_compare/fees.py` — `get_fee_catalog` / `get_fee_schedule` (one YAML per venue)
 
 Checked-in files:
@@ -49,6 +49,11 @@ Checked-in files:
   AMM DEX + prop AMM quotes are written to an in-memory store; `GET /quotes`
   reads them (zero per-request upstream). Unvalidated pending DESIGN.md §2;
   override with `poller.local.yaml`.
+- `ws.yaml` — WebSocket orderbook ingest (WHI-847): enable flag, max book age,
+  reconnect backoff, Lighter resync floor, fast-mid poll interval, per-stream
+  flags. When healthy, CEX/perp quotes walk in-memory books (zero REST).
+  Unvalidated pending DESIGN.md §2; override with `ws.local.yaml`.
+  Pair with `mid.yaml` → `max_age_for_ws_quote_sec` for the tighter mid gate.
 - `venues.yaml` — per-host venue disable list + startup-retry backoff (WHI-840).
   Committed default disables `mock` (fixture adapter; WHI-849). Disabled slugs are
   omitted from `GET /venues` and never started; unknown slugs fail fast at load.

@@ -7,6 +7,9 @@ stale_threshold_sec: 5
 cache_max_age_sec: 30
 # HTTP timeout for mid upstream calls (Binance / Bybit / Pyth).
 http_timeout_sec: 5.0
+# WHI-847: WS-fed quotes must pair with a mid no older than this (unvalidated).
+# Staler mids still price but stamp mid_stale per WHI-799 §3.2.
+max_age_for_ws_quote_sec: 2.0
 
 # Pyth price-feed IDs (Hermes). Used for P3 and when force_pyth is true.
 # https://pyth.network/developers/price-feed-ids
