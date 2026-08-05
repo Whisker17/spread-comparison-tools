@@ -92,6 +92,12 @@ export function QuotesStreamProvider({
     () => JSON.stringify(buildSubscribeMessage(filters)),
     [filters],
   );
+  // Keep latest payload in a ref so the connect effect does not re-open the
+  // socket when only the size filter changes (WHI-864).
+  const subscribePayloadRef = useRef(subscribePayload);
+  useEffect(() => {
+    subscribePayloadRef.current = subscribePayload;
+  }, [subscribePayload]);
 
   const resnapshot = useCallback(
     (assets?: readonly string[]) => {
@@ -107,6 +113,12 @@ export function QuotesStreamProvider({
     },
     [socket],
   );
+
+  // Re-subscribe on the live socket when filters change (size switch).
+  useEffect(() => {
+    if (!socket?.ready) return;
+    socket.send(subscribePayload);
+  }, [socket, subscribePayload]);
 
   useEffect(() => {
     if (!enabled) {
@@ -177,8 +189,9 @@ export function QuotesStreamProvider({
             }
           },
         });
+        // Initial subscribe from ref so connect deps stay stable.
         if (active.readyState === WebSocket.OPEN) {
-          active.send(subscribePayload);
+          active.send(subscribePayloadRef.current);
         }
         livenessTimer = setInterval(() => {
           const silent = Date.now() - lastMsgAt;
@@ -262,7 +275,7 @@ export function QuotesStreamProvider({
         }
       }
     };
-  }, [enabled, url, subscribePayload, livenessTimeoutMs, reconnectBaseMs]);
+  }, [enabled, url, livenessTimeoutMs, reconnectBaseMs]);
 
   const matrixFor = useCallback(
     (asset: string): QuotesMatrixData | undefined =>

@@ -120,7 +120,29 @@ export function decideCellRender(
         eligibleForBest: false,
         showsMetric: false,
       };
-    case "error":
+    case "error": {
+      // WHI-864: unsampled poller tiers are structural (not a transient
+      // failure) — mute badge, no retry hint.
+      if (
+        quote.error_code === "not_yet_sampled" ||
+        quote.error_code === "not_initialized"
+      ) {
+        return {
+          kind: "dash",
+          label: "—",
+          badge:
+            quote.error_code === "not_yet_sampled"
+              ? "not sampled"
+              : "unavailable",
+          badgeVariant: "muted",
+          midStale,
+          midTimestamp,
+          quoteStale,
+          ageSec,
+          eligibleForBest: false,
+          showsMetric: false,
+        };
+      }
       return {
         kind: "error",
         label: "error",
@@ -134,6 +156,7 @@ export function decideCellRender(
         eligibleForBest: false,
         showsMetric: false,
       };
+    }
     case "rate_limited":
       return {
         kind: "rate_limited",

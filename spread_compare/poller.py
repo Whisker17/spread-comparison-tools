@@ -399,11 +399,15 @@ class PullQuotePoller:
     def _inter_call_delay(
         self, group: str, cfg: PollerGroupSettings, *, n_calls: int
     ) -> float:
-        """Seconds between calls so avg RPS ≤ budget and sweep spans the interval."""
+        """Seconds between call starts so avg RPS ≤ the group budget.
+
+        Pace at the budget cap (``budget_share`` / ``max_rps``), not stretched
+        to fill ``interval_sec`` — the loop idles the remainder so real
+        headroom exists for RTT / 429 / ``/simulate`` (WHI-864). When no cap
+        is configured, spread work evenly across the interval.
+        """
         if n_calls <= 1:
             return 0.0
-        # Finish within the interval when possible.
-        interval_rps = n_calls / cfg.interval_sec
         caps: list[float] = []
         if cfg.max_rps is not None:
             caps.append(cfg.max_rps)
@@ -411,8 +415,10 @@ class PullQuotePoller:
             capacity = self._group_capacity_rps(group)
             if capacity is not None:
                 caps.append(capacity * cfg.budget_share)
-        max_allowed = min(caps) if caps else interval_rps
-        target_rps = min(interval_rps, max_allowed)
+        if caps:
+            target_rps = min(caps)
+        else:
+            target_rps = n_calls / cfg.interval_sec
         if target_rps <= 0:
             return cfg.interval_sec
         return 1.0 / target_rps

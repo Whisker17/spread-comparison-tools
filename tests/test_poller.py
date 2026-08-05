@@ -656,19 +656,22 @@ def test_inter_call_delay_respects_budget_share(
         ),
     )
     # WHI-864: keyed sustained = capacity/window = 10/10 = 1 RPS;
-    # budget_share 0.6 → 0.6 RPS. interval_rps for 90/15s = 6; cap wins.
+    # budget_share 0.6 → 0.6 RPS. Pace at the cap (do not stretch to fill
+    # interval_sec so real headroom remains for idle).
     monkeypatch.setenv("JUPITER_API_KEY", "test-key")
     clear_settings_cache()
     delay = poller._inter_call_delay(  # noqa: SLF001
-        "jupiter", settings.groups["jupiter"], n_calls=90
+        "jupiter", settings.groups["jupiter"], n_calls=54
     )
     assert abs(delay - (1.0 / 0.6)) < 1e-9
+    # 54 calls at 0.6 RPS ≈ 90 s < interval 15 would be impossible; the
+    # helper only returns inter-call spacing — the loop idles the remainder.
 
     # Keyless: 5/10 = 0.5 RPS × 0.6 share → 0.3 RPS.
     monkeypatch.delenv("JUPITER_API_KEY", raising=False)
     clear_settings_cache()
     delay_keyless = poller._inter_call_delay(  # noqa: SLF001
-        "jupiter", settings.groups["jupiter"], n_calls=90
+        "jupiter", settings.groups["jupiter"], n_calls=54
     )
     assert abs(delay_keyless - (1.0 / 0.3)) < 1e-9
 

@@ -52,6 +52,17 @@ describe("decideCellRender", () => {
     expect(d.hint).toMatch(/retry/i);
   });
 
+  it("maps not_yet_sampled to muted not-sampled (WHI-864)", () => {
+    const d = decideCellRender(
+      q({ status: "error", error_code: "not_yet_sampled" }),
+    );
+    expect(d.kind).toBe("dash");
+    expect(d.badge).toBe("not sampled");
+    expect(d.badgeVariant).toBe("muted");
+    expect(d.hint).toBeUndefined();
+    expect(d.eligibleForBest).toBe(false);
+  });
+
   it("maps rate_limited to distinct RATE LIMITED badge (WHI-844)", () => {
     const d = decideCellRender(
       q({ status: "rate_limited", error_code: "rate_limited" }),
