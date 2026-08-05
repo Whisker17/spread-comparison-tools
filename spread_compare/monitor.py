@@ -1,8 +1,9 @@
-"""Real-time engine health snapshot + alert evaluation (WHI-819).
+"""Real-time engine health snapshot + alert evaluation (WHI-819 / WHI-856).
 
-Exposes the signals a monitor needs (stream state, ages, rate-limits) and
-evaluates them against ``config/monitor.yaml``. Delivery is a generic HTTPS
-webhook (ADR 0003) — optional when ``ALERT_WEBHOOK_URL`` is unset.
+Exposes the signals a monitor needs (stream state, ages, rate-limits,
+expected-vs-healthy books) and evaluates them against ``config/monitor.yaml``.
+Delivery is a generic HTTPS webhook (ADR 0003) — optional when
+``ALERT_WEBHOOK_URL`` is unset.
 """
 
 from __future__ import annotations
@@ -47,6 +48,8 @@ AlertCode = Literal[
     "book_stale",
     "book_desync",
     "book_resync_failed",
+    "books_unsynced",
+    "subscribe_failed",
     "sweep_stale",
     "mid_stale",
     "rate_limited",
@@ -62,13 +65,23 @@ class StreamHealthView(BaseModel):
     stream_id: str
     connected: bool
     disconnected_age_sec: float | None = None
+    # Seconds since the current connect session opened (WHI-856 sync grace).
+    connected_age_sec: float | None = None
     books_total: int = 0
+    # Configured subscribe set size vs currently HEALTHY (WHI-856).
+    books_expected: int = 0
     books_healthy: int = 0
     books_resyncing: int = 0
     books_disconnected: int = 0
+    # Peak HEALTHY count since this connect session opened.
+    peak_healthy_since_connect: int = 0
     max_book_age_sec: float | None = None
     resync_ok_window: int = 0
     resync_fail_window: int = 0
+    # Last subscribe / stream error (WHI-855 / WHI-856); cleared when fully recovered.
+    stream_error: str | None = None
+    # Operator-facing: connected alone is not enough (WHI-856).
+    healthy: bool = False
 
 
 class SweepHealthView(BaseModel):
@@ -223,6 +236,7 @@ def collect_engine_snapshot(
         mid_age=mid_age,
         fresh_store=fresh_store,
         healthy_books=healthy_books,
+        streams=streams,
         ws_enabled=wcfg.enabled,
         poller_enabled=pcfg.enabled,
         in_grace=in_grace,
@@ -270,25 +284,48 @@ def evaluate_alerts(
                         threshold=cfg.ws_disconnected_alert_sec,
                     )
                 )
-        elif (
-            stream.max_book_age_sec is not None
-            and stream.max_book_age_sec > cfg.ws_max_book_age_sec
-            and stream.books_total > 0
-        ):
-            alerts.append(
-                _OpenAlert(
-                    code="book_stale",
-                    severity="warning",
-                    target=stream.stream_id,
-                    message=(
-                        f"Stream {stream.stream_id!r} max book age "
-                        f"{stream.max_book_age_sec:.1f}s exceeds "
-                        f"{cfg.ws_max_book_age_sec}s"
-                    ),
-                    value=stream.max_book_age_sec,
-                    threshold=cfg.ws_max_book_age_sec,
+        else:
+            # Connected path: subscribe failure is immediate while the stream is
+            # still entirely unsynced; expected-vs-healthy lag waits for grace.
+            if _has_blocking_stream_error(stream):
+                alerts.append(
+                    _OpenAlert(
+                        code="subscribe_failed",
+                        severity="critical",
+                        target=stream.stream_id,
+                        message=(
+                            f"Stream {stream.stream_id!r} subscribe/stream error: "
+                            f"{stream.stream_error} "
+                            f"(books {stream.books_healthy}/{stream.books_expected})"
+                        ),
+                        value=float(stream.books_healthy),
+                        threshold=float(stream.books_expected),
+                    )
                 )
-            )
+            else:
+                sync_alert = _books_unsynced_alert(stream, cfg)
+                if sync_alert is not None:
+                    alerts.append(sync_alert)
+
+            if (
+                stream.max_book_age_sec is not None
+                and stream.max_book_age_sec > cfg.ws_max_book_age_sec
+                and stream.books_total > 0
+            ):
+                alerts.append(
+                    _OpenAlert(
+                        code="book_stale",
+                        severity="warning",
+                        target=stream.stream_id,
+                        message=(
+                            f"Stream {stream.stream_id!r} max book age "
+                            f"{stream.max_book_age_sec:.1f}s exceeds "
+                            f"{cfg.ws_max_book_age_sec}s"
+                        ),
+                        value=stream.max_book_age_sec,
+                        threshold=cfg.ws_max_book_age_sec,
+                    )
+                )
 
         total_resync = stream.resync_ok_window + stream.resync_fail_window
         if total_resync >= cfg.ws_resync_count_threshold:
@@ -461,19 +498,30 @@ def _collect_streams(
     for sid in sorted(stream_ids):
         connected = True
         disc_age: float | None = None
+        conn_age: float | None = None
         resync_ok = 0
         resync_fail = 0
+        expected = 0
+        peak = 0
+        stream_err: str | None = None
         if ws_manager is not None:
             connected = ws_manager.stream_connected(sid)
             disc_age = ws_manager.stream_disconnected_age_sec(sid, now=now)
+            conn_age = ws_manager.stream_connected_age_sec(sid, now=now)
             resync_ok, resync_fail = ws_manager.resync_counts(
                 sid, window_sec=cfg.ws_resync_window_sec, now=now
             )
+            expected = ws_manager.expected_book_count(sid)
+            stream_err = ws_manager.stream_error(sid)
         else:
-            # Registry-only: connection map.
+            # Registry-only: connection map; expected falls back to registered.
             connected = registry.connection_count(sid) > 0
 
         stream_books = by_stream.get(sid, [])
+        if expected <= 0:
+            # No manager symbol list (registry-only or pre-start) — treat
+            # registered books as the expected set so 0-of-0 does not page.
+            expected = len(stream_books)
         healthy = sum(1 for b in stream_books if b.health is BookHealth.HEALTHY)
         resyncing = sum(1 for b in stream_books if b.health is BookHealth.RESYNCING)
         disconnected = sum(
@@ -482,21 +530,135 @@ def _collect_streams(
         ages = [a for a in (b.age_sec(now_mono=now) for b in stream_books) if a is not None]
         max_age = max(ages) if ages else None
 
+        if ws_manager is not None and connected:
+            peak = ws_manager.note_healthy_books(sid, healthy)
+            # Auto-resolve latched subscribe errors once any book is healthy
+            # (Lighter mid-session resubscribe, one-shot HL error frames, …).
+            ws_manager.clear_stream_error_if_recovered(sid, books_healthy=healthy)
+            stream_err = ws_manager.stream_error(sid)
+        else:
+            peak = healthy
+
+        is_healthy = _stream_is_healthy_values(
+            connected=connected,
+            stream_error=stream_err,
+            books_expected=expected,
+            books_healthy=healthy,
+            connected_age_sec=conn_age,
+            cfg=cfg,
+            stream_id=sid,
+        )
         views.append(
             StreamHealthView(
                 stream_id=sid,
                 connected=connected,
                 disconnected_age_sec=disc_age,
+                connected_age_sec=conn_age,
                 books_total=len(stream_books),
+                books_expected=expected,
                 books_healthy=healthy,
                 books_resyncing=resyncing,
                 books_disconnected=disconnected,
+                peak_healthy_since_connect=peak,
                 max_book_age_sec=max_age,
                 resync_ok_window=resync_ok,
                 resync_fail_window=resync_fail,
+                stream_error=stream_err,
+                healthy=is_healthy,
             )
         )
     return views
+
+
+def _has_blocking_stream_error(stream: StreamHealthView) -> bool:
+    """Subscribe/stream error still matters only while the stream has zero books."""
+    return bool(stream.stream_error) and stream.books_healthy <= 0
+
+
+def _past_books_sync_grace(stream: StreamHealthView, cfg: MonitorSettings) -> bool:
+    grace = cfg.books_sync_grace_sec(stream.stream_id)
+    age = stream.connected_age_sec
+    return age is not None and age >= grace
+
+
+def _books_unsynced_alert(
+    stream: StreamHealthView, cfg: MonitorSettings
+) -> _OpenAlert | None:
+    """Alert when a connected stream is short of expected healthy books (WHI-856).
+
+    *Critical* when entirely unsynced (``books_healthy == 0``) — the escaped
+    pre-deploy case. *Warning* for partial shortfall so thin markets on a large
+    subscribe set do not page as critical forever.
+    """
+    if stream.books_expected <= 0:
+        return None
+    if stream.books_healthy >= stream.books_expected:
+        return None
+    if not _past_books_sync_grace(stream, cfg):
+        return None
+
+    age = stream.connected_age_sec
+    assert age is not None  # guarded by _past_books_sync_grace
+    grace = cfg.books_sync_grace_sec(stream.stream_id)
+
+    if stream.books_healthy <= 0:
+        severity: AlertSeverity = "critical"
+        if stream.peak_healthy_since_connect <= 0:
+            kind = "never synced since connect"
+            detail = (
+                "usually a subscribe/protocol defect — check stream_error and "
+                "subscribe acks"
+            )
+        else:
+            kind = "was healthy, now degraded"
+            detail = (
+                f"peak healthy this session was {stream.peak_healthy_since_connect} "
+                "— usually upstream or network"
+            )
+    else:
+        severity = "warning"
+        kind = "partially synced"
+        detail = (
+            f"peak healthy this session was {stream.peak_healthy_since_connect}; "
+            "thin markets may never snapshot — not the zero-book failure mode"
+        )
+    return _OpenAlert(
+        code="books_unsynced",
+        severity=severity,
+        target=stream.stream_id,
+        message=(
+            f"Stream {stream.stream_id!r} {kind}: "
+            f"{stream.books_healthy}/{stream.books_expected} healthy books "
+            f"after {age:.1f}s connected (grace {grace}s); {detail}"
+        ),
+        value=float(stream.books_healthy),
+        threshold=float(stream.books_expected),
+    )
+
+
+def _stream_is_healthy_values(
+    *,
+    connected: bool,
+    stream_error: str | None,
+    books_expected: int,
+    books_healthy: int,
+    connected_age_sec: float | None,
+    cfg: MonitorSettings,
+    stream_id: str,
+) -> bool:
+    """True when the stream is usable: connected, not zero-book, no blocking error."""
+    if not connected:
+        return False
+    if stream_error and books_healthy <= 0:
+        return False
+    if books_expected <= 0:
+        return True
+    if books_healthy > 0:
+        # Partial coverage is still serving; REST covers missing symbols.
+        return True
+    # Zero healthy — still warming up inside grace.
+    grace = cfg.books_sync_grace_sec(stream_id)
+    return connected_age_sec is not None and connected_age_sec < grace
 
 
 def _count_fresh_store_quotes(
@@ -528,6 +690,7 @@ def _data_probe_failures(
     mid_age: float | None,
     fresh_store: int,
     healthy_books: int,
+    streams: Sequence[StreamHealthView],
     ws_enabled: bool,
     poller_enabled: bool,
     in_grace: bool,
@@ -551,6 +714,66 @@ def _data_probe_failures(
         if healthy_books < cfg.probe_min_healthy_books:
             failures.append(
                 f"healthy WS books: {healthy_books} < {cfg.probe_min_healthy_books}"
+            )
+    if ws_enabled:
+        # Subscribe errors fail the probe independently of the min-books knob
+        # (config comment: stream_error fails immediately).
+        failures.extend(_subscribe_error_probe_failures(streams))
+        if cfg.probe_min_healthy_books_per_stream > 0:
+            failures.extend(
+                _per_stream_book_probe_failures(
+                    streams,
+                    min_healthy=cfg.probe_min_healthy_books_per_stream,
+                    cfg=cfg,
+                )
+            )
+    return failures
+
+
+def _subscribe_error_probe_failures(
+    streams: Sequence[StreamHealthView],
+) -> list[str]:
+    """Fail the data probe on latched subscribe errors while still at zero books."""
+    failures: list[str] = []
+    for stream in streams:
+        if not _has_blocking_stream_error(stream):
+            continue
+        failures.append(
+            f"stream {stream.stream_id!r} subscribe/stream error: "
+            f"{stream.stream_error} "
+            f"(books {stream.books_healthy}/{stream.books_expected})"
+        )
+    return failures
+
+
+def _per_stream_book_probe_failures(
+    streams: Sequence[StreamHealthView],
+    *,
+    min_healthy: int,
+    cfg: MonitorSettings,
+) -> list[str]:
+    """Fail the data probe when any stream is entirely unsynced (WHI-856).
+
+    Process-wide ``probe_min_healthy_books`` cannot distinguish 1/5 venues
+    healthy from 5/5 — this asserts a minimum per connected stream after its
+    books-sync grace. Partial shortfall (healthy ≥ min) does not fail the probe.
+    """
+    failures: list[str] = []
+    for stream in streams:
+        if stream.books_expected <= 0:
+            continue
+        if not stream.connected:
+            # Disconnect is covered by ws_disconnected; do not double-count
+            # the process-wide book floor with a per-stream zero here.
+            continue
+        if not _past_books_sync_grace(stream, cfg):
+            continue
+        if stream.books_healthy < min_healthy:
+            age = stream.connected_age_sec
+            failures.append(
+                f"stream {stream.stream_id!r} healthy books "
+                f"{stream.books_healthy}/{stream.books_expected} "
+                f"< min {min_healthy} after {age:.1f}s connected"
             )
     return failures
 

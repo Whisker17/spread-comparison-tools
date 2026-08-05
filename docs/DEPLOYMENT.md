@@ -202,32 +202,41 @@ fire/resolve is logged at WARNING (`journalctl -u spread-comparison`).
 | Code | Meaning | First action |
 | --- | --- | --- |
 | `ws_disconnected` | One multiplexed orderbook WS has been down longer than `ws_disconnected_alert_sec` | `curl -sS localhost:8000/health \| jq .engine.streams`; check venue status / geo blocks; journal for reconnect loops; REST fallback should still serve until books age out |
+| `books_unsynced` | Connected stream with `books_healthy < books_expected` past `ws_books_sync_grace_sec` (WHI-856). Message says *never synced since connect* vs *was healthy, now degraded* | `jq '.engine.streams[] \| {stream_id, connected, books_healthy, books_expected, stream_error}'`; never-synced → subscribe/protocol; degraded → upstream/network. REST fallback still serves |
+| `subscribe_failed` | Stream reported a subscribe/stream error **and still has zero healthy books** — immediate (no books-sync grace). Cleared once any book becomes HEALTHY; residual shortfall is `books_unsynced` warning | Journal for that stream's ack failure; fix chunk size / topic format; books for failed symbols stay non-servable |
 | `book_stale` | Connected stream but max book age &gt; `ws_max_book_age_sec` | Confirm diffs are flowing; forced resync may be stuck — see `resync_*_window` on the stream |
 | `book_desync` | Too many REST resyncs in `ws_resync_window_sec` (sequence gaps) | Inspect that venue's protocol; rate-limit on REST resync path; temporary disable stream in `config/ws.yaml` if poisoning the matrix |
 | `book_resync_failed` | Repeated failed REST resync (distinct from desync count) | Auth / REST endpoint / network to that venue; books will stay non-servable → REST path or empty |
 | `sweep_stale` | Pull-only group (`jupiter` / `kyber` / `rpc`) has not completed within `interval × sweep_stale_multiplier` | `jq .engine.sweeps` on `/health`; check 429s (`engine.rate_limits`); poller task alive? |
 | `mid_stale` | Reference mid cache older than `mid_max_age_sec` (or missing) | Fast mid poller / Binance premiumIndex path; all bps drift if mid is wrong |
 | `rate_limited` | Sustained upstream 429s on Jupiter / Kyber / RPC in the rolling window | Raise keyed budgets, slow sweep groups, or rotate RPC provider |
-| `data_stale` | Data probe failed (aggregate of mid / store / books) | Same as 503 on `/health/data` — treat as "serving garbage", not "process down" |
+| `data_stale` | Data probe failed (aggregate of mid / store / books / per-stream floors) | Same as 503 on `/health/data` — treat as "serving garbage", not "process down" |
 
 ### Interpreting `/health` fields
 
 - **`degraded` / `unavailable_venues`** (WHI-840): adapter `startup()` failed or not
   yet retried. Process still serves other venues; **not** a deploy failure.
 - **`engine.streams[]`**: per multiplexed WS (`binance_spot`, `bybit_linear`, …) —
-  `connected`, book counts by health, max age, resync window counts.
+  `connected`, `healthy` (operator-facing: not zero-book past grace / no blocking
+  subscribe error), `books_healthy` / `books_expected`, `peak_healthy_since_connect`,
+  book counts by health, max age, resync window counts, `stream_error`,
+  `connected_age_sec`.
 - **`engine.sweeps[]`**: per poller group — `age_sec` since last completed sweep,
   `stale` vs `interval_sec × sweep_stale_multiplier`.
 - **`engine.mid_age_sec`**: age of the probe asset mid (default BTC).
 - **`engine.alerts`**: currently open conditions (same codes as webhook).
 - **`engine.in_startup_grace`**: true during `startup_grace_sec` — data probe and
-  sweep/mid alerts are suppressed so cold start does not page.
+  sweep/mid alerts are suppressed so cold start does not page. Stream
+  `books_unsynced` still uses the shorter per-stream books-sync grace after connect.
 
 ### Stated SLOs (defaults — unvalidated)
 
 | Condition | Default threshold |
 | --- | --- |
 | WS disconnect alert | 30s disconnected |
+| Books unsynced (connected, short of expected) | 60s after connect (`ws_books_sync_grace_sec`; optional per-stream map) |
+| Subscribe / stream error at zero books | Immediate (`subscribe_failed`); clears when any book is healthy |
+| Per-stream data-probe floor | ≥1 healthy book per connected stream past grace |
 | Sweep stale | 2.5 × group `interval_sec` (e.g. Jupiter 15s → 37.5s) |
 | Book desync | ≥5 resyncs / 60s |
 | Failed resync | ≥2 failures / 60s |

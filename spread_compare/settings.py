@@ -143,6 +143,10 @@ class WsStreamFlags(BaseModel):
     apex: bool
 
 
+# Multiplexed orderbook stream ids (WsStreamFlags fields / WsFeedManager).
+KNOWN_WS_STREAM_IDS: frozenset[str] = frozenset(WsStreamFlags.model_fields)
+
+
 class WsSettings(BaseModel):
     """``config/ws.yaml`` — WebSocket orderbook ingest (WHI-847 / WHI-855)."""
 
@@ -412,6 +416,10 @@ class MonitorSettings(BaseModel):
     # Orderbook / WS class.
     ws_max_book_age_sec: float = Field(gt=0)
     ws_disconnected_alert_sec: float = Field(gt=0)
+    # WHI-856: expected-vs-healthy book sync grace (unvalidated defaults).
+    ws_books_sync_grace_sec: float = Field(gt=0)
+    # Required key (may be `{}`) so a missing YAML entry fails at load.
+    ws_books_sync_grace_sec_by_stream: dict[str, float]
     ws_resync_window_sec: float = Field(gt=0)
     ws_resync_count_threshold: int = Field(ge=1)
     ws_failed_resync_threshold: int = Field(ge=1)
@@ -424,11 +432,36 @@ class MonitorSettings(BaseModel):
     probe_max_quote_age_sec: float = Field(gt=0)
     probe_min_fresh_store_quotes: int = Field(ge=0)
     probe_min_healthy_books: int = Field(ge=0)
+    # WHI-856: per-stream floor (process-wide probe_min_healthy_books alone masks
+    # dead venues when one stream is healthy).
+    probe_min_healthy_books_per_stream: int = Field(ge=0)
 
     @field_validator("probe_asset")
     @classmethod
     def _upper_probe_asset(cls, value: str) -> str:
         return value.strip().upper()
+
+    @field_validator("ws_books_sync_grace_sec_by_stream")
+    @classmethod
+    def _positive_known_stream_grace(cls, value: dict[str, float]) -> dict[str, float]:
+        unknown = sorted(k for k in value if k not in KNOWN_WS_STREAM_IDS)
+        if unknown:
+            raise ValueError(
+                f"unknown stream id(s) in ws_books_sync_grace_sec_by_stream: "
+                f"{unknown}; allowed: {sorted(KNOWN_WS_STREAM_IDS)}"
+            )
+        for key, sec in value.items():
+            if sec <= 0:
+                raise ValueError(
+                    f"ws_books_sync_grace_sec_by_stream[{key!r}] must be > 0 (got {sec})"
+                )
+        return value
+
+    def books_sync_grace_sec(self, stream_id: str) -> float:
+        """Per-stream books-sync grace, falling back to the global default."""
+        return self.ws_books_sync_grace_sec_by_stream.get(
+            stream_id, self.ws_books_sync_grace_sec
+        )
 
 
 class VenueSettings(BaseModel):

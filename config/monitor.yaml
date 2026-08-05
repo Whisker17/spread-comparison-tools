@@ -22,11 +22,19 @@ alert_cooldown_sec: 300.0
 # HTTP timeout for ALERT_WEBHOOK_URL delivery.
 webhook_timeout_sec: 10.0
 
-# --- WebSocket / orderbook class (cex + perp_dex, WHI-847) -----------------
+# --- WebSocket / orderbook class (cex + perp_dex, WHI-847 / WHI-856) -------
 # A book older than this (while the stream claims connected) is stale.
 ws_max_book_age_sec: 15.0
 # A stream disconnected longer than this raises ws_disconnected.
 ws_disconnected_alert_sec: 30.0
+# After connect, how long a stream may legitimately have books_healthy <
+# books_expected before books_unsynced fires (subscribe/sync lag).
+# Unvalidated — engineering starting point (WHI-856).
+ws_books_sync_grace_sec: 60.0
+# Optional per-stream overrides (stream_id → seconds). Venues with large
+# subscribe sets or slow snapshots can take longer without paging.
+# Example: apex: 120.0
+ws_books_sync_grace_sec_by_stream: {}
 # Distinct resync attempts for one stream inside the window → book_desync.
 ws_resync_window_sec: 60.0
 ws_resync_count_threshold: 5
@@ -55,5 +63,13 @@ probe_asset: BTC
 probe_max_quote_age_sec: 120.0
 # Require at least this many ok-status store quotes for probe_asset.
 probe_min_fresh_store_quotes: 1
-# Require at least this many healthy, young WS books (any venue) when WS enabled.
+# Process-wide floor (legacy). Prefer per-stream below — a single healthy
+# Binance book used to mask dead streams (WHI-856 / DEFERRED_ISSUES).
 probe_min_healthy_books: 1
+# Per connected stream past its books-sync grace: require at least this many
+# HEALTHY books when books_expected > 0. 1 = "stream must not be entirely
+# unsynced". A latched stream_error with zero healthy books also fails the
+# probe (independent of this knob); both are suppressed during
+# startup_grace_sec like other data-probe checks.
+# Unvalidated — engineering starting point (WHI-856).
+probe_min_healthy_books_per_stream: 1

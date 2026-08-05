@@ -111,6 +111,10 @@ class WsFeedManager:
         self._resync_ok_mono: dict[str, list[float]] = {}
         self._resync_fail_mono: dict[str, list[float]] = {}
         self._stream_disconnected_since: dict[str, float] = {}
+        # WHI-856: age of the current connect session + peak healthy books
+        # observed since that connect (for never-synced vs degraded alerts).
+        self._stream_connected_since: dict[str, float] = {}
+        self._stream_peak_healthy: dict[str, int] = {}
 
     @property
     def registry(self) -> WsBookRegistry:
@@ -131,7 +135,8 @@ class WsFeedManager:
 
     def stream_error(self, stream_id: str) -> str | None:
         """Last subscribe/stream error for ``stream_id``, if any."""
-        return self._stream_errors.get(stream_id)
+        with self._diag_lock:
+            return self._stream_errors.get(stream_id)
 
     def note_resync(self, stream_id: str, *, ok: bool) -> None:
         """Record a REST resync attempt for monitor book-desync alerts (WHI-819)."""
@@ -159,12 +164,17 @@ class WsFeedManager:
             return ok, fail
 
     def mark_stream_connected(self, stream_id: str, *, connected: bool) -> None:
-        """Track how long a stream has been disconnected (WHI-819)."""
+        """Track connect/disconnect ages (WHI-819) and reset sync peak (WHI-856)."""
+        now = time.monotonic()
         with self._diag_lock:
             if connected:
                 self._stream_disconnected_since.pop(stream_id, None)
+                # New connect session — never-synced is measured from this open.
+                self._stream_connected_since[stream_id] = now
+                self._stream_peak_healthy[stream_id] = 0
             else:
-                self._stream_disconnected_since.setdefault(stream_id, time.monotonic())
+                self._stream_disconnected_since.setdefault(stream_id, now)
+                self._stream_connected_since.pop(stream_id, None)
 
     def stream_disconnected_age_sec(
         self, stream_id: str, *, now: float | None = None
@@ -176,12 +186,45 @@ class WsFeedManager:
         ts = time.monotonic() if now is None else now
         return max(0.0, ts - since)
 
+    def stream_connected_age_sec(
+        self, stream_id: str, *, now: float | None = None
+    ) -> float | None:
+        """Seconds since the current connect session opened, if connected."""
+        with self._diag_lock:
+            since = self._stream_connected_since.get(stream_id)
+        if since is None:
+            return None
+        ts = time.monotonic() if now is None else now
+        return max(0.0, ts - since)
+
+    def expected_book_count(self, stream_id: str) -> int:
+        """How many symbols this stream was configured to maintain (WHI-856)."""
+        if stream_id == "lighter":
+            return len(self._lighter_markets)
+        return len(self._symbols.get(stream_id, []))
+
+    def note_healthy_books(self, stream_id: str, healthy: int) -> int:
+        """Update and return peak HEALTHY count for the current connect session.
+
+        Called from the monitor collector each evaluation cycle (WHI-856): the
+        peak is diagnostic state for never-synced vs degraded alert wording,
+        not a serve-path input.
+        """
+        with self._diag_lock:
+            peak = self._stream_peak_healthy.get(stream_id, 0)
+            if healthy > peak:
+                peak = healthy
+                self._stream_peak_healthy[stream_id] = peak
+            return peak
+
     def known_stream_ids(self) -> list[str]:
-        """Configured sockets plus any stream that has a disconnect timestamp."""
+        """Spawned sockets plus streams with connect/disconnect diagnostics."""
         with self._diag_lock:
             disc = set(self._stream_disconnected_since)
+            connected = set(self._stream_connected_since)
         ids = {s.stream_id for s in self._sockets}
         ids.update(disc)
+        ids.update(connected)
         return sorted(ids)
 
     def stream_connected(self, stream_id: str) -> bool:
@@ -196,11 +239,25 @@ class WsFeedManager:
         return self._client
 
     def _set_stream_error(self, stream_id: str, message: str) -> None:
-        self._stream_errors[stream_id] = message
+        with self._diag_lock:
+            self._stream_errors[stream_id] = message
         logger.error("ws stream %s error: %s", stream_id, message)
 
     def _clear_stream_error(self, stream_id: str) -> None:
-        self._stream_errors.pop(stream_id, None)
+        with self._diag_lock:
+            self._stream_errors.pop(stream_id, None)
+
+    def clear_stream_error_if_recovered(self, stream_id: str, *, books_healthy: int) -> None:
+        """Drop a latched subscribe/stream error once any book is healthy (WHI-856).
+
+        Mid-session errors (e.g. Lighter gap resubscribe) must not page forever
+        after the stream has recovered. A single HEALTHY book proves the
+        subscribe path works again; remaining shortfall is ``books_unsynced``
+        (warning), not a permanent ``subscribe_failed``.
+        """
+        if books_healthy <= 0:
+            return
+        self._clear_stream_error(stream_id)
 
     def _fail_subscribe_books(
         self,

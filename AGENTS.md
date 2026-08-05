@@ -119,6 +119,10 @@ Real-time engine monitoring (WHI-819): `config/monitor.yaml` per-class threshold
 (unvalidated); `/health` embeds `engine` (streams, sweeps, mid age, alerts) and stays
 200 when degraded; `GET /health/data` 503 data probe; background evaluator +
 `ALERT_WEBHOOK_URL` webhook (ADR 0003); runbook in `docs/DEPLOYMENT.md` § Monitoring.
+Stream books-sync alerts (WHI-856): per-stream `books_healthy`/`books_expected`,
+`books_unsynced` (critical at zero books: never-synced vs degraded; warning when
+partial) past `ws_books_sync_grace_sec`, `subscribe_failed` when `stream_error`
+and still zero healthy books, per-stream data-probe floor.
 
 **Not implemented:** remaining venue adapters (WHI-805), collector.
 Do not assume a module exists until its issue lands.
