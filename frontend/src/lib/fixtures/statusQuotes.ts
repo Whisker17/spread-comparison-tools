@@ -137,6 +137,29 @@ export const STATUS_FIXTURES: FixtureCase[] = [
     },
   },
   {
+    id: "not_sampled",
+    title: "not_sampled",
+    description:
+      "Pull poller did not sample this size (sparse matrix) → muted 'not sampled', not error (WHI-865).",
+    quote: {
+      ...base,
+      venue: "humidifi",
+      instrument_type: "prop_amm",
+      notional_usd: "100000",
+      mid_stale: false,
+      quote_stale: false,
+      effective_price: null,
+      spread_bps: null,
+      total_cost_bps: null,
+      fee_breakdown: emptyFees,
+      status: "not_sampled",
+      qty_base: null,
+      error_code: "not_sampled",
+      error_message:
+        "humidifi: notional 100000 is outside this group's sample matrix (group=jupiter)",
+    },
+  },
+  {
     id: "rate_limited",
     title: "rate_limited",
     description:

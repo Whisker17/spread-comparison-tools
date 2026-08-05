@@ -132,6 +132,9 @@ Jupiter budget + poller sample matrix (WHI-864): Free-plan limiter
 `notionals_usd` (Jupiter 3-tier both sides; Kyber/RPC full §4.1); non-
 overlapping sweeps with `skip_count` on `/health`; dashboard one-tier
 fetch/subscribe (no SizeSelector `All`).
+Unsampled tier status (WHI-865): pull-store misses emit
+`status=not_sampled` (not `error`); WHI-799 §6.1/§6.6 + FE StatusCell
+muted "not sampled"; Jupiter sample anchors `$100/$1k/$10k` (both sides).
 
 **Not implemented:** remaining venue adapters (WHI-805), collector.
 Do not assume a module exists until its issue lands.

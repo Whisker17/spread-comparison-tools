@@ -9,6 +9,7 @@
     "/health": {
       "get": {
         "summary": "Health",
+        "description": "Process liveness \u2014 always 200 while serving (including degraded).",
         "operationId": "health_health_get",
         "responses": {
           "200": {
@@ -17,6 +18,25 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health/data": {
+      "get": {
+        "summary": "Health Data",
+        "description": "Data-freshness probe: 200 when engine data is ok, else 503.\n\nDistinguishes \"process up\" from \"serving only stale rows\" (WHI-819).\nExternal uptime monitors should hit this endpoint in addition to\n``GET /health``.",
+        "operationId": "health_data_health_data_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EngineHealthView"
                 }
               }
             }
@@ -321,6 +341,74 @@
   },
   "components": {
     "schemas": {
+      "AlertView": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "ws_disconnected",
+              "book_stale",
+              "book_desync",
+              "book_resync_failed",
+              "books_unsynced",
+              "subscribe_failed",
+              "sweep_stale",
+              "mid_stale",
+              "rate_limited",
+              "data_stale"
+            ],
+            "title": "Code"
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "warning",
+              "critical"
+            ],
+            "title": "Severity"
+          },
+          "target": {
+            "type": "string",
+            "title": "Target",
+            "description": "stream_id, group, source, or 'engine'"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          },
+          "threshold": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Threshold"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "severity",
+          "target",
+          "message"
+        ],
+        "title": "AlertView",
+        "description": "One evaluated alert (open condition)."
+      },
       "AssetResponse": {
         "properties": {
           "id": {
@@ -349,6 +437,93 @@
         ],
         "title": "AssetResponse",
         "description": "One row of ``GET /assets``."
+      },
+      "EngineHealthView": {
+        "properties": {
+          "data_ok": {
+            "type": "boolean",
+            "title": "Data Ok"
+          },
+          "data_failures": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Data Failures"
+          },
+          "mid_age_sec": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mid Age Sec"
+          },
+          "mid_probe_asset": {
+            "type": "string",
+            "title": "Mid Probe Asset"
+          },
+          "uptime_sec": {
+            "type": "number",
+            "title": "Uptime Sec"
+          },
+          "in_startup_grace": {
+            "type": "boolean",
+            "title": "In Startup Grace"
+          },
+          "sweeps": {
+            "items": {
+              "$ref": "#/components/schemas/SweepHealthView"
+            },
+            "type": "array",
+            "title": "Sweeps"
+          },
+          "streams": {
+            "items": {
+              "$ref": "#/components/schemas/StreamHealthView"
+            },
+            "type": "array",
+            "title": "Streams"
+          },
+          "rate_limits": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Rate Limits"
+          },
+          "alerts": {
+            "items": {
+              "$ref": "#/components/schemas/AlertView"
+            },
+            "type": "array",
+            "title": "Alerts"
+          },
+          "evaluated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evaluated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data_ok",
+          "mid_probe_asset",
+          "uptime_sec",
+          "in_startup_grace"
+        ],
+        "title": "EngineHealthView",
+        "description": "Detail payload nested under ``GET /health`` (WHI-819)."
       },
       "FeeBreakdown": {
         "properties": {
@@ -697,6 +872,17 @@
             "type": "array",
             "title": "Unavailable Venues",
             "description": "Enabled venue slugs that failed or have not completed startup."
+          },
+          "engine": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EngineHealthView"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Real-time engine signals (streams, sweeps, mid, alerts)."
           }
         },
         "type": "object",
@@ -708,7 +894,7 @@
           "unavailable_venues"
         ],
         "title": "HealthResponse",
-        "description": "Liveness payload for ``GET /health`` (WHI-840: degradation without flap)."
+        "description": "Liveness payload for ``GET /health`` (WHI-840 / WHI-819).\n\nAlways HTTP 200 while the process is serving \u2014 including when degraded or\nwhen engine data is stale. Load balancers must not kill a process that is\nstill serving the majority of venues. Use ``GET /health/data`` for the\ndata-freshness probe that fails on stale-only serving."
       },
       "Quote": {
         "properties": {
@@ -855,7 +1041,8 @@
               "unsupported_asset",
               "error",
               "rate_limited",
-              "excessive_impact"
+              "excessive_impact",
+              "not_sampled"
             ],
             "title": "Status"
           },
@@ -1367,7 +1554,8 @@
                   "unsupported_asset",
                   "error",
                   "rate_limited",
-                  "excessive_impact"
+                  "excessive_impact",
+                  "not_sampled"
                 ]
               },
               {
@@ -1534,6 +1722,171 @@
         ],
         "title": "SizeQuotePair",
         "description": "Buy+sell pair at one size for one venue (WHI-799 \u00a76.4; aggregator synthesizes)."
+      },
+      "StreamHealthView": {
+        "properties": {
+          "stream_id": {
+            "type": "string",
+            "title": "Stream Id"
+          },
+          "connected": {
+            "type": "boolean",
+            "title": "Connected"
+          },
+          "disconnected_age_sec": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Disconnected Age Sec"
+          },
+          "connected_age_sec": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Connected Age Sec"
+          },
+          "books_total": {
+            "type": "integer",
+            "title": "Books Total",
+            "default": 0
+          },
+          "books_expected": {
+            "type": "integer",
+            "title": "Books Expected",
+            "default": 0
+          },
+          "books_healthy": {
+            "type": "integer",
+            "title": "Books Healthy",
+            "default": 0
+          },
+          "books_resyncing": {
+            "type": "integer",
+            "title": "Books Resyncing",
+            "default": 0
+          },
+          "books_disconnected": {
+            "type": "integer",
+            "title": "Books Disconnected",
+            "default": 0
+          },
+          "peak_healthy_since_connect": {
+            "type": "integer",
+            "title": "Peak Healthy Since Connect",
+            "default": 0
+          },
+          "max_book_age_sec": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Book Age Sec"
+          },
+          "resync_ok_window": {
+            "type": "integer",
+            "title": "Resync Ok Window",
+            "default": 0
+          },
+          "resync_fail_window": {
+            "type": "integer",
+            "title": "Resync Fail Window",
+            "default": 0
+          },
+          "stream_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stream Error"
+          },
+          "healthy": {
+            "type": "boolean",
+            "title": "Healthy",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "stream_id",
+          "connected"
+        ],
+        "title": "StreamHealthView",
+        "description": "Per-stream (multiplexed WS) health for ``GET /health``."
+      },
+      "SweepHealthView": {
+        "properties": {
+          "group": {
+            "type": "string",
+            "title": "Group"
+          },
+          "interval_sec": {
+            "type": "number",
+            "title": "Interval Sec"
+          },
+          "age_sec": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Age Sec"
+          },
+          "last_completed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Completed At"
+          },
+          "sweep_count": {
+            "type": "integer",
+            "title": "Sweep Count",
+            "default": 0
+          },
+          "skip_count": {
+            "type": "integer",
+            "title": "Skip Count",
+            "default": 0
+          },
+          "stale": {
+            "type": "boolean",
+            "title": "Stale",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "group",
+          "interval_sec"
+        ],
+        "title": "SweepHealthView",
+        "description": "Per poller-group last-completed-sweep age."
       },
       "TopOfBook": {
         "properties": {

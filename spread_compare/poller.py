@@ -28,6 +28,7 @@ from spread_compare.aggregator import (
     assemble_pair,
     effective_instrument_type,
     error_quote,
+    not_sampled_quote,
     quote_with_timeout,
     resolve_mid_with_budget,
 )
@@ -594,26 +595,26 @@ class PullQuotePoller:
             return
         await asyncio.sleep(seconds)
 
-def not_yet_sampled_quote(
+
+def _not_sampled_message(
     *,
-    mid: ReferenceMid,
     venue: str,
-    asset: str,
-    side: Side,
     notional_usd: Decimal,
-    instrument_type: InstrumentType,
-) -> Quote:
-    """Row for a poller venue that has not produced a sample yet."""
-    return error_quote(
-        mid=mid,
-        venue=venue,
-        asset=asset,
-        side=side,
-        notional_usd=notional_usd,
-        instrument_type=instrument_type,
-        error_code="not_yet_sampled",
-        error_message=f"{venue}: pull poller has not sampled this key yet",
-        timestamp=datetime.now(tz=UTC),
+    side: Side,
+    venue_class: VenueClass,
+    poller_settings: PollerSettings,
+) -> str:
+    """Honest message for a store miss: matrix skip vs pre-first-sweep (WHI-865)."""
+    gname = group_for_venue(venue, venue_class)
+    gcfg = poller_settings.groups.get(gname) if gname is not None else None
+    if gcfg is not None and notional_usd not in gcfg.notionals_usd:
+        return (
+            f"{venue}: notional {notional_usd} is outside this group's "
+            f"sample matrix (group={gname})"
+        )
+    return (
+        f"{venue}: pull poller has not produced a sample for this key yet "
+        f"(notional={notional_usd}, side={side})"
     )
 
 
@@ -633,7 +634,7 @@ def pair_from_store(
 ) -> SizeQuotePair:
     """Build a store-backed SizeQuotePair for the aggregator.
 
-    Uses the package ``mid`` only for *missing* legs (not_yet_sampled /
+    Uses the package ``mid`` only for *missing* legs (not_sampled /
     not_initialized). Present legs keep their sweep mid and snapshot_id —
     ``assemble_pair`` is adjusted via direct construction when snapshot ids
     differ from the package mid.
@@ -671,13 +672,20 @@ def pair_from_store(
                     instrument_type=itype,
                 )
             else:
-                q = not_yet_sampled_quote(
+                q = not_sampled_quote(
                     mid=mid,
                     venue=venue,
                     asset=asset_key,
                     side=side,
                     notional_usd=notional_usd,
                     instrument_type=itype,
+                    error_message=_not_sampled_message(
+                        venue=venue,
+                        notional_usd=notional_usd,
+                        side=side,
+                        venue_class=adapter.venue_class,
+                        poller_settings=poller_settings,
+                    ),
                 )
         else:
             gcfg = poller_settings.groups.get(entry.group)
@@ -716,7 +724,7 @@ def pair_from_store(
             if q.snapshot_id == pair_snap and q.mid == pair_mid_value:
                 return q
             # Placeholder / foreign-snapshot legs: only rewrite when they
-            # carry no priced bps (error / not_yet_sampled). Priced foreign
+            # carry no priced bps (error / not_sampled). Priced foreign
             # legs are dropped so we never mix two mids under one id.
             if q.status in PRICED_QUOTE_STATUSES and q.snapshot_id != pair_snap:
                 return None
@@ -738,7 +746,7 @@ def pair_from_store(
             mid_source=pair_mid_source,
             timestamp=pair_mid_ts,
         )
-        # Re-fill a missing leg with a truthful error (not not_yet_sampled —
+        # Re-fill a missing leg with a truthful error (not not_sampled —
         # the key was sampled, but under a different sweep mid).
         if "buy" in sides and buy is None:
             buy = error_quote(

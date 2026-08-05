@@ -24,6 +24,7 @@ QuoteStatus = Literal[
     "error",
     "rate_limited",  # WHI-844 / WHI-799 §6.1: wait would exceed quote budget
     "excessive_impact",  # WHI-845 / WHI-799 §6.1: price impact over config threshold
+    "not_sampled",  # WHI-865 / WHI-799 §6.1: pull poller deliberately skips this key
 ]
 # /simulate row status (WHI-814):
 # - not_supported: venue pre-filter (asset absent from supported_assets)

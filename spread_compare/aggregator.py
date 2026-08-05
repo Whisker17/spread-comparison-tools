@@ -157,9 +157,9 @@ def error_quote(
     error_code: str,
     error_message: str,
     timestamp: datetime | None = None,
-    status: Literal["error", "rate_limited"] = "error",
+    status: Literal["error", "rate_limited", "not_sampled"] = "error",
 ) -> Quote:
-    """Build a non-ok Quote row (WHI-799 §6.6 / WHI-844 ``rate_limited``)."""
+    """Build a non-ok Quote row (WHI-799 §6.6 / WHI-844 / WHI-865)."""
     return Quote(
         snapshot_id=mid.snapshot_id,
         venue=venue,
@@ -229,6 +229,38 @@ def not_initialized_quote(
         instrument_type=instrument_type,
         error_code="not_initialized",
         error_message=not_initialized_message(venue),
+    )
+
+
+def not_sampled_quote(
+    *,
+    mid: ReferenceMid,
+    venue: str,
+    asset: str,
+    side: Side,
+    notional_usd: Decimal,
+    instrument_type: InstrumentType,
+    error_message: str,
+) -> Quote:
+    """``status=not_sampled`` row for a pull-poller key with no store entry (WHI-865).
+
+    Distinct from ``error``: the poller either omits this notional from its
+    sample matrix, or has not produced a sample yet this process lifetime.
+    Never §5.2 best-eligible; must not count as a transport failure.
+
+    Caller owns ``error_message`` (same shape as :func:`rate_limited_quote`);
+    poller matrix vs warmup wording lives in ``poller._not_sampled_message``.
+    """
+    return error_quote(
+        mid=mid,
+        venue=venue,
+        asset=asset,
+        side=side,
+        notional_usd=notional_usd,
+        instrument_type=instrument_type,
+        error_code="not_sampled",
+        error_message=error_message,
+        status="not_sampled",
     )
 
 

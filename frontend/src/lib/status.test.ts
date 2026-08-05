@@ -52,14 +52,23 @@ describe("decideCellRender", () => {
     expect(d.hint).toMatch(/retry/i);
   });
 
-  it("maps not_yet_sampled to muted not-sampled (WHI-864)", () => {
+  it("maps not_sampled to muted not-sampled badge, never best (WHI-865)", () => {
     const d = decideCellRender(
-      q({ status: "error", error_code: "not_yet_sampled" }),
+      q({ status: "not_sampled", error_code: "not_sampled" }),
     );
-    expect(d.kind).toBe("dash");
+    expect(d.kind).toBe("not_sampled");
     expect(d.badge).toBe("not sampled");
     expect(d.badgeVariant).toBe("muted");
     expect(d.hint).toBeUndefined();
+    expect(d.eligibleForBest).toBe(false);
+  });
+
+  it("maps error+not_initialized to muted unavailable (WHI-840)", () => {
+    const d = decideCellRender(
+      q({ status: "error", error_code: "not_initialized" }),
+    );
+    expect(d.kind).toBe("dash");
+    expect(d.badge).toBe("unavailable");
     expect(d.eligibleForBest).toBe(false);
   });
 
@@ -206,6 +215,11 @@ describe("isEligibleForBest", () => {
     ).toBe(true);
     expect(isEligibleForBest(q({ status: "no_quote" }))).toBe(false);
     expect(isEligibleForBest(q({ status: "rate_limited" }))).toBe(false);
+    expect(
+      isEligibleForBest(
+        q({ status: "not_sampled", error_code: "not_sampled" }),
+      ),
+    ).toBe(false);
     expect(
       isEligibleForBest(
         q({
