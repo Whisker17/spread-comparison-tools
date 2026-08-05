@@ -6,6 +6,7 @@ import { Suspense, useMemo } from "react";
 import { AssetSpreadBlock } from "@/components/AssetSpreadBlock";
 import { SectionShellLoading } from "@/components/SectionShellLoading";
 import { SizeSelector } from "@/components/SizeSelector";
+import { StreamStatusBadge } from "@/components/StreamStatusBadge";
 import { UsMarketHoursIndicator } from "@/components/UsMarketHoursIndicator";
 import {
   BSTOCKS_REBASE_FOOTNOTE,
@@ -26,8 +27,13 @@ import {
 } from "@/config/sections/helpers";
 import type { SectionConfig } from "@/config/sections/types";
 import { useNotionalSize } from "@/hooks/useNotionalSize";
+import {
+  QuotesStreamProvider,
+  useQuotesStream,
+} from "@/hooks/useQuotesStream";
 import { fetchAssets } from "@/lib/api";
 import { formatNotional } from "@/lib/format";
+import type { StreamFilter } from "@/lib/streamQuotes";
 
 /**
  * Full `/stocks` content (WHI-810): P0-A tokenized three-way + P0-B equity perps.
@@ -35,6 +41,7 @@ import { formatNotional } from "@/lib/format";
  *
  * WHI-841: one page-level size selector shared by both boards.
  * Boards must declare the same `notionals` / `defaultNotional` (asserted below).
+ * WHI-848: one WebSocket with multi-filter subscribe (spot + equity perps).
  */
 export function StocksSection() {
   return (
@@ -78,6 +85,45 @@ function StocksSectionInner() {
     return map;
   }, [assetsQuery.data]);
 
+  const streamFilters = useMemo<StreamFilter[]>(() => {
+    const boards = [tokenizedStocksBoard, equityPerpsBoard];
+    return boards.map((board) => {
+      const venueSet = new Set<string>();
+      for (const asset of board.assets) {
+        for (const v of venuesForAsset(board, asset)) {
+          venueSet.add(v);
+        }
+      }
+      return {
+        assets: [...board.assets],
+        notionals: [...board.notionals],
+        venues: [...venueSet],
+        instrument_type: board.instrumentType,
+      };
+    });
+  }, []);
+
+  return (
+    <QuotesStreamProvider filters={streamFilters}>
+      <StocksStreamBody
+        notional={notional}
+        setNotional={setNotional}
+        repsByAsset={repsByAsset}
+      />
+    </QuotesStreamProvider>
+  );
+}
+
+function StocksStreamBody({
+  notional,
+  setNotional,
+  repsByAsset,
+}: {
+  notional: string;
+  setNotional: (v: string) => void;
+  repsByAsset: Map<string, Readonly<Record<string, string>>>;
+}) {
+  const stream = useQuotesStream();
   return (
     <div className="space-y-8">
       <header className="space-y-3">
@@ -91,6 +137,7 @@ function StocksSectionInner() {
             </p>
           </div>
           <div className="flex flex-wrap items-start gap-3">
+            <StreamStatusBadge status={stream.status} />
             <SizeSelector
               tiers={tokenizedStocksBoard.notionals}
               value={notional}
@@ -108,7 +155,7 @@ function StocksSectionInner() {
           <strong className="font-medium text-zinc-700 dark:text-zinc-300">
             {formatNotional(notional)}
           </strong>{" "}
-          applies to both boards.
+          applies to both boards over one live WebSocket (WHI-848).
         </p>
       </header>
 

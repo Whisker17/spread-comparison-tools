@@ -26,6 +26,7 @@ from spread_compare.aggregator import QuoteAggregator
 from spread_compare.api.quotes import router as quotes_router
 from spread_compare.api.simulate import build_simulate_rate_guard
 from spread_compare.api.simulate import router as simulate_router
+from spread_compare.api.stream import router as stream_router
 from spread_compare.fees import get_fee_catalog
 from spread_compare.mids import MidService
 from spread_compare.poller import PullQuotePoller
@@ -37,9 +38,11 @@ from spread_compare.settings import (
     load_mid_settings,
     load_orderbook_cache_settings,
     load_poller_settings,
+    load_stream_settings,
     load_venue_settings,
 )
 from spread_compare.simulator import TradeSimulator
+from spread_compare.stream import QuoteStreamHub
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +78,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     api_settings = load_api_settings()
     venue_settings = load_venue_settings()
     poller_settings = load_poller_settings()
+    stream_settings = load_stream_settings()
     load_impact_settings()
     load_orderbook_cache_settings()
     get_fee_catalog()
@@ -100,11 +104,17 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         settings=poller_settings,
         aggregator_settings=agg_settings,
     )
+    stream_hub = QuoteStreamHub(
+        aggregator,
+        stream_settings,
+        cors_origins=api_settings.cors_origins,
+    )
     app.state.mid_service = mid_service
     app.state.aggregator = aggregator
     app.state.simulator = simulator
     app.state.quote_store = quote_store
     app.state.poller = poller
+    app.state.stream_hub = stream_hub
     app.state.simulate_rate_guard = build_simulate_rate_guard(api_settings)
 
     retry_stop = asyncio.Event()
@@ -131,8 +141,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # Start after adapter startup so supported_assets / clients are warm
         # (WHI-846). A failed venue simply yields not_initialized store rows.
         await poller.start()
+        await stream_hub.start()
         yield
     finally:
+        await stream_hub.stop()
         await poller.stop()
         retry_stop.set()
         if retry_task is not None:
@@ -178,4 +190,5 @@ def create_app() -> FastAPI:
 
     app.include_router(quotes_router)
     app.include_router(simulate_router)
+    app.include_router(stream_router)
     return app

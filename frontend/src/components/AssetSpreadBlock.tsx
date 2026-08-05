@@ -20,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import { Tooltip } from "@/components/ui/tooltip";
 import type { SectionConfig } from "@/config/sections/types";
 import { useQuotesMatrix } from "@/hooks/useQuotes";
+import { useQuotesStreamOptional } from "@/hooks/useQuotesStream";
 import type { InstrumentType, TopOfBook } from "@/lib/api";
 import { formatNotional, formatTimestamp } from "@/lib/format";
 import {
@@ -126,22 +127,57 @@ export function AssetSpreadBlock({
   );
   const multiColumn = isSizeAll(notional);
 
-  const query = useQuotesMatrix({
+  // WHI-848: when a page-level QuotesStreamProvider is present, read pushed
+  // state (zero GET /quotes polling). Otherwise fall back to HTTP poll for
+  // isolated / fixture use.
+  const stream = useQuotesStreamOptional();
+  const useStream = stream !== null;
+  const httpQuery = useQuotesMatrix({
     asset,
     notionals: fetchNotionals,
     // Pin to the section venue set so we don't surface mock/other adapters.
     venues: venues.length > 0 ? venues : undefined,
     instrument_type: instrumentType ?? section.instrumentType,
-    refetchInterval: section.pollIntervalMs,
+    // Disable HTTP poll when the page stream owns transport.
+    refetchInterval: useStream ? false : section.pollIntervalMs,
+    enabled: !useStream,
   });
 
+  const streamData = useStream ? stream.matrixFor(asset) : undefined;
+  const data = useStream ? streamData : httpQuery.data;
+  const isLoading = useStream
+    ? (stream.status === "connecting" || stream.status === "reconnecting") &&
+      !streamData
+    : httpQuery.isLoading;
+  const isFetching = useStream
+    ? stream.status === "connecting"
+    : httpQuery.isFetching;
+  const isError = useStream
+    ? stream.status === "reconnecting" && !streamData && Boolean(stream.lastError)
+    : httpQuery.isError;
+  const errorMessage = useStream
+    ? stream.lastError
+    : httpQuery.error?.message ?? null;
+  const refetch = () => {
+    if (useStream) {
+      stream.resnapshot([asset]);
+      return;
+    }
+    void httpQuery.refetch();
+  };
+  const dataUpdatedAt = useStream
+    ? streamData
+      ? 1
+      : 0
+    : httpQuery.dataUpdatedAt;
+
   const pairs = useMemo(() => {
-    const all = query.data?.pairs ?? [];
+    const all = data?.pairs ?? [];
     if (multiColumn) return all;
     const focus = displayNotionals[0];
     if (!focus) return all;
     return all.filter((p) => String(p.notional_usd) === focus);
-  }, [query.data?.pairs, multiColumn, displayNotionals]);
+  }, [data?.pairs, multiColumn, displayNotionals]);
 
   const orderbookVenues = useMemo(
     () => orderbookVenuesProp ?? venues,
@@ -152,7 +188,7 @@ export function AssetSpreadBlock({
     const map: Record<string, TopOfBook | null> = {};
     for (const v of orderbookVenues) map[v] = null;
     // Prefer TOB from the smallest notional row (same book snapshot per venue).
-    const ordered = [...(query.data?.pairs ?? [])].sort(
+    const ordered = [...(data?.pairs ?? [])].sort(
       (a, b) => Number(a.notional_usd) - Number(b.notional_usd),
     );
     for (const pair of ordered) {
@@ -165,10 +201,17 @@ export function AssetSpreadBlock({
       }
     }
     return map;
-  }, [query.data?.pairs, orderbookVenues]);
+  }, [data?.pairs, orderbookVenues]);
 
-  const mid = query.data?.mids?.[0];
-  const snapshotId = query.data?.snapshotIds?.[0];
+  const mid = data?.mids?.[0];
+  // Mixed-age contract (WHI-846/848): do not assume one snapshot_id per asset.
+  const snapshotIds = data?.snapshotIds ?? [];
+  const snapshotIdLabel =
+    snapshotIds.length === 0
+      ? null
+      : snapshotIds.length === 1
+        ? snapshotIds[0]!
+        : `${snapshotIds.length} ids`;
 
   // Prefer quote/mid timestamps from the payload over client clock.
   const snapshotTs = useMemo(() => {
@@ -191,7 +234,6 @@ export function AssetSpreadBlock({
   }, [showVenueSymbolNote, pairs, venues, venueDisplayNames, asset]);
 
   const proseLabels = summaryVenueLabels ?? venueLabels;
-  const pollMs = section.pollIntervalMs;
   const sizeLabel = multiColumn
     ? `${section.notionals.length} sizes`
     : formatNotional(notional);
@@ -200,7 +242,7 @@ export function AssetSpreadBlock({
     `All venue classes · ${sizeLabel} · ${sideView.replace("_", " ")}`;
 
   // Cold load: isLoading. Warm size-focus still has data immediately.
-  const showSkeleton = query.isLoading;
+  const showSkeleton = isLoading;
 
   return (
     <section
@@ -258,14 +300,18 @@ export function AssetSpreadBlock({
             type="button"
             variant="outline"
             size="sm"
-            onClick={() => void query.refetch()}
-            disabled={query.isFetching}
-            aria-label={`Refresh ${asset} quotes`}
+            onClick={() => refetch()}
+            disabled={isFetching}
+            aria-label={
+              useStream
+                ? `Resnapshot ${asset} quotes`
+                : `Refresh ${asset} quotes`
+            }
           >
             <RefreshCw
-              className={cn("h-3.5 w-3.5", query.isFetching && "animate-spin")}
+              className={cn("h-3.5 w-3.5", isFetching && "animate-spin")}
             />
-            Refresh
+            {useStream ? "Resnapshot" : "Refresh"}
           </Button>
         </div>
       </div>
@@ -285,11 +331,11 @@ export function AssetSpreadBlock({
               {formatTimestamp(snapshotTs)}
             </time>
           </span>
-        ) : query.dataUpdatedAt > 0 ? (
+        ) : dataUpdatedAt > 0 ? (
           <span>
             Updated:{" "}
             <span className="tabular-nums text-zinc-700 dark:text-zinc-300">
-              {new Date(query.dataUpdatedAt).toLocaleTimeString()}
+              {new Date(dataUpdatedAt).toLocaleTimeString()}
             </span>
           </span>
         ) : null}
@@ -324,13 +370,27 @@ export function AssetSpreadBlock({
             </span>
           </span>
         ) : null}
-        {snapshotId ? (
-          <span className="max-w-[12rem] truncate" title={snapshotId}>
-            id: <code className="text-[10px]">{snapshotId.slice(0, 12)}…</code>
+        {snapshotIdLabel ? (
+          <span
+            className="max-w-[14rem] truncate"
+            title={snapshotIds.join(", ")}
+            data-testid={`snapshot-ids-${asset}`}
+          >
+            id
+            {snapshotIds.length > 1 ? "s" : ""}:{" "}
+            <code className="text-[10px]">
+              {snapshotIds.length === 1
+                ? `${snapshotIds[0]!.slice(0, 12)}…`
+                : snapshotIdLabel}
+            </code>
           </span>
         ) : null}
-        {pollMs ? (
-          <span>Auto-refresh {Math.round(pollMs / 1000)}s</span>
+        {useStream ? (
+          <span>Push stream</span>
+        ) : section.pollIntervalMs ? (
+          <span>
+            Auto-refresh {Math.round(section.pollIntervalMs / 1000)}s
+          </span>
         ) : null}
       </div>
 
@@ -339,11 +399,11 @@ export function AssetSpreadBlock({
           Loading {asset} quotes ({sizeLabel})…
         </p>
       )}
-      {query.isError && (
+      {isError && (
         <div className="rounded-md border border-rose-300 bg-rose-50 px-3 py-2 text-sm text-rose-800 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-200">
           <p className="font-medium">Failed to load {asset} quotes</p>
           <p className="mt-0.5 text-xs opacity-90">
-            {query.error.message}. Is the backend running on{" "}
+            {errorMessage ?? "Unknown error"}. Is the backend running on{" "}
             <code>NEXT_PUBLIC_API_URL</code> (default http://localhost:8000)?
           </p>
           <Button
@@ -351,14 +411,14 @@ export function AssetSpreadBlock({
             variant="outline"
             size="sm"
             className="mt-2"
-            onClick={() => void query.refetch()}
+            onClick={() => refetch()}
           >
             Retry
           </Button>
         </div>
       )}
 
-      {!showSkeleton && !query.isError && (
+      {!showSkeleton && !isError && (
         <>
           <SnapshotSummary
             pairs={pairs}
@@ -376,7 +436,7 @@ export function AssetSpreadBlock({
             metric={section.cellMetric}
             venueLabels={venueLabels}
             showDetailColumns={!multiColumn}
-            onRetry={() => void query.refetch()}
+            onRetry={() => refetch()}
           />
           {section.showTopOfBook && orderbookVenues.length > 0 && (
             <TopOfBookRow

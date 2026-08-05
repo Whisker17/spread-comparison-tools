@@ -154,6 +154,32 @@ class PollerGroupSettings(BaseModel):
         return self
 
 
+class StreamSettings(BaseModel):
+    """``config/stream.yaml`` — browser WebSocket push stream (WHI-848)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    # Batch window for delta frames; caps push rate under bursty venue updates.
+    coalesce_interval_ms: float = Field(gt=0)
+    heartbeat_interval_sec: float = Field(gt=0)
+    # Client-side dead-connection threshold (must exceed heartbeat interval).
+    client_liveness_timeout_sec: float = Field(gt=0)
+    max_clients: int = Field(ge=1)
+    max_assets_per_client: int = Field(ge=1)
+    max_venues_per_client: int = Field(ge=1)
+    max_queue_depth: int = Field(ge=1)
+
+    @model_validator(mode="after")
+    def _liveness_above_heartbeat(self) -> StreamSettings:
+        if self.client_liveness_timeout_sec <= self.heartbeat_interval_sec:
+            raise ValueError(
+                "client_liveness_timeout_sec must be > heartbeat_interval_sec "
+                f"(got liveness={self.client_liveness_timeout_sec}, "
+                f"heartbeat={self.heartbeat_interval_sec})"
+            )
+        return self
+
+
 class PollerSettings(BaseModel):
     """``config/poller.yaml`` — pull-only background poller (WHI-846)."""
 
@@ -442,6 +468,12 @@ def load_poller_settings() -> PollerSettings:
     return PollerSettings.model_validate(_merge_local("poller"))
 
 
+@lru_cache(maxsize=1)
+def load_stream_settings() -> StreamSettings:
+    """Parse WebSocket push-stream settings once; fail fast on invalid config."""
+    return StreamSettings.model_validate(_merge_local("stream"))
+
+
 def clear_settings_cache() -> None:
     """Drop cached settings (tests that rewrite YAML)."""
     load_mid_settings.cache_clear()
@@ -453,3 +485,4 @@ def clear_settings_cache() -> None:
     load_impact_settings.cache_clear()
     load_orderbook_cache_settings.cache_clear()
     load_poller_settings.cache_clear()
+    load_stream_settings.cache_clear()
