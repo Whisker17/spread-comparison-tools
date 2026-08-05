@@ -2,9 +2,13 @@
 # Defaults are unvalidated pending DESIGN.md §2 — engineering starting points.
 #
 # disabled: venue slugs that must not start or receive fan-out traffic (geo-block,
-# permanent outage on this host, etc.). Empty = all discovered adapters enabled.
-# Override per deploy via venues.local.yaml (gitignored).
-disabled: []
+# permanent outage on this host, fixture-only adapters, etc.).
+# `mock` is a test fixture adapter — never expose it on a real deploy (WHI-849).
+# True host-only disables (e.g. Binance 451 from a US VPS) go in the host overlay
+# at /etc/spread-comparison/config/venues.local.yaml; deploy re-applies that file
+# after every checkout so it survives git updates (see docs/DEPLOYMENT.md).
+disabled:
+  - mock
 
 # Background retry for venues whose startup() failed transiently (AdapterFetchError /
 # AdapterTimeoutError). Interval grows by backoff_multiplier up to max_interval_sec.

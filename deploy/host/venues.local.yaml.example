@@ -1,0 +1,8 @@
+# Example host overlay — copy to /etc/spread-comparison/config/venues.local.yaml
+# only if this host needs disables beyond the committed config/venues.yaml.
+#
+# _merge_local replaces whole keys, so list every slug that must stay disabled
+# on this host (including `mock`, which is already in the committed default).
+disabled:
+  - mock
+  # - binance   # e.g. geo-block 451 on this host

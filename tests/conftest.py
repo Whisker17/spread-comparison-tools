@@ -52,6 +52,40 @@ def clear_orderbook_snapshot_cache() -> Iterator[None]:
 
 
 @pytest.fixture(autouse=True)
+def enable_mock_adapter_for_offline_tests() -> Iterator[None]:
+    """Re-enable the fixture ``mock`` adapter for the offline suite (WHI-849).
+
+    Production commits ``config/venues.yaml`` with ``disabled: [mock]`` so the
+    scaffold adapter never appears on a real deploy. Unit/API tests still use
+    mock as the offline stand-in; overlay with an empty disable list for the
+    process. Settings tests that assert committed defaults read the YAML file
+    directly (see test_settings / test_startup_degradation).
+    """
+    from pathlib import Path
+
+    from spread_compare.settings import clear_settings_cache
+
+    # settings.py lives in spread_compare/; config/ is repo-root sibling.
+    config_dir = Path(__file__).resolve().parents[1] / "config"
+    path = config_dir / "venues.local.yaml"
+    previous: str | None = path.read_text(encoding="utf-8") if path.is_file() else None
+    path.write_text(
+        "# pytest overlay — re-enable mock for offline tests (WHI-849)\n"
+        "disabled: []\n",
+        encoding="utf-8",
+    )
+    clear_settings_cache()
+    try:
+        yield
+    finally:
+        if previous is None:
+            path.unlink(missing_ok=True)
+        else:
+            path.write_text(previous, encoding="utf-8")
+        clear_settings_cache()
+
+
+@pytest.fixture(autouse=True)
 def offline_perp_http(request: pytest.FixtureRequest) -> Iterator[None]:
     """Wire mock HTTP for registered perp adapters in non-live tests."""
     if request.node.get_closest_marker("live"):

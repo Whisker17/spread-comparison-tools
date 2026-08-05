@@ -5,15 +5,24 @@ loaded into a typed, validated model at startup.
 
 ## The convention
 
-- **Secrets** go in `.env` (never committed; `.env.example` is the template). They are
-  credentials — API keys, private keys, webhook URLs.
+- **Secrets** go in `.env` locally, or `/etc/spread-comparison/env` on the host
+  (never committed; `.env.example` is the template). They are credentials — API
+  keys, private keys, webhook URLs. RPC URLs that embed provider keys are secrets.
 - **Parameters** go here, in YAML, checked in. They are decisions — every value should
   trace to `docs/DESIGN.md` §2 or be flagged as unvalidated.
 - Loading is **typed and fail-fast**: define a pydantic model per config file, parse at
   startup, and include cross-field validation (e.g. `min_x < max_x`). A bad config must
   kill the process with a clear error before any real work starts.
-- Per-deployment overrides use an untracked `<name>.local.yaml` copy (gitignored), so
-  checking out a release tag never conflicts with live settings.
+- **Production-effective values are committed** (WHI-849). A deploy from a clean
+  checkout must reproduce production behaviour for shared tunables without any
+  untracked file. Do not put the "real" `cors_origins` or `simulate_min_interval_sec`
+  only in `api.local.yaml`.
+- **`*.local.yaml` is optional overlay**, gitignored:
+  - **Laptop:** personal experiments (extra CORS ports, temporary timeouts).
+  - **Host:** files under `/etc/spread-comparison/config/` re-applied by
+    `scripts/deploy.sh` after every checkout (geo-block venue disables, emergencies).
+  - Overlay merge is shallow key replace (`settings._merge_local`) — a local
+    `cors_origins` list replaces the whole committed list, it does not append.
 
 Loaders:
 - `spread_compare/settings.py` — `load_mid_settings`, `load_aggregator_settings`,
@@ -23,7 +32,8 @@ Loaders:
 
 Checked-in files:
 - `mid.yaml`, `aggregator.yaml`, `jupiter.yaml`, `api.yaml` (defaults flagged
-  unvalidated pending DESIGN.md §2)
+  unvalidated pending DESIGN.md §2). `api.yaml` includes multi-port localhost
+  CORS used by local Next.js and `simulate_min_interval_sec: 2.0`.
 - `impact.yaml` — price-impact guard threshold in bps (WHI-845). Quotes above
   `max_price_impact_bps` become `status=excessive_impact` (shown, never best /
   heat). Unvalidated pending DESIGN.md §2; override with `impact.local.yaml`.
@@ -34,11 +44,14 @@ Checked-in files:
   part of the cache key so a shallow $100 book is never walked for $1M. Unvalidated
   pending DESIGN.md §2; override with `orderbook_cache.local.yaml`.
 - `venues.yaml` — per-host venue disable list + startup-retry backoff (WHI-840).
-  Disabled slugs are omitted from `GET /venues` and never started; unknown slugs
-  fail fast at load. Use for geo-blocked hosts (e.g. Binance/Bybit 451 from US
-  IPs). Override with `venues.local.yaml`.
+  Committed default disables `mock` (fixture adapter; WHI-849). Disabled slugs are
+  omitted from `GET /venues` and never started; unknown slugs fail fast at load.
+  Use a host `venues.local.yaml` for geo-blocked hosts (e.g. Binance/Bybit 451
+  from US IPs) — deploy re-applies it.
 - `fees/<venue>.yaml` — verified venue fee schedules (WHI-812); every number cites
   `source_urls` and carries `updated_at`. Filename stem must equal `venue:`.
   Adding a slug to `venues.py` requires a matching fee file (fail-fast at startup).
   `*.local.yaml` files under `fees/` are ignored by the loader (fee data is
   checked-in, not a per-deploy overlay).
+
+Deploy / host layout: `docs/DEPLOYMENT.md`.
