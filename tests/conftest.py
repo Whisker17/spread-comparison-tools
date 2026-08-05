@@ -107,6 +107,16 @@ def clear_quote_store() -> Iterator[None]:
 
 
 @pytest.fixture(autouse=True)
+def clear_rate_limit_events() -> Iterator[None]:
+    """Isolate WHI-819 upstream rate-limit counters between tests."""
+    from spread_compare.upstream_events import reset_rate_limit_counter
+
+    reset_rate_limit_counter()
+    yield
+    reset_rate_limit_counter()
+
+
+@pytest.fixture(autouse=True)
 def disable_pull_poller(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     """Keep offline tests free of background upstream sweeps (WHI-846).
 

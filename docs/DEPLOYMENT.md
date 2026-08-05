@@ -169,8 +169,88 @@ re-applied — they never ride along from a developer machine.
 - Journal/`systemctl show` can expose `EnvironmentFile` *path* but not contents;
   do not add `Environment=KEY=secret` lines to the unit.
 
+## Monitoring (WHI-819)
+
+Process liveness is no longer enough: WebSocket books and background sweeps can
+fail while systemd and `GET /health` still look fine. Thresholds live in
+`config/monitor.yaml` (**unvalidated** defaults). Alert channel: generic HTTPS
+webhook — [ADR 0003](adr/0003-alert-channel-webhook.md).
+
+### Endpoints
+
+| Endpoint | HTTP when data is bad | Role |
+| --- | --- | --- |
+| `GET /health` | **200** (always while serving) | LB / deploy liveness. Body includes adapter degradation **and** `engine` (streams, sweeps, mid age, open alerts). |
+| `GET /health/data` | **503** | Data probe: fails when the process is up but serving only stale / missing mid / empty books. Point an external uptime check here. |
+
+Deploy verification still uses `/health` (degraded adapters are allowed). Add
+`/health/data` to a secondary probe after the post-boot grace
+(`startup_grace_sec`, default 90s).
+
+### Secret
+
+```bash
+# /etc/spread-comparison/env  (root 0600)
+ALERT_WEBHOOK_URL=https://hooks.example.com/…   # Discord / Slack / Feishu / webhook.site
+```
+
+When unset, alerts are still evaluated and listed under `engine.alerts`, and each
+fire/resolve is logged at WARNING (`journalctl -u spread-comparison`).
+
+### Alert codes → meaning → first action
+
+| Code | Meaning | First action |
+| --- | --- | --- |
+| `ws_disconnected` | One multiplexed orderbook WS has been down longer than `ws_disconnected_alert_sec` | `curl -sS localhost:8000/health \| jq .engine.streams`; check venue status / geo blocks; journal for reconnect loops; REST fallback should still serve until books age out |
+| `book_stale` | Connected stream but max book age &gt; `ws_max_book_age_sec` | Confirm diffs are flowing; forced resync may be stuck — see `resync_*_window` on the stream |
+| `book_desync` | Too many REST resyncs in `ws_resync_window_sec` (sequence gaps) | Inspect that venue's protocol; rate-limit on REST resync path; temporary disable stream in `config/ws.yaml` if poisoning the matrix |
+| `book_resync_failed` | Repeated failed REST resync (distinct from desync count) | Auth / REST endpoint / network to that venue; books will stay non-servable → REST path or empty |
+| `sweep_stale` | Pull-only group (`jupiter` / `kyber` / `rpc`) has not completed within `interval × sweep_stale_multiplier` | `jq .engine.sweeps` on `/health`; check 429s (`engine.rate_limits`); poller task alive? |
+| `mid_stale` | Reference mid cache older than `mid_max_age_sec` (or missing) | Fast mid poller / Binance premiumIndex path; all bps drift if mid is wrong |
+| `rate_limited` | Sustained upstream 429s on Jupiter / Kyber / RPC in the rolling window | Raise keyed budgets, slow sweep groups, or rotate RPC provider |
+| `data_stale` | Data probe failed (aggregate of mid / store / books) | Same as 503 on `/health/data` — treat as "serving garbage", not "process down" |
+
+### Interpreting `/health` fields
+
+- **`degraded` / `unavailable_venues`** (WHI-840): adapter `startup()` failed or not
+  yet retried. Process still serves other venues; **not** a deploy failure.
+- **`engine.streams[]`**: per multiplexed WS (`binance_spot`, `bybit_linear`, …) —
+  `connected`, book counts by health, max age, resync window counts.
+- **`engine.sweeps[]`**: per poller group — `age_sec` since last completed sweep,
+  `stale` vs `interval_sec × sweep_stale_multiplier`.
+- **`engine.mid_age_sec`**: age of the probe asset mid (default BTC).
+- **`engine.alerts`**: currently open conditions (same codes as webhook).
+- **`engine.in_startup_grace`**: true during `startup_grace_sec` — data probe and
+  sweep/mid alerts are suppressed so cold start does not page.
+
+### Stated SLOs (defaults — unvalidated)
+
+| Condition | Default threshold |
+| --- | --- |
+| WS disconnect alert | 30s disconnected |
+| Sweep stale | 2.5 × group `interval_sec` (e.g. Jupiter 15s → 37.5s) |
+| Book desync | ≥5 resyncs / 60s |
+| Failed resync | ≥2 failures / 60s |
+| Sustained 429 | ≥10 events / 60s per source |
+| Alert re-page cooldown | 300s |
+
+### Manual checks
+
+```bash
+# Liveness (deploy / LB)
+curl -sS http://127.0.0.1:8000/health | jq '{status, degraded, unavailable_venues, data_ok: .engine.data_ok, alerts: .engine.alerts}'
+
+# Data freshness (uptime robot — expect 200 after grace when healthy)
+curl -sS -o /tmp/health-data.json -w '%{http_code}\n' http://127.0.0.1:8000/health/data
+
+# Webhook smoke (requires ALERT_WEBHOOK_URL): stop is not required — force a
+# disconnect by disabling a stream in ws.local.yaml host overlay, restart, wait
+# ws_disconnected_alert_sec, confirm delivery in the sink + journal.
+journalctl -u spread-comparison -n 100 --no-pager | grep -iE 'alert|webhook|ws stream'
+```
+
 ## Related
 
 - Backend CI: `.github/workflows/backend.yml` (`pytest`, `ruff`, `mypy` on backend paths)
 - Config convention: `config/README.md`
-- Monitoring / freshness alerts: WHI-819 (out of scope here)
+- Alert channel ADR: [ADR 0003](adr/0003-alert-channel-webhook.md)

@@ -261,6 +261,9 @@ class KyberSwapPropAdapter(BaseAdapter):
                 ) from exc
 
             if resp.status_code == 429:
+                from spread_compare.upstream_events import record_rate_limit
+
+                record_rate_limit("kyber")
                 wait = min(2.0 * (2**attempt), 8.0)
                 logger.warning(
                     "%s KyberSwap 429 attempt=%s sleep=%.1fs",

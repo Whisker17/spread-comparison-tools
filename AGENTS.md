@@ -113,9 +113,12 @@ check against `cors_origins`, client/subscription caps + outbound queue backpres
 `config/stream.yaml`. FE `QuotesStreamProvider` / `useQuotesStream` replaces section
 `GET /quotes` polling (one socket per page); `live`/`reconnecting` badge; Resnapshot
 button; per-row `snapshot_id` / age / `quote_stale` on the wire. `GET /quotes` kept.
+Real-time engine monitoring (WHI-819): `config/monitor.yaml` per-class thresholds
+(unvalidated); `/health` embeds `engine` (streams, sweeps, mid age, alerts) and stays
+200 when degraded; `GET /health/data` 503 data probe; background evaluator +
+`ALERT_WEBHOOK_URL` webhook (ADR 0003); runbook in `docs/DEPLOYMENT.md` § Monitoring.
 
-**Not implemented:** remaining venue adapters (WHI-805), collector; real-time monitoring
-(WHI-819).
+**Not implemented:** remaining venue adapters (WHI-805), collector.
 Do not assume a module exists until its issue lands.
 
 **Blocking gap:** `docs/DESIGN.md` is still mostly the empty template stub (§4.2 module
@@ -168,15 +171,17 @@ load-bearing interfaces other modules may depend on.
 - **`spread_compare/bookwalk.py`** — sole walk-the-book VWAP; CEX/perp adapters import only this.
 - **`spread_compare/costs.py`** — sole `spread_bps` / `total_cost_bps` / `basis_bps`; aggregator never recomputes.
 - **`spread_compare/impact.py`** — AMM/prop price-impact bps conversion + threshold reclassification to `excessive_impact` (WHI-845; not CEX/perp).
-- **`spread_compare/settings.py`** — typed YAML config loader (`config/mid.yaml`, `config/aggregator.yaml`, `config/jupiter.yaml`, `config/api.yaml`, `config/venues.yaml`, `config/rpc.yaml`, `config/impact.yaml`, `config/orderbook_cache.yaml`, `config/poller.yaml`, `config/stream.yaml`, `config/ws.yaml`).
+- **`spread_compare/settings.py`** — typed YAML config loader (`config/mid.yaml`, `config/aggregator.yaml`, `config/jupiter.yaml`, `config/api.yaml`, `config/venues.yaml`, `config/rpc.yaml`, `config/impact.yaml`, `config/orderbook_cache.yaml`, `config/poller.yaml`, `config/stream.yaml`, `config/ws.yaml`, `config/monitor.yaml`).
 - **`spread_compare/ratelimit.py`** — shared `AsyncRateLimiter` / `TokenBucketRateLimiter` / `RollingWindowRateLimiter` with `max_wait_s` / `expected_wait_s` (WHI-836 / WHI-844); adapters must not define their own.
 - **`spread_compare/budget.py`** — per-call quote deadline + `acquire_within_budget` / `sleep_within_budget` (WHI-844).
 - **`spread_compare/fees.py`** — typed `config/fees/*.yaml` → `FeeSchedule` catalog; adapters + `GET /fees`.
 - **`spread_compare/mids.py`** — reference-mid service (WHI-799 §3 priority chain + cache).
+- **`spread_compare/upstream_events.py`** — rolling counters for upstream rate-limit hits (WHI-819).
+- **`spread_compare/monitor.py`** — engine health snapshot + alert evaluation + webhook delivery (WHI-819); never recomputes bps.
 - **`spread_compare/aggregator.py`** — concurrent adapter fan-out, multi-notional packages (WHI-843), per-class timeout, SizeQuotePair assembly, response cache (multi-tier + single-tier subset hits); partitions poller-served classes to the in-memory store (WHI-846); also hosts shared fan-out helpers (`quote_with_timeout`, `resolve_mid_with_budget`, `effective_instrument_type`) used by the simulator; never recomputes bps.
 - **`spread_compare/simulator.py`** — `POST /simulate` fan-out (WHI-814): pair validation, free-form notional, expected_output derivation, §5.2 best ranking; no response cache; never recomputes bps.
 - **`spread_compare/adapters/`** — async `VenueAdapter` + `BaseAdapter`, auto-discovery, `@register_adapter` registry with `startup_all`/`aclose_all` (WHI-840: degrade transient startup failures, disabled venues, background retry), `mock` + CEX (`binance`/`bybit`) + perp DEX (`perp_hyperliquid`/`perp_lighter`/`perp_apex`) + AMM DEX (`amm_uniswap`/`amm_aerodrome`/`amm_pancakeswap`) + prop AMM (`prop_jupiter`/`prop_kyberswap`), shared `_cex_common` / `_perp_common` / `_amm_common` / `_prop_common`; one module per real venue (no hand-import list).
-- **`spread_compare/api/`** — FastAPI app factory with lifespan; `/health` (degradation fields), `/quotes`, `/venues` (omits config-disabled), `/assets`, `/fees`, `POST /simulate`, `GET /simulate/pairs`; CORS for local FE.
+- **`spread_compare/api/`** — FastAPI app factory with lifespan; `/health` (degradation + engine fields), `/health/data` (data probe), `/quotes`, `/venues` (omits config-disabled), `/assets`, `/fees`, `POST /simulate`, `GET /simulate/pairs`; CORS for local FE.
 - **`spread_compare/orderbook_cache.py`** — short-TTL single-flight orderbook snapshot cache (WHI-843); depth is part of the key.
 - **`spread_compare/quote_store.py`** — in-memory latest-quote store for pull-only venues (WHI-846); no persistence.
 - **`spread_compare/poller.py`** — background sweep groups (Jupiter / Kyber / RPC); writes store; never recomputes bps.

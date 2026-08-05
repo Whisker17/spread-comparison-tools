@@ -137,6 +137,16 @@ class WsBookRegistry:
         with self._lock:
             return len(self._books)
 
+    def list_books(self) -> list[LocalOrderBook]:
+        """Snapshot of all registered books (monitor / diagnostics)."""
+        with self._lock:
+            return list(self._books.values())
+
+    def connection_snapshot(self) -> dict[str, int]:
+        """stream_id → open count (0 or 1)."""
+        with self._lock:
+            return dict(self._connections)
+
 
 _REGISTRY: WsBookRegistry | None = None
 _REGISTRY_LOCK = threading.Lock()

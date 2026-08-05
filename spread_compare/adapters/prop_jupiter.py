@@ -347,6 +347,9 @@ class JupiterPropAdapter(BaseAdapter):
                     resp, limiter, venue=self.venue, has_api_key=bool(self._api_key)
                 )
                 if resp.status_code == 429:
+                    from spread_compare.upstream_events import record_rate_limit
+
+                    record_rate_limit("jupiter")
                     wait = _retry_after_seconds(resp, 0)
                     logger.warning(
                         "%s label-map rate limited; sleep=%.2fs", self.venue, wait
@@ -412,6 +415,9 @@ class JupiterPropAdapter(BaseAdapter):
             )
 
             if resp.status_code == 429:
+                from spread_compare.upstream_events import record_rate_limit
+
+                record_rate_limit("jupiter")
                 wait = _retry_after_seconds(resp, attempt)
                 remaining_hdr = resp.headers.get("x-ratelimit-remaining")
                 logger.warning(

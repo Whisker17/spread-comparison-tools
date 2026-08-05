@@ -536,6 +536,9 @@ class RpcClient:
                     revert=True,
                 )
             if _is_rpc_rate_limit_error(err):
+                from spread_compare.upstream_events import record_rate_limit
+
+                record_rate_limit("rpc")
                 raise JsonRpcError(
                     f"{method} rate limited (rpc error) host={self._host}",
                     transport=True,
@@ -648,6 +651,9 @@ class RpcClient:
             _log_rate_limit_headers(response, host=self._host, method=method_label)
 
             if response.status_code == 429:
+                from spread_compare.upstream_events import record_rate_limit
+
+                record_rate_limit("rpc")
                 wait = _retry_after_seconds(
                     response,
                     attempt,
