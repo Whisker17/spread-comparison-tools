@@ -5,7 +5,8 @@
 # Override with monitor.local.yaml. Webhook URL is a secret (ALERT_WEBHOOK_URL).
 
 # Master switch for the background evaluator + webhook delivery.
-# Signal collection on GET /health always runs when the process is up.
+# When false, no background loop runs and GET /health may omit engine
+# until a forced snapshot (GET /health/data still collects when called).
 enabled: true
 
 # How often the background loop re-evaluates and (de)fires alerts.

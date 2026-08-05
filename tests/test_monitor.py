@@ -252,7 +252,7 @@ def test_data_probe_fails_when_only_stale_rows() -> None:
     )
     assert snap.data_ok is False
     assert any("fresh store quotes" in f for f in snap.data_failures)
-    # Specific mid/sweep/stream alerts page; data_ok alone drives /health/data.
+    assert any(a.code == "data_stale" for a in snap.alerts)
 
 
 @pytest.mark.asyncio

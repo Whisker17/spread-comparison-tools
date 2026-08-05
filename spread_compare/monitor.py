@@ -106,6 +106,8 @@ class EngineHealthView(BaseModel):
     streams: list[StreamHealthView] = Field(default_factory=list)
     rate_limits: dict[str, int] = Field(default_factory=dict)
     alerts: list[AlertView] = Field(default_factory=list)
+    # When the snapshot was collected (``GET /health`` may serve a cached one).
+    evaluated_at: datetime | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -134,7 +136,7 @@ class _OpenAlert:
 
 @dataclass
 class EngineSnapshot:
-    """Immutable-ish collection of live signals used by the evaluator."""
+    """Collected live signals for one evaluation cycle (WHI-819)."""
 
     now_mono: float
     uptime_sec: float
@@ -149,6 +151,7 @@ class EngineSnapshot:
     data_failures: list[str] = field(default_factory=list)
     data_ok: bool = True
     alerts: list[_OpenAlert] = field(default_factory=list)
+    evaluated_at: datetime = field(default_factory=lambda: datetime.now(tz=UTC))
 
     def to_view(self) -> EngineHealthView:
         return EngineHealthView(
@@ -162,6 +165,7 @@ class EngineSnapshot:
             streams=list(self.streams),
             rate_limits=dict(self.rate_limits),
             alerts=[a.to_view() for a in self.alerts],
+            evaluated_at=self.evaluated_at,
         )
 
 
@@ -361,8 +365,17 @@ def evaluate_alerts(
                 )
             )
 
-        # data_ok drives GET /health/data (503). Specific codes above already
-        # page mid/sweep/stream root causes — do not double-fire data_stale.
+        if not snap.data_ok:
+            # Always page when the data probe fails — covers store/book floors
+            # that have no more-specific code, and pairs with /health/data 503.
+            alerts.append(
+                _OpenAlert(
+                    code="data_stale",
+                    severity="critical",
+                    target="engine",
+                    message="Data probe failed: " + "; ".join(snap.data_failures),
+                )
+            )
 
     for source, count in snap.rate_limits.items():
         if count >= cfg.rate_limit_count_threshold:
@@ -733,8 +746,7 @@ class EngineMonitor:
 
     async def evaluate_once(self) -> EngineSnapshot:
         snap = self.snapshot(force=True)
-        if self._settings.enabled:
-            await self._alerter.process(snap.alerts)
+        await self._alerter.process(snap.alerts)
         return snap
 
     async def start(self) -> None:

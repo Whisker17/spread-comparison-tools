@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import threading
 import time
 from collections.abc import Awaitable, Callable, Sequence
 from decimal import Decimal
@@ -75,6 +76,8 @@ class WsFeedManager:
         self._lighter_markets: dict[str, str] = {}
         self._symbols: dict[str, list[str]] = {}
         # WHI-819: rolling resync outcomes per stream_id (monotonic timestamps).
+        # Locked: asyncio tasks write; /health may read from the threadpool.
+        self._diag_lock = threading.Lock()
         self._resync_ok_mono: dict[str, list[float]] = {}
         self._resync_fail_mono: dict[str, list[float]] = {}
         self._stream_disconnected_since: dict[str, float] = {}
@@ -99,8 +102,9 @@ class WsFeedManager:
     def note_resync(self, stream_id: str, *, ok: bool) -> None:
         """Record a REST resync attempt for monitor book-desync alerts (WHI-819)."""
         now = time.monotonic()
-        bucket = self._resync_ok_mono if ok else self._resync_fail_mono
-        bucket.setdefault(stream_id, []).append(now)
+        with self._diag_lock:
+            bucket = self._resync_ok_mono if ok else self._resync_fail_mono
+            bucket.setdefault(stream_id, []).append(now)
 
     def resync_counts(
         self, stream_id: str, *, window_sec: float, now: float | None = None
@@ -115,21 +119,24 @@ class WsFeedManager:
             raw[:] = kept
             return len(kept)
 
-        ok = _count(self._resync_ok_mono.setdefault(stream_id, []))
-        fail = _count(self._resync_fail_mono.setdefault(stream_id, []))
-        return ok, fail
+        with self._diag_lock:
+            ok = _count(self._resync_ok_mono.setdefault(stream_id, []))
+            fail = _count(self._resync_fail_mono.setdefault(stream_id, []))
+            return ok, fail
 
     def mark_stream_connected(self, stream_id: str, *, connected: bool) -> None:
         """Track how long a stream has been disconnected (WHI-819)."""
-        if connected:
-            self._stream_disconnected_since.pop(stream_id, None)
-        else:
-            self._stream_disconnected_since.setdefault(stream_id, time.monotonic())
+        with self._diag_lock:
+            if connected:
+                self._stream_disconnected_since.pop(stream_id, None)
+            else:
+                self._stream_disconnected_since.setdefault(stream_id, time.monotonic())
 
     def stream_disconnected_age_sec(
         self, stream_id: str, *, now: float | None = None
     ) -> float | None:
-        since = self._stream_disconnected_since.get(stream_id)
+        with self._diag_lock:
+            since = self._stream_disconnected_since.get(stream_id)
         if since is None:
             return None
         ts = time.monotonic() if now is None else now
@@ -137,8 +144,10 @@ class WsFeedManager:
 
     def known_stream_ids(self) -> list[str]:
         """Configured sockets plus any stream that has a disconnect timestamp."""
+        with self._diag_lock:
+            disc = set(self._stream_disconnected_since)
         ids = {s.stream_id for s in self._sockets}
-        ids.update(self._stream_disconnected_since)
+        ids.update(disc)
         return sorted(ids)
 
     def stream_connected(self, stream_id: str) -> bool:
