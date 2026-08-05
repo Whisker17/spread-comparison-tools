@@ -53,6 +53,39 @@ def test_apply_mid_stale() -> None:
     assert stamped.status == "error"
 
 
+def test_apply_mid_stale_ws_book_uses_tighter_threshold() -> None:
+    """WHI-847: raw_ref=ws_book applies max_age_for_ws_quote_sec (tighter)."""
+    # 3s delta: under default stale_threshold_sec=5, over ws max 2s.
+    base = error_quote(
+        mid=_MID,
+        venue="binance",
+        asset="BTC",
+        side="buy",
+        notional_usd=Decimal("10000"),
+        instrument_type="spot",
+        error_code="x",
+        error_message="y",
+        timestamp=_MID.timestamp + timedelta(seconds=3),
+    )
+    ws = base.model_copy(update={"raw_ref": "ws_book", "age_sec": 0.05})
+    loose = apply_mid_stale(ws, stale_threshold_sec=5.0, ws_mid_max_age_sec=2.0)
+    assert loose.mid_stale is True
+    # TOB degradation appends ";tob_error:…" — still WS-served.
+    ws_tob = base.model_copy(
+        update={"raw_ref": "ws_book;tob_error:x:y", "age_sec": 0.05}
+    )
+    assert (
+        apply_mid_stale(ws_tob, stale_threshold_sec=5.0, ws_mid_max_age_sec=2.0).mid_stale
+        is True
+    )
+    # WHI-846 store row: age_sec set but no ws_book marker → keep 5s threshold.
+    store = base.model_copy(update={"raw_ref": None, "age_sec": 12.0})
+    assert (
+        apply_mid_stale(store, stale_threshold_sec=5.0, ws_mid_max_age_sec=2.0).mid_stale
+        is False
+    )
+
+
 def test_assemble_pair_round_trip_from_ok_legs() -> None:
     fees = FeeBreakdown(
         embedded_in_price=False,
