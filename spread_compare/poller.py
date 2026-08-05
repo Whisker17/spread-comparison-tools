@@ -29,7 +29,6 @@ from spread_compare.aggregator import (
     effective_instrument_type,
     error_quote,
     quote_with_timeout,
-    rate_limited_quote,
     resolve_mid_with_budget,
 )
 from spread_compare.mids import MidResolutionError, MidService
@@ -261,24 +260,24 @@ class PullQuotePoller:
                 )
 
         delay = self._inter_call_delay(group, cfg, n_calls=len(work))
-        for i, item in enumerate(work):
+        # Deadline pacing: schedule starts every ``delay`` seconds so call
+        # latency is absorbed into the budget instead of added after it
+        # (otherwise wall-clock sweep ≈ n×(delay+latency) and rows age past
+        # max_quote_age_for_best_sec before the next sample).
+        next_at = self._clock()
+        for item in work:
             if self._stop.is_set():
                 break
+            now = self._clock()
+            wait = next_at - now
+            if wait > 0:
+                await self._async_sleep(wait)
             mid = mids.get(item.asset)
             if mid is None:
-                self._record_failure(
-                    item,
-                    group=group,
-                    cfg=cfg,
-                    mid=None,
-                    status="error",
-                    error_code="mid_unavailable",
-                    error_message=f"reference mid unavailable for {item.asset}",
-                )
+                self._record_mid_unavailable(item, group=group, cfg=cfg)
             else:
                 await self._sample_one(item, mid=mid, group=group, cfg=cfg)
-            if delay > 0 and i + 1 < len(work) and not self._stop.is_set():
-                await self._async_sleep(delay)
+            next_at = max(next_at + delay, self._clock()) if delay > 0 else self._clock()
 
         self.sweep_counts[group] = self.sweep_counts.get(group, 0) + 1
         logger.info(
@@ -408,17 +407,14 @@ class PullQuotePoller:
             observed_at=self._wall(),
         )
 
-    def _record_failure(
+    def _record_mid_unavailable(
         self,
         item: _WorkItem,
         *,
         group: str,
         cfg: PollerGroupSettings,
-        mid: ReferenceMid | None,
-        status: str,
-        error_code: str,
-        error_message: str,
     ) -> None:
+        """Keep previous value or expire; cannot build a Quote without a mid."""
         key = QuoteStoreKey(
             venue=item.venue,
             asset=item.asset,
@@ -426,57 +422,24 @@ class PullQuotePoller:
             notional_usd=item.notional_usd,
             side=item.side,
         )
-        # Build a synthetic error quote when mid is known; otherwise skip put
-        # if nothing is stored yet (cannot build Quote without mid fields).
-        if mid is None:
-            prev = self._store.get(key)
-            if prev is None:
-                return
-            # Keep previous value; mark via last_success_mono path.
-            degraded = self._maybe_expire(prev, cfg=cfg, quote=prev.quote)
-            if degraded is not None:
-                self._store.put(
-                    key,
-                    degraded,
-                    group=group,
-                    success=False,
-                    observed_at=self._wall(),
-                )
-            else:
-                # Keep previous quote object; refresh observed_mono only via put.
-                self._store.put(
-                    key,
-                    prev.quote,
-                    group=group,
-                    success=False,
-                    observed_at=prev.observed_at,
-                )
+        prev = self._store.get(key)
+        if prev is None:
             return
-
-        if status == "rate_limited":
-            q = rate_limited_quote(
-                mid=mid,
-                venue=item.venue,
-                asset=item.asset,
-                side=item.side,
-                notional_usd=item.notional_usd,
-                instrument_type=item.instrument_type,
-                error_message=error_message,
-                timestamp=self._wall(),
+        degraded = self._maybe_expire(prev, cfg=cfg, quote=prev.quote)
+        if degraded is not None:
+            self._store.put(
+                key,
+                degraded,
+                group=group,
+                success=False,
             )
         else:
-            q = error_quote(
-                mid=mid,
-                venue=item.venue,
-                asset=item.asset,
-                side=item.side,
-                notional_usd=item.notional_usd,
-                instrument_type=item.instrument_type,
-                error_code=error_code,
-                error_message=error_message,
-                timestamp=self._wall(),
+            self._store.put(
+                key,
+                prev.quote,
+                group=group,
+                success=False,
             )
-        self._record_failure_from_quote(key, q, group=group, cfg=cfg, mid=mid)
 
     def _record_failure_from_quote(
         self,
@@ -594,7 +557,6 @@ def pair_from_store(
     stale_threshold_sec: float,
     adapter: VenueAdapter,
     clock: Callable[[], float] | None = None,
-    wall_clock: Callable[[], datetime] | None = None,
 ) -> SizeQuotePair:
     """Build a store-backed SizeQuotePair for the aggregator.
 
@@ -603,7 +565,6 @@ def pair_from_store(
     ``assemble_pair`` is adjusted via direct construction when snapshot ids
     differ from the package mid.
     """
-    _ = wall_clock
     mono = clock or time.monotonic
     itype = effective_instrument_type(adapter.venue_class, instrument_type)
     asset_key = asset.upper()

@@ -201,6 +201,31 @@ class PollerSettings(BaseModel):
             raise ValueError("groups must contain at least one sweep group")
         return value
 
+    @model_validator(mode="after")
+    def _served_classes_have_groups(self) -> PollerSettings:
+        """Every poller-served class must map to a configured sweep group."""
+        # amm_dex → rpc; prop_amm → jupiter and/or kyber (both cover prop slugs).
+        needs: dict[VenueClass, set[str]] = {
+            "amm_dex": {"rpc"},
+            "prop_amm": {"jupiter", "kyber"},
+            "cex": set(),  # no group — reject if listed
+            "perp_dex": set(),
+        }
+        configured = set(self.groups)
+        for vc in self.poller_served_classes:
+            required = needs.get(vc, set())
+            if not required:
+                raise ValueError(
+                    f"poller_served_classes includes {vc!r} which has no sweep "
+                    "group mapping (only amm_dex / prop_amm are poller-served)"
+                )
+            if not (required & configured):
+                raise ValueError(
+                    f"poller_served_classes includes {vc!r} but groups is missing "
+                    f"any of {sorted(required)}"
+                )
+        return self
+
 
 # Known AMM adapter ``rpc_env`` names (must stay aligned with amm_*.py).
 _KNOWN_RPC_ENVS: frozenset[str] = frozenset(

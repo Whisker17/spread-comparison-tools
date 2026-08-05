@@ -31,21 +31,25 @@ notionals_usd:
 groups:
   jupiter:
     # 3 Solana props × 3 assets × 5 tiers × 2 sides = 90 calls.
-    # 15 s → 6 RPS avg; keyed bucket is 10 RPS → 60% share leaves headroom.
+    # Keyed 10 RPS × 0.6 share = 6 RPS → ~15 s of start-spacing (deadline
+    # pacing absorbs RTT). Keyless falls back to 5 × 0.6 = 3 RPS (~30 s).
     interval_sec: 15.0
     budget_share: 0.6
-    max_quote_age_for_best_sec: 30.0  # 2× interval; exclude from §5.2 best
-    max_stale_sec: 90.0               # past this → degrade to error/rate_limited
+    # 2× worst-case keyless sweep (~30 s) so rows stay best-eligible.
+    max_quote_age_for_best_sec: 60.0
+    max_stale_sec: 120.0
   kyber:
     # Unpublished limit (WHI-797 §7.2); pace conservatively — production saw
     # KyberSwap 429 backoff loops under per-request fan-out.
-    interval_sec: 30.0
+    # ~100 calls at 2 RPS → ~50 s start-spacing; interval/age track that.
+    interval_sec: 60.0
     max_rps: 2.0
-    max_quote_age_for_best_sec: 60.0
-    max_stale_sec: 120.0
+    max_quote_age_for_best_sec: 120.0
+    max_stale_sec: 180.0
   rpc:
     # On-chain quoter eth_call budget is shared per RPC endpoint (WHI-842).
+    # ~100 calls at 5 RPS → ~20 s start-spacing.
     interval_sec: 20.0
     max_rps: 5.0
-    max_quote_age_for_best_sec: 40.0
-    max_stale_sec: 100.0
+    max_quote_age_for_best_sec: 60.0
+    max_stale_sec: 120.0
