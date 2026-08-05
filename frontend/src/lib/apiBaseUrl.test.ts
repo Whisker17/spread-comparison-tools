@@ -9,10 +9,13 @@ import { getApiBaseUrl } from "@/lib/api";
 import { streamUrl } from "@/lib/streamQuotes";
 
 describe("isLoopbackHostname", () => {
-  it("recognizes localhost, 127.0.0.1, and IPv6 loopback", () => {
+  it("recognizes localhost, *.localhost, 127/8, and IPv6 loopback", () => {
     expect(isLoopbackHostname("localhost")).toBe(true);
     expect(isLoopbackHostname("LOCALHOST")).toBe(true);
+    expect(isLoopbackHostname("api.localhost")).toBe(true);
     expect(isLoopbackHostname("127.0.0.1")).toBe(true);
+    expect(isLoopbackHostname("127.0.0.2")).toBe(true);
+    expect(isLoopbackHostname("127.255.255.255")).toBe(true);
     expect(isLoopbackHostname("::1")).toBe(true);
     expect(isLoopbackHostname("[::1]")).toBe(true);
   });
@@ -21,6 +24,7 @@ describe("isLoopbackHostname", () => {
     expect(isLoopbackHostname("api.example.com")).toBe(false);
     expect(isLoopbackHostname("10.0.0.1")).toBe(false);
     expect(isLoopbackHostname("0.0.0.0")).toBe(false);
+    expect(isLoopbackHostname("192.168.1.1")).toBe(false);
   });
 });
 
@@ -60,8 +64,10 @@ describe("resolveApiBaseUrl (production)", () => {
   it.each([
     "http://localhost:8000",
     "http://127.0.0.1:8100",
+    "http://127.0.0.2:8100",
     "http://[::1]:8000",
     "https://localhost",
+    "http://api.localhost:8000",
   ])("rejects loopback origin %s", (raw) => {
     expect(() =>
       resolveApiBaseUrl(raw, { isProduction: true }),

@@ -59,9 +59,12 @@ pnpm build                                          # unset → error
 NEXT_PUBLIC_API_URL=http://127.0.0.1:8100 pnpm build  # loopback → error
 ```
 
-Same-origin serving (frontend + API behind one host, relative URLs) would remove
-this class of bug entirely; until that is the deploy shape, set the public
-origin explicitly at build time.
+Same-origin serving (frontend + API behind one host, relative base URLs) would
+remove this class of bug entirely and is strictly safer than any guard — the
+client currently requires an **absolute** origin, so that deploy shape is not
+supported yet. Until it is, set the public origin explicitly at build time.
+`next start` does not re-check the var (it was already baked); only `pnpm build`
+fails closed.
 
 The backend enables CORS for local frontend origins (`localhost:3000` / `127.0.0.1:3000`).
 

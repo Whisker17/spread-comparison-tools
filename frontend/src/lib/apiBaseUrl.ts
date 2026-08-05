@@ -9,10 +9,24 @@
 /** Dev-only fallback when the env var is unset. Never used in production. */
 export const DEV_API_BASE_URL = "http://localhost:8000";
 
-const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
-
+/**
+ * True for hosts that resolve to the visitor's own machine.
+ * Covers the issue's explicit list (localhost / 127.0.0.1 / ::1) plus the rest of
+ * 127.0.0.0/8 and `*.localhost` (browsers map those to loopback too).
+ */
 export function isLoopbackHostname(hostname: string): boolean {
-  return LOOPBACK_HOSTS.has(hostname.toLowerCase());
+  // URL.hostname is unbracketed for IPv6; accept bracketed form too.
+  const h = hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  if (h === "localhost" || h.endsWith(".localhost") || h === "::1") {
+    return true;
+  }
+  // 127.0.0.0/8
+  const m = /^127\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(h);
+  if (!m) return false;
+  return m.slice(1).every((octet) => {
+    const n = Number(octet);
+    return n >= 0 && n <= 255;
+  });
 }
 
 export type ResolveApiBaseUrlOptions = {
