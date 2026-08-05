@@ -34,7 +34,8 @@ class AdapterError(Exception):
 
 
 class AdapterFetchError(AdapterError):
-    """Upstream HTTP/RPC fetch or parse failed."""
+    """Upstream HTTP/RPC fetch or parse failed, or a required transport extra
+    is unavailable at client construction (WHI-858)."""
 
 
 class AdapterTimeoutError(AdapterError):
@@ -171,9 +172,8 @@ class BaseAdapter:
             try:
                 self._client = httpx.AsyncClient(timeout=self._timeout)
             except ImportError as exc:
-                venue = getattr(self, "venue", type(self).__name__)
                 raise AdapterFetchError(
-                    f"{venue}: cannot construct HTTP client ({exc}). "
+                    f"{self.venue}: cannot construct HTTP client ({exc}). "
                     "If you use a SOCKS proxy (ALL_PROXY/HTTPS_PROXY), install "
                     "the optional transport: `uv sync` (project depends on "
                     "httpx[socks]) or `pip install 'httpx[socks]'` / socksio; "
