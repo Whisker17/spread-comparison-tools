@@ -66,18 +66,11 @@ export function StatusCell({
         <span className="text-zinc-400">—</span>
       ) : null}
 
-      {decision.kind === "insufficient_liquidity" && decision.badge && (
-        <Badge variant={decision.badgeVariant ?? "warning"}>
-          {decision.badge}
-        </Badge>
-      )}
-      {decision.kind === "not_sampled" && decision.badge && (
-        <Badge variant={decision.badgeVariant ?? "muted"}>{decision.badge}</Badge>
-      )}
-      {/* dash + badge: startup-unavailable (not_initialized) keeps muted chip */}
-      {decision.kind === "dash" && decision.badge && (
-        <Badge variant={decision.badgeVariant ?? "muted"}>{decision.badge}</Badge>
-      )}
+      {/*
+        Error / rate_limited keep a compound layout (badge + retry). All other
+        kinds that set decision.badge share one chip — status SSOT owns
+        badgeVariant (WHI-865 collapse of repeated switches).
+      */}
       {(decision.kind === "error" || decision.kind === "rate_limited") && (
         <div className="flex flex-col items-center gap-0.5">
           <Badge variant={decision.badgeVariant ?? "danger"}>
@@ -103,16 +96,11 @@ export function StatusCell({
           )}
         </div>
       )}
-      {decision.kind === "cost_incomplete" && decision.badge && (
-        <Badge variant={decision.badgeVariant ?? "muted"}>{decision.badge}</Badge>
-      )}
-      {decision.kind === "excessive_impact" && decision.badge && (
-        <Badge variant={decision.badgeVariant ?? "warning"}>{decision.badge}</Badge>
-      )}
-      {/* WHI-846/848: stale store rows keep the number but badge age. */}
-      {decision.kind === "value" && decision.badge && (
-        <Badge variant={decision.badgeVariant ?? "muted"}>{decision.badge}</Badge>
-      )}
+      {decision.kind !== "error" &&
+        decision.kind !== "rate_limited" &&
+        decision.badge && (
+          <Badge variant={decision.badgeVariant ?? "muted"}>{decision.badge}</Badge>
+        )}
       {(() => {
         // Prefer server-stamped age_sec; else derive from quote.timestamp so
         // store rows still show age when the stream omits age-only deltas.

@@ -25,18 +25,20 @@ groups:
     # half-spread is the basis-immune metric vs perps); cut tiers, not sides.
     #
     # Budget arithmetic (3 prop venues × 3 assets × N tiers × 2 sides = 18N):
-    # | Sampled matrix              | Calls | Time @ 0.6 RPS | Fits 120 s? |
-    # | 5 tiers × 2 sides           | 90    | 150 s          | no (overlap)|
-    # | 4 tiers × 2 sides (+$10k)   | 72    | 120 s          | exact, 0s   |
-    # | 3 tiers × 2 sides (chosen)  | 54    | 90 s           | yes, 30 s   |
-    # | 5 tiers × buy only          | 45    | 75 s           | yes — but   |
-    # |                             |       |                | loses RT    |
+    # | Sampled matrix                 | Calls | Time @ 0.6 RPS | Fits 120 s? |
+    # | 5 tiers × 2 sides (full §4.1)  | 90    | 150 s          | no (overlap)|
+    # | 4 tiers × 2 sides (+$100k)     | 72    | 120 s          | exact, 0s   |
+    # | 3 tiers × 2 sides (chosen)     | 54    | 90 s           | yes, 30 s   |
+    # | 5 tiers × buy only             | 45    | 75 s           | yes — but   |
+    # |                                |       |                | loses RT    |
     #
     # Anchors $100 / $1k / $10k (WHI-865): product cares about the small-to-
     # mid band ($100 from WHI-838; $1k dashboard default; $10k most-read
-    # size). Drop $1M from the sample set — production Solana props at $1M
-    # are typically no_quote / excessive_impact, so the spend bought little
-    # comparable signal. $100k stays unsampled under the 3-tier budget.
+    # size). Keep both sides so round-trip / half-spread stays basis-immune
+    # vs perps. Drop $1M from the sample set — WHI-865 production table
+    # showed Solana props at $1M as no_quote / excessive_impact, so the
+    # spend bought little comparable signal; $100k stays unsampled under
+    # the 3-tier budget (status=not_sampled on those cells).
     #
     # Unsampled tiers return status=not_sampled (not error) so the UI and
     # error-rate / WHI-819 signals stay honest. Orderbook venues still

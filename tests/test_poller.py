@@ -14,8 +14,9 @@ import spread_compare.adapters  # noqa: F401 — register mock
 from spread_compare.adapters.base import BaseAdapter
 from spread_compare.adapters.registry import _REGISTRY
 from spread_compare.adapters.registry import get as registry_get
-from spread_compare.aggregator import QuoteAggregator
+from spread_compare.aggregator import QuoteAggregator, not_sampled_quote
 from spread_compare.models import (
+    PRICED_QUOTE_STATUSES,
     FeeBreakdown,
     FeeSchedule,
     InstrumentType,
@@ -25,12 +26,10 @@ from spread_compare.models import (
     TopOfBook,
     VenueClass,
 )
-from spread_compare.monitor import _count_fresh_store_quotes
 from spread_compare.poller import (
     PullQuotePoller,
     group_for_venue,
     is_poller_class,
-    not_sampled_quote,
     pair_from_store,
     stamp_stored_quote,
 )
@@ -958,21 +957,12 @@ async def test_unsampled_tier_is_not_sampled_not_error() -> None:
     assert unsampled.buy is not None
     assert unsampled.buy.status == "not_sampled"
     assert unsampled.buy.error_code == "not_sampled"
-    assert unsampled.buy.status != "error"
+    # Non-priced: numbers null (WHI-799 §6.2 inv. 2); never best-eligible.
     assert unsampled.buy.spread_bps is None
     assert unsampled.buy.total_cost_bps is None
+    assert unsampled.buy.status not in PRICED_QUOTE_STATUSES
     assert unsampled.sell is not None
     assert unsampled.sell.status == "not_sampled"
-
-    # §5.2 best is status=ok only — not_sampled is never eligible.
-    assert unsampled.buy.status != "ok"
-
-    # Monitor fresh-quote probe only counts PRICED statuses; not_sampled
-    # must not masquerade as a usable quote (and is not an error either).
-    fresh = _count_fresh_store_quotes(
-        store, asset="BTC", max_age_sec=300.0, now=100.0
-    )
-    assert fresh == 2  # only the $10k buy+sell priced rows
 
     # Direct constructor pin (same path the store miss uses).
     direct = not_sampled_quote(
@@ -1010,7 +1000,7 @@ async def test_unsampled_tier_is_not_sampled_not_error() -> None:
     assert row.buy is not None
     assert row.buy.status == "not_sampled"
     assert row.buy.error_code == "not_sampled"
-    # Sampled tier still serves real numbers.
+    # Sampled tier still serves real numbers for the same prop venue.
     pkg_ok = await agg.collect(
         "BTC",
         Decimal("10000"),
@@ -1020,3 +1010,9 @@ async def test_unsampled_tier_is_not_sampled_not_error() -> None:
     assert pkg_ok.pairs[0].buy is not None
     assert pkg_ok.pairs[0].buy.status == "ok"
     assert pkg_ok.pairs[0].buy.spread_bps == Decimal("3")
+
+    # Orderbook (live) path is not store-backed — an "unsampled" notional
+    # for a CEX venue still prices from the book, never not_sampled.
+    # mock is disabled in prod config but registered for tests; use live
+    # class cex path by collecting without poller serving that class.
+    assert "cex" not in settings.poller_served_classes

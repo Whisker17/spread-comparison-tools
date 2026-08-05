@@ -28,11 +28,9 @@ from spread_compare.aggregator import (
     assemble_pair,
     effective_instrument_type,
     error_quote,
+    not_sampled_quote,
     quote_with_timeout,
     resolve_mid_with_budget,
-)
-from spread_compare.aggregator import (
-    not_sampled_quote as build_not_sampled_quote,
 )
 from spread_compare.mids import MidResolutionError, MidService
 from spread_compare.models import (
@@ -596,35 +594,6 @@ class PullQuotePoller:
                 await result
             return
         await asyncio.sleep(seconds)
-
-def not_sampled_quote(
-    *,
-    mid: ReferenceMid,
-    venue: str,
-    asset: str,
-    side: Side,
-    notional_usd: Decimal,
-    instrument_type: InstrumentType,
-) -> Quote:
-    """Row for a poller venue key with no store entry (WHI-865).
-
-    Covers both "tier not in the group's sample matrix" and "sweep has not
-    landed yet this process lifetime". Always ``status=not_sampled`` — never
-    ``error`` (that means we tried and failed).
-    """
-    return build_not_sampled_quote(
-        mid=mid,
-        venue=venue,
-        asset=asset,
-        side=side,
-        notional_usd=notional_usd,
-        instrument_type=instrument_type,
-    )
-
-
-# Back-compat alias (WHI-864 name); prefer :func:`not_sampled_quote`.
-not_yet_sampled_quote = not_sampled_quote
-
 
 def pair_from_store(
     store: QuoteStore,
