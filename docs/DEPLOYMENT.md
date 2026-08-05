@@ -6,6 +6,11 @@ effect. Packaging rationale: [ADR 0002](adr/0002-packaging-systemd-uv-venv.md).
 **Deploy from a release tag (or SHA), never from a branch tip.** See
 `docs/GIT_WORKFLOW.md` § Promotion lanes.
 
+**Frontend builds** (when shipping the Next dashboard) must set
+`NEXT_PUBLIC_API_URL` to a public non-loopback origin at `pnpm build` time —
+see `frontend/README.md` § Env / build-time API URL (WHI-857). This runbook is
+backend-only; that contract lives with the frontend.
+
 ## Layout on the host
 
 | Path | Role |

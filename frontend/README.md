@@ -21,7 +21,7 @@ uv run python main.py
 # terminal 2 — frontend
 cd frontend
 pnpm install
-cp .env.example .env.local   # optional for pnpm dev; defaults to http://localhost:8000
+cp .env.example .env.local   # optional for pnpm dev only — remove/override before pnpm build
 pnpm dev
 ```
 

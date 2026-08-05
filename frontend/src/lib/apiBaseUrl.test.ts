@@ -9,21 +9,22 @@ import { getApiBaseUrl } from "@/lib/api";
 import { streamUrl } from "@/lib/streamQuotes";
 
 describe("isLoopbackHostname", () => {
-  it("recognizes localhost, *.localhost, 127/8, and IPv6 loopback", () => {
+  it("recognizes localhost, *.localhost, 127/8, 0.0.0.0, and IPv6 loopback", () => {
     expect(isLoopbackHostname("localhost")).toBe(true);
     expect(isLoopbackHostname("LOCALHOST")).toBe(true);
     expect(isLoopbackHostname("api.localhost")).toBe(true);
     expect(isLoopbackHostname("127.0.0.1")).toBe(true);
     expect(isLoopbackHostname("127.0.0.2")).toBe(true);
     expect(isLoopbackHostname("127.255.255.255")).toBe(true);
+    expect(isLoopbackHostname("0.0.0.0")).toBe(true);
     expect(isLoopbackHostname("::1")).toBe(true);
     expect(isLoopbackHostname("[::1]")).toBe(true);
+    expect(isLoopbackHostname("::ffff:127.0.0.1")).toBe(true);
   });
 
   it("rejects public and private non-loopback hosts", () => {
     expect(isLoopbackHostname("api.example.com")).toBe(false);
     expect(isLoopbackHostname("10.0.0.1")).toBe(false);
-    expect(isLoopbackHostname("0.0.0.0")).toBe(false);
     expect(isLoopbackHostname("192.168.1.1")).toBe(false);
   });
 });
@@ -82,10 +83,23 @@ describe("resolveApiBaseUrl (production)", () => {
     ).toBe("https://api.example.com/v1");
   });
 
-  it("rejects non-absolute values", () => {
+  it("rejects non-absolute and non-http(s) values", () => {
     expect(() =>
       resolveApiBaseUrl("/relative", { isProduction: true }),
     ).toThrowError(/NEXT_PUBLIC_API_URL/);
+    // Scheme-less typo: WHATWG treats "localhost:8000" as protocol localhost:
+    expect(() =>
+      resolveApiBaseUrl("localhost:8000", { isProduction: true }),
+    ).toThrowError(/http\(s\)/);
+    expect(() =>
+      resolveApiBaseUrl("ftp://api.example.com", { isProduction: true }),
+    ).toThrowError(/http\(s\)/);
+  });
+
+  it("rejects 0.0.0.0 in production", () => {
+    expect(() =>
+      resolveApiBaseUrl("http://0.0.0.0:8000", { isProduction: true }),
+    ).toThrowError(/loopback/i);
   });
 });
 
