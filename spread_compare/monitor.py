@@ -78,8 +78,10 @@ class StreamHealthView(BaseModel):
     max_book_age_sec: float | None = None
     resync_ok_window: int = 0
     resync_fail_window: int = 0
-    # Last subscribe / stream error (WHI-855 / WHI-856); non-null → unhealthy.
+    # Last subscribe / stream error (WHI-855 / WHI-856); cleared when fully recovered.
     stream_error: str | None = None
+    # Operator-facing: connected alone is not enough (WHI-856).
+    healthy: bool = False
 
 
 class SweepHealthView(BaseModel):
@@ -283,9 +285,12 @@ def evaluate_alerts(
                     )
                 )
         else:
-            # Connected path: subscribe failure is immediate; expected-vs-healthy
-            # book lag waits for per-stream grace (WHI-856).
-            if stream.stream_error:
+            # Connected path: subscribe failure is immediate while books are still
+            # short; expected-vs-healthy lag waits for per-stream grace (WHI-856).
+            if stream.stream_error and (
+                stream.books_expected <= 0
+                or stream.books_healthy < stream.books_expected
+            ):
                 alerts.append(
                     _OpenAlert(
                         code="subscribe_failed",
@@ -530,27 +535,34 @@ def _collect_streams(
 
         if ws_manager is not None and connected:
             peak = ws_manager.note_healthy_books(sid, healthy)
+            # Auto-resolve latched subscribe errors once the full set is healthy
+            # (Lighter mid-session resubscribe, one-shot HL error frames, …).
+            ws_manager.clear_stream_error_if_recovered(
+                sid, books_healthy=healthy, books_expected=expected
+            )
+            stream_err = ws_manager.stream_error(sid)
         else:
             peak = healthy
 
-        views.append(
-            StreamHealthView(
-                stream_id=sid,
-                connected=connected,
-                disconnected_age_sec=disc_age,
-                connected_age_sec=conn_age,
-                books_total=len(stream_books),
-                books_expected=expected,
-                books_healthy=healthy,
-                books_resyncing=resyncing,
-                books_disconnected=disconnected,
-                peak_healthy_since_connect=peak,
-                max_book_age_sec=max_age,
-                resync_ok_window=resync_ok,
-                resync_fail_window=resync_fail,
-                stream_error=stream_err,
-            )
+        view = StreamHealthView(
+            stream_id=sid,
+            connected=connected,
+            disconnected_age_sec=disc_age,
+            connected_age_sec=conn_age,
+            books_total=len(stream_books),
+            books_expected=expected,
+            books_healthy=healthy,
+            books_resyncing=resyncing,
+            books_disconnected=disconnected,
+            peak_healthy_since_connect=peak,
+            max_book_age_sec=max_age,
+            resync_ok_window=resync_ok,
+            resync_fail_window=resync_fail,
+            stream_error=stream_err,
+            healthy=False,
         )
+        view.healthy = _stream_is_healthy(view, cfg)
+        views.append(view)
     return views
 
 
@@ -591,6 +603,24 @@ def _books_unsynced_alert(
         value=float(stream.books_healthy),
         threshold=float(stream.books_expected),
     )
+
+
+def _stream_is_healthy(stream: StreamHealthView, cfg: MonitorSettings) -> bool:
+    """True when the stream is serving its expected books without open errors."""
+    if not stream.connected:
+        return False
+    if stream.stream_error and (
+        stream.books_expected <= 0 or stream.books_healthy < stream.books_expected
+    ):
+        return False
+    if stream.books_expected <= 0:
+        return True
+    if stream.books_healthy >= stream.books_expected:
+        return True
+    grace = cfg.books_sync_grace_sec(stream.stream_id)
+    age = stream.connected_age_sec
+    # Inside grace a short book set is still "warming up".
+    return age is not None and age < grace
 
 
 def _count_fresh_store_quotes(
@@ -647,13 +677,35 @@ def _data_probe_failures(
             failures.append(
                 f"healthy WS books: {healthy_books} < {cfg.probe_min_healthy_books}"
             )
-    if ws_enabled and cfg.probe_min_healthy_books_per_stream > 0:
-        failures.extend(
-            _per_stream_book_probe_failures(
-                streams,
-                min_healthy=cfg.probe_min_healthy_books_per_stream,
-                cfg=cfg,
+    if ws_enabled:
+        # Subscribe errors fail the probe independently of the min-books knob
+        # (config comment: stream_error fails immediately).
+        failures.extend(_subscribe_error_probe_failures(streams))
+        if cfg.probe_min_healthy_books_per_stream > 0:
+            failures.extend(
+                _per_stream_book_probe_failures(
+                    streams,
+                    min_healthy=cfg.probe_min_healthy_books_per_stream,
+                    cfg=cfg,
+                )
             )
+    return failures
+
+
+def _subscribe_error_probe_failures(
+    streams: Sequence[StreamHealthView],
+) -> list[str]:
+    """Fail the data probe on latched subscribe errors while books are short."""
+    failures: list[str] = []
+    for stream in streams:
+        if not stream.stream_error:
+            continue
+        if stream.books_expected > 0 and stream.books_healthy >= stream.books_expected:
+            continue
+        failures.append(
+            f"stream {stream.stream_id!r} subscribe/stream error: "
+            f"{stream.stream_error} "
+            f"(books {stream.books_healthy}/{stream.books_expected})"
         )
     return failures
 
@@ -668,18 +720,11 @@ def _per_stream_book_probe_failures(
 
     Process-wide ``probe_min_healthy_books`` cannot distinguish 1/5 venues
     healthy from 5/5 — this asserts a minimum per connected stream after its
-    books-sync grace (subscribe errors fail immediately).
+    books-sync grace.
     """
     failures: list[str] = []
     for stream in streams:
         if stream.books_expected <= 0:
-            continue
-        if stream.stream_error:
-            failures.append(
-                f"stream {stream.stream_id!r} subscribe/stream error: "
-                f"{stream.stream_error} "
-                f"(books {stream.books_healthy}/{stream.books_expected})"
-            )
             continue
         if not stream.connected:
             # Disconnect is covered by ws_disconnected; do not double-count

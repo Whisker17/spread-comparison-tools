@@ -586,6 +586,14 @@ def load_poller_settings_enabled(enabled: bool) -> Any:
 # --- WHI-856: connected but books never sync ---------------------------------
 
 
+class _FakeConnectedSock:
+    """Minimal stand-in for ReconnectingWebSocket in monitor unit tests."""
+
+    def __init__(self, stream_id: str, *, connected: bool = True) -> None:
+        self.stream_id = stream_id
+        self.is_connected = connected
+
+
 def _connected_dead_stream_manager(
     stream_id: str = "bybit_spot",
     *,
@@ -601,6 +609,8 @@ def _connected_dead_stream_manager(
         manager._lighter_markets = {str(i): f"M{i}" for i in range(expected)}  # noqa: SLF001
     else:
         manager._symbols[stream_id] = [f"S{i}USDT" for i in range(expected)]  # noqa: SLF001
+    # Real stream_connected() reads the socket list — no production test branch.
+    manager._sockets.append(_FakeConnectedSock(stream_id))  # type: ignore[arg-type]  # noqa: SLF001
     manager.mark_stream_connected(stream_id, connected=True)
     manager._stream_connected_since[stream_id] = connected_since  # noqa: SLF001
     manager._stream_peak_healthy[stream_id] = peak_healthy  # noqa: SLF001
@@ -625,6 +635,11 @@ def test_monitor_settings_per_stream_grace_override() -> None:
     )
     assert cfg.books_sync_grace_sec("apex") == 120.0
     assert cfg.books_sync_grace_sec("bybit_spot") == 60.0
+
+
+def test_monitor_settings_reject_unknown_stream_grace_key() -> None:
+    with pytest.raises(ValidationError, match="unknown stream id"):
+        _monitor_settings(ws_books_sync_grace_sec_by_stream={"apx": 120.0})
 
 
 def test_connected_zero_books_past_grace_raises_books_unsynced() -> None:
@@ -748,6 +763,8 @@ def test_data_probe_fails_when_one_stream_entirely_unsynced() -> None:
     manager = WsFeedManager(registry=reg)
     manager._symbols["binance_spot"] = ["BTCUSDT"]  # noqa: SLF001
     manager._symbols["bybit_spot"] = [f"S{i}USDT" for i in range(13)]  # noqa: SLF001
+    manager._sockets.append(_FakeConnectedSock("binance_spot"))  # type: ignore[arg-type]  # noqa: SLF001
+    manager._sockets.append(_FakeConnectedSock("bybit_spot"))  # type: ignore[arg-type]  # noqa: SLF001
     manager.mark_stream_connected("binance_spot", connected=True)
     manager.mark_stream_connected("bybit_spot", connected=True)
     # Both past grace; bybit has zero healthy books.
@@ -791,7 +808,7 @@ def test_subscribe_failed_marks_stream_unhealthy_immediately() -> None:
         ws_books_sync_grace_sec=999.0,  # still inside books grace
         probe_min_fresh_store_quotes=0,
         probe_min_healthy_books=0,
-        probe_min_healthy_books_per_stream=1,
+        probe_min_healthy_books_per_stream=0,  # stream_error probe is independent
         mid_max_age_sec=999.0,
     )
     manager = _connected_dead_stream_manager(
@@ -814,15 +831,72 @@ def test_subscribe_failed_marks_stream_unhealthy_immediately() -> None:
     )
     bybit = next(s for s in snap.streams if s.stream_id == "bybit_spot")
     assert bybit.connected is True
+    assert bybit.healthy is False
     assert bybit.stream_error == "args size >10"
 
     alerts = evaluate_alerts(snap, cfg)
     assert any(a.code == "subscribe_failed" and a.target == "bybit_spot" for a in alerts)
     # Immediate — does not wait for books-sync grace.
     assert not any(a.code == "books_unsynced" for a in alerts)
-    # Data probe fails even though process mid is missing only after grace... mid
-    # is missing so data_ok fails for mid; also per-stream subscribe error.
+    # Data probe fails on stream_error even with min_healthy_books_per_stream=0.
     assert any("subscribe/stream error" in f for f in snap.data_failures)
+
+
+def test_stream_error_clears_when_books_fully_recover() -> None:
+    """Latched stream_error must not 503 forever after a full healthy set returns."""
+    cfg = _monitor_settings(
+        startup_grace_sec=0,
+        ws_books_sync_grace_sec=30.0,
+        probe_min_fresh_store_quotes=0,
+        probe_min_healthy_books=0,
+        probe_min_healthy_books_per_stream=1,
+        mid_max_age_sec=999.0,
+    )
+    reg = WsBookRegistry()
+    book = reg.put_fixture_book(
+        "bybit",
+        "BTCUSDT",
+        "spot",
+        [(Decimal("100"), Decimal("1"))],
+        [(Decimal("101"), Decimal("1"))],
+    )
+    book.set_health(BookHealth.HEALTHY)
+    manager = WsFeedManager(registry=reg)
+    manager._symbols["bybit_spot"] = ["BTCUSDT"]  # noqa: SLF001
+    manager._sockets.append(_FakeConnectedSock("bybit_spot"))  # type: ignore[arg-type]  # noqa: SLF001
+    manager.mark_stream_connected("bybit_spot", connected=True)
+    manager._stream_connected_since["bybit_spot"] = 0.0  # noqa: SLF001
+    manager._set_stream_error("bybit_spot", "transient gap")  # noqa: SLF001
+
+    from spread_compare.settings import load_mid_settings
+
+    mid = MidService(load_mid_settings())
+    mid.seed_cache(
+        "BTC",
+        mid=Decimal("50000"),
+        mid_source="binance_usdm_index",
+        timestamp=datetime.now(tz=UTC),
+    )
+    now = 100.0
+    snap = collect_engine_snapshot(
+        settings=cfg,
+        mid_service=mid,
+        ws_manager=manager,
+        registry=reg,
+        rate_limits=RollingEventCounter(clock=lambda: now),
+        started_mono=0.0,
+        clock=lambda: now,
+        ws_settings=load_ws_settings_enabled(True),
+        poller_settings=load_poller_settings_enabled(False),
+    )
+    bybit = next(s for s in snap.streams if s.stream_id == "bybit_spot")
+    assert bybit.books_healthy == 1
+    assert bybit.books_expected == 1
+    assert bybit.stream_error is None
+    assert bybit.healthy is True
+    assert manager.stream_error("bybit_spot") is None
+    assert not any("subscribe/stream error" in f for f in snap.data_failures)
+    assert not any(a.code == "subscribe_failed" for a in snap.alerts)
 
 
 def test_health_surface_exposes_books_expected_and_healthy() -> None:

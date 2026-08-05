@@ -143,6 +143,10 @@ class WsStreamFlags(BaseModel):
     apex: bool
 
 
+# Multiplexed orderbook stream ids (WsStreamFlags fields / WsFeedManager).
+KNOWN_WS_STREAM_IDS: frozenset[str] = frozenset(WsStreamFlags.model_fields)
+
+
 class WsSettings(BaseModel):
     """``config/ws.yaml`` — WebSocket orderbook ingest (WHI-847 / WHI-855)."""
 
@@ -414,7 +418,8 @@ class MonitorSettings(BaseModel):
     ws_disconnected_alert_sec: float = Field(gt=0)
     # WHI-856: expected-vs-healthy book sync grace (unvalidated defaults).
     ws_books_sync_grace_sec: float = Field(gt=0)
-    ws_books_sync_grace_sec_by_stream: dict[str, float] = Field(default_factory=dict)
+    # Required key (may be `{}`) so a missing YAML entry fails at load.
+    ws_books_sync_grace_sec_by_stream: dict[str, float]
     ws_resync_window_sec: float = Field(gt=0)
     ws_resync_count_threshold: int = Field(ge=1)
     ws_failed_resync_threshold: int = Field(ge=1)
@@ -438,19 +443,19 @@ class MonitorSettings(BaseModel):
 
     @field_validator("ws_books_sync_grace_sec_by_stream")
     @classmethod
-    def _positive_per_stream_grace(cls, value: dict[str, float]) -> dict[str, float]:
-        cleaned: dict[str, float] = {}
-        for raw_key, raw_sec in value.items():
-            key = str(raw_key).strip()
-            if not key:
-                raise ValueError("ws_books_sync_grace_sec_by_stream keys must be non-empty")
-            sec = float(raw_sec)
+    def _positive_known_stream_grace(cls, value: dict[str, float]) -> dict[str, float]:
+        unknown = sorted(k for k in value if k not in KNOWN_WS_STREAM_IDS)
+        if unknown:
+            raise ValueError(
+                f"unknown stream id(s) in ws_books_sync_grace_sec_by_stream: "
+                f"{unknown}; allowed: {sorted(KNOWN_WS_STREAM_IDS)}"
+            )
+        for key, sec in value.items():
             if sec <= 0:
                 raise ValueError(
                     f"ws_books_sync_grace_sec_by_stream[{key!r}] must be > 0 (got {sec})"
                 )
-            cleaned[key] = sec
-        return cleaned
+        return value
 
     def books_sync_grace_sec(self, stream_id: str) -> float:
         """Per-stream books-sync grace, falling back to the global default."""

@@ -203,7 +203,12 @@ class WsFeedManager:
         return len(self._symbols.get(stream_id, []))
 
     def note_healthy_books(self, stream_id: str, healthy: int) -> int:
-        """Update and return peak HEALTHY count for the current connect session."""
+        """Update and return peak HEALTHY count for the current connect session.
+
+        Called from the monitor collector each evaluation cycle (WHI-856): the
+        peak is diagnostic state for never-synced vs degraded alert wording,
+        not a serve-path input.
+        """
         with self._diag_lock:
             peak = self._stream_peak_healthy.get(stream_id, 0)
             if healthy > peak:
@@ -211,34 +216,20 @@ class WsFeedManager:
                 self._stream_peak_healthy[stream_id] = peak
             return peak
 
-    def peak_healthy_books(self, stream_id: str) -> int:
-        with self._diag_lock:
-            return self._stream_peak_healthy.get(stream_id, 0)
-
     def known_stream_ids(self) -> list[str]:
-        """Configured sockets plus any stream that has a disconnect timestamp."""
+        """Spawned sockets plus streams with connect/disconnect diagnostics."""
         with self._diag_lock:
             disc = set(self._stream_disconnected_since)
             connected = set(self._stream_connected_since)
         ids = {s.stream_id for s in self._sockets}
         ids.update(disc)
         ids.update(connected)
-        # Streams with a configured symbol list even before the socket object
-        # is recorded (tests / partial start).
-        ids.update(sid for sid, syms in self._symbols.items() if syms)
-        if self._lighter_markets:
-            ids.add("lighter")
         return sorted(ids)
 
     def stream_connected(self, stream_id: str) -> bool:
         for sock in self._sockets:
             if sock.stream_id == stream_id:
                 return sock.is_connected
-        # Diagnostic path: connected_since set without a live socket object
-        # (unit tests inject connect age without spawning websockets).
-        with self._diag_lock:
-            if stream_id in self._stream_connected_since:
-                return True
         return self._registry.connection_count(stream_id) > 0
 
     def _http(self) -> httpx.AsyncClient:
@@ -252,6 +243,18 @@ class WsFeedManager:
 
     def _clear_stream_error(self, stream_id: str) -> None:
         self._stream_errors.pop(stream_id, None)
+
+    def clear_stream_error_if_recovered(
+        self, stream_id: str, *, books_healthy: int, books_expected: int
+    ) -> None:
+        """Drop a latched subscribe/stream error once the book set is full (WHI-856).
+
+        Mid-session errors (e.g. Lighter gap resubscribe) must not page forever
+        after the stream has fully recovered.
+        """
+        if books_expected <= 0 or books_healthy < books_expected:
+            return
+        self._clear_stream_error(stream_id)
 
     def _fail_subscribe_books(
         self,
