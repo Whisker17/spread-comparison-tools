@@ -26,6 +26,8 @@ from spread_compare.cex_symbols import resolve_cex_multiplier, resolve_cex_symbo
 from spread_compare.models import MidSource, ReferenceMid
 from spread_compare.settings import MidSettings, load_mid_settings
 
+# MidSource is a Literal in models; seed_cache accepts the same labels.
+
 logger = logging.getLogger(__name__)
 
 _BINANCE_FAPI = "https://fapi.binance.com"
@@ -347,6 +349,26 @@ class MidService:
             mid_source=source.mid_source,
             timestamp=source.timestamp,
             sources_detail=source.sources_detail,
+        )
+
+    def seed_cache(
+        self,
+        asset: str,
+        *,
+        mid: Decimal,
+        mid_source: MidSource,
+        timestamp: datetime,
+    ) -> None:
+        """Inject a fresh mid into the short-lived cache (WHI-847 fast mid path).
+
+        Does not invent a ``snapshot_id`` — that is stamped at :meth:`resolve` time.
+        """
+        asset_key = asset.upper()
+        if mid <= 0:
+            raise ValueError(f"mid must be positive, got {mid}")
+        self._cache[asset_key] = (
+            self._clock(),
+            _SourceResult(mid, mid_source, timestamp),
         )
 
     async def _resolve_source(self, asset: str) -> _SourceResult:

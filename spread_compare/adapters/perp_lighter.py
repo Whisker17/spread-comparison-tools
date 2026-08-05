@@ -136,7 +136,9 @@ class LighterAdapter(BaseAdapter):
                 fee_tier=tier,
             )
 
-        bids, asks = await self._fetch_orders(meta.market_id)
+        bids, asks, from_ws, book_age = await self._fetch_orders(
+            meta.market_id, meta.symbol
+        )
         schedule = self.get_fees(asset_key, instrument_type=itype)
         return build_quote_from_book(
             venue=self.venue,
@@ -153,6 +155,8 @@ class LighterAdapter(BaseAdapter):
             funding_rate_8h=None,  # not exposed on orderBookDetails (Phase 1)
             venue_mark=meta.mark_price,
             multiplier=resolved.multiplier,
+            from_ws=from_ws,
+            book_age_sec=book_age,
         )
 
     async def get_orderbook_spread(
@@ -172,7 +176,7 @@ class LighterAdapter(BaseAdapter):
         meta = self._markets_by_symbol.get(resolved.venue_symbol)
         if meta is None:
             raise UnsupportedAssetError(f"{asset} not supported by lighter")
-        bids, asks = await self._fetch_orders(meta.market_id)
+        bids, asks, _from_ws, _age = await self._fetch_orders(meta.market_id, meta.symbol)
         return build_top_of_book(
             venue=self.venue,
             asset=asset_key,
@@ -295,7 +299,9 @@ class LighterAdapter(BaseAdapter):
                 for side in sides
             ]
 
-        bids, asks = await self._fetch_orders(meta.market_id)
+        bids, asks, from_ws, book_age = await self._fetch_orders(
+            meta.market_id, meta.symbol
+        )
         schedule = self.get_fees(asset_key, instrument_type=itype)
         return build_quotes_from_book_batch(
             venue=self.venue,
@@ -312,11 +318,13 @@ class LighterAdapter(BaseAdapter):
             funding_rate_8h=None,
             venue_mark=meta.mark_price,
             multiplier=resolved.multiplier,
+            from_ws=from_ws,
+            book_age_sec=book_age,
         )
 
     async def _fetch_orders(
-        self, market_id: int
-    ) -> tuple[OrderbookLevels, OrderbookLevels]:
+        self, market_id: int, symbol: str
+    ) -> tuple[OrderbookLevels, OrderbookLevels, bool, float | None]:
         async def _raw() -> tuple[OrderbookLevels, OrderbookLevels]:
             url = f"{_BASE}{_ORDERS_PATH}"
             params = {"market_id": str(market_id), "limit": str(_ORDER_LIMIT)}
@@ -344,9 +352,10 @@ class LighterAdapter(BaseAdapter):
                 )
             return bids, asks
 
+        # Registry key is venue symbol (e.g. BTC) so WS feed + REST share one book.
         return await cached_book_fetch(
             venue=self.venue,
-            symbol=str(market_id),
+            symbol=symbol,
             instrument_type="perp",
             depth=_ORDER_LIMIT,
             fetch=_raw,

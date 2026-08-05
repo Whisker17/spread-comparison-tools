@@ -355,12 +355,24 @@ async def quote_with_timeout(
         )
 
 
-def apply_mid_stale(quote: Quote, *, stale_threshold_sec: float) -> Quote:
-    """Stamp ``mid_stale`` per WHI-799 §3.2 without changing any bps fields."""
+def apply_mid_stale(
+    quote: Quote,
+    *,
+    stale_threshold_sec: float,
+    ws_mid_max_age_sec: float | None = None,
+) -> Quote:
+    """Stamp ``mid_stale`` per WHI-799 §3.2 without changing any bps fields.
+
+    WS-served quotes (``age_sec`` set) also apply the tighter
+    ``max_age_for_ws_quote_sec`` gate (WHI-847).
+    """
+    threshold = stale_threshold_sec
+    if quote.age_sec is not None and ws_mid_max_age_sec is not None:
+        threshold = min(threshold, ws_mid_max_age_sec)
     stale = is_mid_stale(
         quote.timestamp,
         quote.mid_timestamp,
-        stale_threshold_sec=stale_threshold_sec,
+        stale_threshold_sec=threshold,
     )
     if quote.mid_stale == stale:
         return quote
@@ -378,12 +390,21 @@ def assemble_pair(
     sell: Quote | None,
     top_of_book: TopOfBook | None,
     stale_threshold_sec: float,
+    ws_mid_max_age_sec: float | None = None,
 ) -> SizeQuotePair:
     """Build a SizeQuotePair from legs; sum bps only via costs helpers (WHI-799 §4.6)."""
     if buy is not None:
-        buy = apply_mid_stale(buy, stale_threshold_sec=stale_threshold_sec)
+        buy = apply_mid_stale(
+            buy,
+            stale_threshold_sec=stale_threshold_sec,
+            ws_mid_max_age_sec=ws_mid_max_age_sec,
+        )
     if sell is not None:
-        sell = apply_mid_stale(sell, stale_threshold_sec=stale_threshold_sec)
+        sell = apply_mid_stale(
+            sell,
+            stale_threshold_sec=stale_threshold_sec,
+            ws_mid_max_age_sec=ws_mid_max_age_sec,
+        )
 
     # Priced statuses keep numbers readable (WHI-845 excessive_impact); only
     # status=ok remains §5.2 best / heat eligible (FE gates on status separately).
@@ -904,6 +925,7 @@ class QuoteAggregator:
                     ),
                     top_of_book=None,
                     stale_threshold_sec=stale_threshold,
+                    ws_mid_max_age_sec=self._mid_settings.max_age_for_ws_quote_sec,
                 )
                 for n in notionals
             ]
@@ -1038,6 +1060,7 @@ class QuoteAggregator:
                         # TOB is book-level; attach to every tier (same snapshot).
                         top_of_book=top_of_book,
                         stale_threshold_sec=stale_threshold,
+                        ws_mid_max_age_sec=self._mid_settings.max_age_for_ws_quote_sec,
                     )
                 )
             return pairs
@@ -1139,6 +1162,7 @@ class QuoteAggregator:
             sell=sell,
             top_of_book=top_of_book,
             stale_threshold_sec=stale_threshold,
+            ws_mid_max_age_sec=self._mid_settings.max_age_for_ws_quote_sec,
         )
 
     async def _tob_with_timeout(

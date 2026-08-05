@@ -38,8 +38,10 @@ from spread_compare.settings import (
     load_orderbook_cache_settings,
     load_poller_settings,
     load_venue_settings,
+    load_ws_settings,
 )
 from spread_compare.simulator import TradeSimulator
+from spread_compare.ws_bootstrap import start_ws_ingest, stop_ws_ingest
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +77,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     api_settings = load_api_settings()
     venue_settings = load_venue_settings()
     poller_settings = load_poller_settings()
+    ws_settings = load_ws_settings()
     load_impact_settings()
     load_orderbook_cache_settings()
     get_fee_catalog()
@@ -106,6 +109,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.quote_store = quote_store
     app.state.poller = poller
     app.state.simulate_rate_guard = build_simulate_rate_guard(api_settings)
+    app.state.ws_feed_manager = None
+    app.state.fast_mid_poller = None
 
     retry_stop = asyncio.Event()
     retry_task: asyncio.Task[None] | None = None
@@ -128,12 +133,23 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                     ),
                     name="adapter-startup-retry",
                 )
+        # WS books after adapter startup so symbol maps / meta are warm (WHI-847).
+        # Connect failure degrades that stream only; REST remains the fallback.
+        ws_manager, mid_poller = await start_ws_ingest(
+            mid_service, settings=ws_settings
+        )
+        app.state.ws_feed_manager = ws_manager
+        app.state.fast_mid_poller = mid_poller
         # Start after adapter startup so supported_assets / clients are warm
         # (WHI-846). A failed venue simply yields not_initialized store rows.
         await poller.start()
         yield
     finally:
         await poller.stop()
+        await stop_ws_ingest(
+            getattr(app.state, "ws_feed_manager", None),
+            getattr(app.state, "fast_mid_poller", None),
+        )
         retry_stop.set()
         if retry_task is not None:
             retry_task.cancel()

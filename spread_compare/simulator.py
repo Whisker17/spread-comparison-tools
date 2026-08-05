@@ -417,7 +417,9 @@ class TradeSimulator:
                 instrument_type=itype,
             )
             quote = apply_mid_stale(
-                quote, stale_threshold_sec=self._mid_settings.stale_threshold_sec
+                quote,
+                stale_threshold_sec=self._mid_settings.stale_threshold_sec,
+                ws_mid_max_age_sec=self._mid_settings.max_age_for_ws_quote_sec,
             )
             return _row_from_quote(quote, side=pair.side)
 
@@ -439,5 +441,9 @@ class TradeSimulator:
             timeout=self._agg.timeout_for(adapter.venue_class),
             log_tag="[simulate]",
         )
-        quote = apply_mid_stale(quote, stale_threshold_sec=self._mid_settings.stale_threshold_sec)
+        quote = apply_mid_stale(
+            quote,
+            stale_threshold_sec=self._mid_settings.stale_threshold_sec,
+            ws_mid_max_age_sec=self._mid_settings.max_age_for_ws_quote_sec,
+        )
         return _row_from_quote(quote, side=pair.side)

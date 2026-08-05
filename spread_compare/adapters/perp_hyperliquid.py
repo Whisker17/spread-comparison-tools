@@ -146,7 +146,7 @@ class HyperliquidAdapter(BaseAdapter):
                 fee_tier=tier,
             )
 
-        bids, asks = await self._fetch_l2_book(coin)
+        bids, asks, from_ws, book_age = await self._fetch_l2_book(coin)
         funding_8h = self._funding_rate_8h(coin)
         mark = self._mark_px.get(coin)
         schedule = self.get_fees(asset_key, instrument_type=itype)
@@ -165,6 +165,8 @@ class HyperliquidAdapter(BaseAdapter):
             funding_rate_8h=funding_8h,
             venue_mark=mark,
             multiplier=resolved.multiplier,
+            from_ws=from_ws,
+            book_age_sec=book_age,
         )
 
     async def get_orderbook_spread(
@@ -189,7 +191,7 @@ class HyperliquidAdapter(BaseAdapter):
             raise UnsupportedAssetError(
                 f"{asset} (coin={coin!r}) not on hyperliquid allowed dexes"
             )
-        bids, asks = await self._fetch_l2_book(coin)
+        bids, asks, _from_ws, _age = await self._fetch_l2_book(coin)
         return build_top_of_book(
             venue=self.venue,
             asset=asset_key,
@@ -361,7 +363,7 @@ class HyperliquidAdapter(BaseAdapter):
                 for side in sides
             ]
 
-        bids, asks = await self._fetch_l2_book(coin)
+        bids, asks, from_ws, book_age = await self._fetch_l2_book(coin)
         schedule = self.get_fees(asset_key, instrument_type=itype)
         return build_quotes_from_book_batch(
             venue=self.venue,
@@ -378,9 +380,13 @@ class HyperliquidAdapter(BaseAdapter):
             funding_rate_8h=self._funding_rate_8h(coin),
             venue_mark=self._mark_px.get(coin),
             multiplier=resolved.multiplier,
+            from_ws=from_ws,
+            book_age_sec=book_age,
         )
 
-    async def _fetch_l2_book(self, coin: str) -> tuple[OrderbookLevels, OrderbookLevels]:
+    async def _fetch_l2_book(
+        self, coin: str
+    ) -> tuple[OrderbookLevels, OrderbookLevels, bool, float | None]:
         async def _raw() -> tuple[OrderbookLevels, OrderbookLevels]:
             payload = await self._post_info({"type": "l2Book", "coin": coin})
             try:
