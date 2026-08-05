@@ -14,6 +14,8 @@ reconnect_max_sec: 30.0
 # Lighter gap recovery: min seconds between channel resubscribes (WHI-855).
 # Resync is re-subscribe (server snapshot carries a real nonce) — not REST+fake nonce.
 lighter_min_resync_interval_sec: 2.0
+# If a resubscribe's snapshot never arrives, age out the pending and note_resync(fail).
+lighter_resync_snapshot_timeout_sec: 15.0
 
 # Fast mid path: poll Binance USDM premiumIndex at this interval (1 Hz verified).
 fast_mid_poll_interval_sec: 1.0

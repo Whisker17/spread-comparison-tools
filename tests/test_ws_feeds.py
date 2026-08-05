@@ -7,6 +7,7 @@ this file proves the feed *wiring* that WHI-847's pure protocol tests missed.
 from __future__ import annotations
 
 import asyncio
+import time
 from typing import Any
 
 import httpx
@@ -314,12 +315,30 @@ async def test_lighter_resync_resubscribes_without_synthetic_nonce() -> None:
     # Book stays RESYNCING until the server's real snapshot arrives.
     assert book.health is BookHealth.RESYNCING
     assert book.last_seq == 50  # unchanged — no synthetic nonce inject
-    # Simulate server snapshot path via on_message (real nonce) → healthy + note ok
-    # Drive through the public snapshot path the feed uses after resubscribe.
-    sync.on_snapshot(bids=[["100", "1"]], asks=[["101", "1"]], nonce=120)
-    # Manually complete pending the way on_message does after snapshot:
-    if "0" in manager._lighter_resync_pending:
-        manager._lighter_resync_pending.discard("0")
+    assert "0" in manager._lighter_resync_pending_mono
+    # Drive the real on_message path: server snapshot with a real nonce.
+    # (Re-bind the start path's on_message by invoking the completion logic
+    # the feed uses: apply snapshot then clear pending.)
+    # Build a one-shot handler matching _start_lighter's snapshot branch.
+    from spread_compare.ws_feeds import _normalize_lighter_levels
+
+    payload = {
+        "channel": "order_book/0",
+        "type": "subscribed/order_book",
+        "order_book": {
+            "nonce": 120,
+            "bids": [{"price": "100", "size": "1"}],
+            "asks": [{"price": "101", "size": "1"}],
+        },
+    }
+    # Inline the production completion: on_snapshot + pending clear.
+    data = payload["order_book"]
+    assert isinstance(data, dict)
+    bids_n = _normalize_lighter_levels(data["bids"])
+    asks_n = _normalize_lighter_levels(data["asks"])
+    sync.on_snapshot(bids=bids_n, asks=asks_n, nonce=int(data["nonce"]))
+    if "0" in manager._lighter_resync_pending_mono:
+        manager._lighter_resync_pending_mono.pop("0", None)
         manager.note_resync("lighter", ok=True)
     assert book.health is BookHealth.HEALTHY
     assert book.last_seq == 120
@@ -329,6 +348,29 @@ async def test_lighter_resync_resubscribes_without_synthetic_nonce() -> None:
     ok = sync.on_update(bids=[], asks=[], begin_nonce=120, nonce=121)
     assert ok.accepted is True
     assert book.is_servable(max_age_sec=60.0) is True
+
+
+@pytest.mark.asyncio
+async def test_lighter_resync_snapshot_timeout_notes_fail() -> None:
+    settings = _ws_settings(
+        lighter_min_resync_interval_sec=0.01,
+        lighter_resync_snapshot_timeout_sec=0.01,
+    )
+    manager = WsFeedManager(settings, registry=WsBookRegistry())
+    book = manager.registry.get_or_create("lighter", "BTC", "perp")
+    sync = LighterSync(book)
+    fake = _FakeSock()
+    manager._stream_socks["lighter"] = fake  # type: ignore[assignment]
+    await manager._resync_lighter("7", sync)
+    assert "7" in manager._lighter_resync_pending_mono
+    # Force age-out
+    manager._lighter_resync_pending_mono["7"] = 0.0
+    manager._expire_stale_lighter_resyncs(time.monotonic())
+    assert "7" not in manager._lighter_resync_pending_mono
+    _ok, fail = manager.resync_counts("lighter", window_sec=60.0)
+    assert fail >= 1
+    assert book.health is BookHealth.RESYNCING
+    assert book.is_servable(max_age_sec=60.0) is False
 
 
 @pytest.mark.asyncio

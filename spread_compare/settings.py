@@ -153,6 +153,7 @@ class WsSettings(BaseModel):
     reconnect_min_sec: float = Field(gt=0)
     reconnect_max_sec: float = Field(gt=0)
     lighter_min_resync_interval_sec: float = Field(gt=0)
+    lighter_resync_snapshot_timeout_sec: float = Field(gt=0)
     fast_mid_poll_interval_sec: float = Field(gt=0)
     # Per-venue subscribe chunk sizes (args per op) — WHI-855.
     bybit_spot_subscribe_chunk: int = Field(ge=1)
