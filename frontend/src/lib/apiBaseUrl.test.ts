@@ -9,7 +9,7 @@ import { getApiBaseUrl } from "@/lib/api";
 import { streamUrl } from "@/lib/streamQuotes";
 
 describe("isLoopbackHostname", () => {
-  it("recognizes localhost, *.localhost, 127/8, 0.0.0.0, and IPv6 loopback", () => {
+  it("recognizes localhost, *.localhost, 127/8, wildcards, and IPv6 loopback", () => {
     expect(isLoopbackHostname("localhost")).toBe(true);
     expect(isLoopbackHostname("LOCALHOST")).toBe(true);
     expect(isLoopbackHostname("api.localhost")).toBe(true);
@@ -19,6 +19,12 @@ describe("isLoopbackHostname", () => {
     expect(isLoopbackHostname("0.0.0.0")).toBe(true);
     expect(isLoopbackHostname("::1")).toBe(true);
     expect(isLoopbackHostname("[::1]")).toBe(true);
+    expect(isLoopbackHostname("::")).toBe(true);
+    expect(isLoopbackHostname("[::]")).toBe(true);
+    // WHATWG form for [::ffff:127.0.0.1]
+    expect(isLoopbackHostname("::ffff:7f00:1")).toBe(true);
+    expect(isLoopbackHostname("[::ffff:7f00:1]")).toBe(true);
+    // Dotted mapped form (caller-supplied)
     expect(isLoopbackHostname("::ffff:127.0.0.1")).toBe(true);
   });
 
@@ -96,9 +102,18 @@ describe("resolveApiBaseUrl (production)", () => {
     ).toThrowError(/http\(s\)/);
   });
 
-  it("rejects 0.0.0.0 in production", () => {
+  it("rejects 0.0.0.0, ::, and WHATWG-mapped IPv6 loopback in production", () => {
     expect(() =>
       resolveApiBaseUrl("http://0.0.0.0:8000", { isProduction: true }),
+    ).toThrowError(/loopback/i);
+    expect(() =>
+      resolveApiBaseUrl("http://[::]:8000", { isProduction: true }),
+    ).toThrowError(/loopback/i);
+    // new URL serializes this to hostname [::ffff:7f00:1]
+    expect(() =>
+      resolveApiBaseUrl("http://[::ffff:127.0.0.1]:8000", {
+        isProduction: true,
+      }),
     ).toThrowError(/loopback/i);
   });
 });

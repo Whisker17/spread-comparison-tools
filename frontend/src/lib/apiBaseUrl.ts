@@ -14,24 +14,32 @@ const ALLOWED_PROTOCOLS = new Set(["http:", "https:"]);
 /**
  * True for hosts that resolve to the visitor's own machine.
  * Covers the issue's explicit list (localhost / 127.0.0.1 / ::1) plus the rest of
- * 127.0.0.0/8, `0.0.0.0`, IPv4-mapped IPv6 loopback, and `*.localhost`.
+ * 127.0.0.0/8, wildcards `0.0.0.0` / `::`, IPv4-mapped IPv6 127/8, and `*.localhost`.
+ *
+ * Note: WHATWG serializes `[::ffff:127.0.0.1]` as hostname `[::ffff:7f00:1]` —
+ * match that hex form, not the dotted form.
  */
 export function isLoopbackHostname(hostname: string): boolean {
-  // URL.hostname is unbracketed for IPv6; accept bracketed form too.
+  // Accept bracketed IPv6 (URL.hostname often keeps brackets).
   const h = hostname.toLowerCase().replace(/^\[|\]$/g, "");
   if (
     h === "localhost" ||
     h.endsWith(".localhost") ||
     h === "::1" ||
+    h === "::" ||
     h === "0.0.0.0"
   ) {
     return true;
   }
-  // 127.0.0.0/8
+  // 127.0.0.0/8 (dotted)
   if (/^127(?:\.\d{1,3}){3}$/.test(h)) {
     return true;
   }
-  // IPv4-mapped IPv6 loopback, e.g. ::ffff:127.0.0.1
+  // IPv4-mapped IPv6 for 127.0.0.0/8 as WHATWG serializes it (::ffff:7f00:1, …)
+  if (/^::ffff:7f[0-9a-f]{2}:[0-9a-f]{1,4}$/.test(h)) {
+    return true;
+  }
+  // Dotted IPv4-mapped form if a caller passes it raw (::ffff:127.0.0.1)
   if (h.startsWith("::ffff:")) {
     return isLoopbackHostname(h.slice("::ffff:".length));
   }
