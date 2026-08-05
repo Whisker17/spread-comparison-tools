@@ -412,6 +412,9 @@ class MonitorSettings(BaseModel):
     # Orderbook / WS class.
     ws_max_book_age_sec: float = Field(gt=0)
     ws_disconnected_alert_sec: float = Field(gt=0)
+    # WHI-856: expected-vs-healthy book sync grace (unvalidated defaults).
+    ws_books_sync_grace_sec: float = Field(gt=0)
+    ws_books_sync_grace_sec_by_stream: dict[str, float] = Field(default_factory=dict)
     ws_resync_window_sec: float = Field(gt=0)
     ws_resync_count_threshold: int = Field(ge=1)
     ws_failed_resync_threshold: int = Field(ge=1)
@@ -424,11 +427,36 @@ class MonitorSettings(BaseModel):
     probe_max_quote_age_sec: float = Field(gt=0)
     probe_min_fresh_store_quotes: int = Field(ge=0)
     probe_min_healthy_books: int = Field(ge=0)
+    # WHI-856: per-stream floor (process-wide probe_min_healthy_books alone masks
+    # dead venues when one stream is healthy).
+    probe_min_healthy_books_per_stream: int = Field(ge=0)
 
     @field_validator("probe_asset")
     @classmethod
     def _upper_probe_asset(cls, value: str) -> str:
         return value.strip().upper()
+
+    @field_validator("ws_books_sync_grace_sec_by_stream")
+    @classmethod
+    def _positive_per_stream_grace(cls, value: dict[str, float]) -> dict[str, float]:
+        cleaned: dict[str, float] = {}
+        for raw_key, raw_sec in value.items():
+            key = str(raw_key).strip()
+            if not key:
+                raise ValueError("ws_books_sync_grace_sec_by_stream keys must be non-empty")
+            sec = float(raw_sec)
+            if sec <= 0:
+                raise ValueError(
+                    f"ws_books_sync_grace_sec_by_stream[{key!r}] must be > 0 (got {sec})"
+                )
+            cleaned[key] = sec
+        return cleaned
+
+    def books_sync_grace_sec(self, stream_id: str) -> float:
+        """Per-stream books-sync grace, falling back to the global default."""
+        return self.ws_books_sync_grace_sec_by_stream.get(
+            stream_id, self.ws_books_sync_grace_sec
+        )
 
 
 class VenueSettings(BaseModel):

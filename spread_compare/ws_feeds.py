@@ -111,6 +111,10 @@ class WsFeedManager:
         self._resync_ok_mono: dict[str, list[float]] = {}
         self._resync_fail_mono: dict[str, list[float]] = {}
         self._stream_disconnected_since: dict[str, float] = {}
+        # WHI-856: age of the current connect session + peak healthy books
+        # observed since that connect (for never-synced vs degraded alerts).
+        self._stream_connected_since: dict[str, float] = {}
+        self._stream_peak_healthy: dict[str, int] = {}
 
     @property
     def registry(self) -> WsBookRegistry:
@@ -159,12 +163,17 @@ class WsFeedManager:
             return ok, fail
 
     def mark_stream_connected(self, stream_id: str, *, connected: bool) -> None:
-        """Track how long a stream has been disconnected (WHI-819)."""
+        """Track connect/disconnect ages (WHI-819) and reset sync peak (WHI-856)."""
+        now = time.monotonic()
         with self._diag_lock:
             if connected:
                 self._stream_disconnected_since.pop(stream_id, None)
+                # New connect session — never-synced is measured from this open.
+                self._stream_connected_since[stream_id] = now
+                self._stream_peak_healthy[stream_id] = 0
             else:
-                self._stream_disconnected_since.setdefault(stream_id, time.monotonic())
+                self._stream_disconnected_since.setdefault(stream_id, now)
+                self._stream_connected_since.pop(stream_id, None)
 
     def stream_disconnected_age_sec(
         self, stream_id: str, *, now: float | None = None
@@ -176,18 +185,60 @@ class WsFeedManager:
         ts = time.monotonic() if now is None else now
         return max(0.0, ts - since)
 
+    def stream_connected_age_sec(
+        self, stream_id: str, *, now: float | None = None
+    ) -> float | None:
+        """Seconds since the current connect session opened, if connected."""
+        with self._diag_lock:
+            since = self._stream_connected_since.get(stream_id)
+        if since is None:
+            return None
+        ts = time.monotonic() if now is None else now
+        return max(0.0, ts - since)
+
+    def expected_book_count(self, stream_id: str) -> int:
+        """How many symbols this stream was configured to maintain (WHI-856)."""
+        if stream_id == "lighter":
+            return len(self._lighter_markets)
+        return len(self._symbols.get(stream_id, []))
+
+    def note_healthy_books(self, stream_id: str, healthy: int) -> int:
+        """Update and return peak HEALTHY count for the current connect session."""
+        with self._diag_lock:
+            peak = self._stream_peak_healthy.get(stream_id, 0)
+            if healthy > peak:
+                peak = healthy
+                self._stream_peak_healthy[stream_id] = peak
+            return peak
+
+    def peak_healthy_books(self, stream_id: str) -> int:
+        with self._diag_lock:
+            return self._stream_peak_healthy.get(stream_id, 0)
+
     def known_stream_ids(self) -> list[str]:
         """Configured sockets plus any stream that has a disconnect timestamp."""
         with self._diag_lock:
             disc = set(self._stream_disconnected_since)
+            connected = set(self._stream_connected_since)
         ids = {s.stream_id for s in self._sockets}
         ids.update(disc)
+        ids.update(connected)
+        # Streams with a configured symbol list even before the socket object
+        # is recorded (tests / partial start).
+        ids.update(sid for sid, syms in self._symbols.items() if syms)
+        if self._lighter_markets:
+            ids.add("lighter")
         return sorted(ids)
 
     def stream_connected(self, stream_id: str) -> bool:
         for sock in self._sockets:
             if sock.stream_id == stream_id:
                 return sock.is_connected
+        # Diagnostic path: connected_since set without a live socket object
+        # (unit tests inject connect age without spawning websockets).
+        with self._diag_lock:
+            if stream_id in self._stream_connected_since:
+                return True
         return self._registry.connection_count(stream_id) > 0
 
     def _http(self) -> httpx.AsyncClient:

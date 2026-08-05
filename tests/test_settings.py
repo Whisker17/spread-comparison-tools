@@ -89,6 +89,8 @@ def test_load_monitor_settings_defaults() -> None:
     assert mon.sweep_stale_multiplier > 1
     assert mon.ws_disconnected_alert_sec > 0
     assert mon.rate_limit_count_threshold >= 1
+    assert mon.ws_books_sync_grace_sec > 0
+    assert mon.probe_min_healthy_books_per_stream >= 1
 
 
 def test_load_venue_settings_defaults() -> None:

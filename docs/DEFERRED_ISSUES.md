@@ -32,13 +32,6 @@ defines none: `docs/GIT_WORKFLOW.md` § High-risk paths), **Medium**
 
 ## Open
 
-- **`probe_min_healthy_books` is a process-level floor, not per-stream** (Low, WHI-819).
-  `monitor._data_probe_failures` sums healthy books across all streams. One
-  healthy Binance book satisfies the default floor of 1 even if every other
-  stream is dead — per-stream outages are meant to page via `ws_disconnected` /
-  `book_desync` instead. Fix if operators need "all critical streams healthy"
-  as a probe gate: per-stream or per-class min books in `config/monitor.yaml`.
-
 - **Sustained-429 alerts cover Jupiter / Kyber / RPC only** (Low, WHI-819).
   `upstream_events.RATE_LIMIT_SOURCES` matches the poller-fed sources the issue
   called out; CEX/perp REST resync 429s are not counted. Fix: record from
@@ -216,6 +209,11 @@ defines none: `docs/GIT_WORKFLOW.md` § High-risk paths), **Medium**
 ---
 
 ## Resolved
+
+- **`probe_min_healthy_books` is a process-level floor, not per-stream**
+  (Low, WHI-819 → fixed in WHI-856). `probe_min_healthy_books_per_stream` plus
+  `books_unsynced` / `subscribe_failed` assert per connected stream after
+  `ws_books_sync_grace_sec`; process-wide floor retained as a secondary gate.
 
 - **CEX / perp `PLACEHOLDER_TAKER_BPS` + empty `source_urls`** (Low, WHI-802/803 →
   fixed in WHI-812). Venue default_taker schedules live in `config/fees/*.yaml`,
