@@ -1,10 +1,21 @@
 # HTTP API surface tunables (WHI-808 CORS for local Next.js dashboard).
-# Unvalidated defaults pending DESIGN.md §2 — override via api.local.yaml.
+# Unvalidated defaults pending DESIGN.md §2.
+#
+# WHI-849: production-effective CORS lives HERE — never only in untracked
+# api.local.yaml (that was the silent-override bug). Today's host only serves
+# the local Next.js dashboard, so the committed list is localhost/127.0.0.1 on
+# the ports the FE actually uses (3000 default + 3001/3002 when 3000 is taken).
+# When a public browser origin is needed, add it to this committed list and
+# ship it with the release tag — do not put it only on the host.
 #
 # Browser origins allowed to call the API (CORS). No trailing slashes.
 cors_origins:
   - "http://localhost:3000"
   - "http://127.0.0.1:3000"
+  - "http://localhost:3001"
+  - "http://127.0.0.1:3001"
+  - "http://localhost:3002"
+  - "http://127.0.0.1:3002"
 
 # Per-client min interval for POST /simulate (WHI-814). Protects the shared
 # Jupiter keyless ~0.5 RPS budget when a request fans out to three Solana props.

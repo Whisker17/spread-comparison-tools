@@ -405,6 +405,11 @@ async def test_retry_loop_disabled_when_interval_zero() -> None:
 
 
 def test_load_venue_settings_defaults() -> None:
+    """Retry/backoff defaults under the offline suite (mock re-enabled in conftest).
+
+    Production ``disabled: [mock]`` is covered by
+    ``test_committed_venues_yaml_disables_mock`` / ``test_get_venues_omits_mock_…``.
+    """
     clear_settings_cache()
     settings = load_venue_settings()
     assert settings.disabled == []

@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import os
 from collections.abc import Iterator
+from typing import Any
 
 import pytest
 
@@ -49,6 +50,35 @@ def clear_orderbook_snapshot_cache() -> Iterator[None]:
     default_orderbook_cache().clear()
     yield
     default_orderbook_cache().clear()
+
+
+@pytest.fixture(autouse=True)
+def enable_mock_adapter_for_offline_tests(
+    monkeypatch: pytest.MonkeyPatch,
+) -> Iterator[None]:
+    """Re-enable the fixture ``mock`` adapter for the offline suite (WHI-849).
+
+    Production commits ``config/venues.yaml`` with ``disabled: [mock]``. Unit/API
+    tests still use mock as the offline stand-in. Patch ``_merge_local`` in memory
+    so every importer of the cached loaders sees empty ``disabled`` — do **not**
+    write ``config/*.local.yaml`` (deploy treats those as hostile tree leaks;
+    also not xdist-safe).
+    """
+    from spread_compare import settings as settings_mod
+    from spread_compare.settings import clear_settings_cache
+
+    original_merge = settings_mod._merge_local
+
+    def _merge_local_for_tests(name: str) -> dict[str, Any]:
+        raw = dict(original_merge(name))
+        if name == "venues":
+            raw["disabled"] = []
+        return raw
+
+    clear_settings_cache()
+    monkeypatch.setattr(settings_mod, "_merge_local", _merge_local_for_tests)
+    yield
+    clear_settings_cache()
 
 
 @pytest.fixture(autouse=True)

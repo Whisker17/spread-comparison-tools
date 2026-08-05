@@ -1,0 +1,37 @@
+# systemd unit for the spread-comparison-tools backend (WHI-849).
+# Install:
+#   sudo install -m 0644 deploy/spread-comparison.service \
+#     /etc/systemd/system/spread-comparison.service
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now spread-comparison
+#
+# Secrets: EnvironmentFile=/etc/spread-comparison/env (root-owned 0600).
+# Code:    WorkingDirectory=/opt/spread-comparison-tools (git checkout).
+# See docs/DEPLOYMENT.md and docs/adr/0002-packaging-systemd-uv-venv.md.
+
+[Unit]
+Description=spread-comparison-tools API
+Documentation=file:///opt/spread-comparison-tools/docs/DEPLOYMENT.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=spread
+Group=spread
+WorkingDirectory=/opt/spread-comparison-tools
+EnvironmentFile=/etc/spread-comparison/env
+# Bind loopback only; put a reverse proxy in front if the host is public.
+ExecStart=/opt/spread-comparison-tools/.venv/bin/python main.py --host 127.0.0.1 --port 8000
+Restart=on-failure
+RestartSec=3
+# Hardening (read-only root FS is left off — uv/venv writes under APP_DIR).
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+# Do not dump env (RPC URLs embed API keys) into the journal via the unit file.
+# Application code must also never log raw RPC URLs or .env values.
+
+[Install]
+WantedBy=multi-user.target

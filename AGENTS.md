@@ -97,9 +97,14 @@ Price-impact guard (WHI-845): `price_impact_bps` on Quote + `status=excessive_im
 when over `config/impact.yaml` threshold (unvalidated); numbers stay readable, never
 §5.2 best / heat; Jupiter `priceImpactPct`, AMM/Kyber mid-relative `|spread_bps|`.
 Pull-only background poller (WHI-846): in-memory latest-quote store + per-upstream sweep groups for amm_dex/prop_amm; GET /quotes reads store (zero per-request Jupiter/Kyber/RPC); quote_stale age gate for §5.2 best; POST /simulate stays live; WHI-799 §3.1/§6.2 amended.
+Infra deploy/CI (WHI-849): `.github/workflows/backend.yml` offline gate (`pytest` +
+`ruff` + `mypy`); production-effective config committed (`api.yaml` CORS multi-port,
+`venues.yaml` disables `mock`); `scripts/deploy.sh` git-based deploy (secrets + host
+overlays + health); systemd unit under `deploy/`; ADR 0002 (systemd+uv, not Docker —
+template Dockerfile removed); runbook `docs/DEPLOYMENT.md`.
 
-
-**Not implemented:** remaining venue adapters (WHI-805), collector.
+**Not implemented:** remaining venue adapters (WHI-805), collector; real-time monitoring
+(WHI-819).
 Do not assume a module exists until its issue lands.
 
 **Blocking gap:** `docs/DESIGN.md` is still mostly the empty template stub (§4.2 module
@@ -118,8 +123,10 @@ uv run pytest                            # unit tests (offline; skips @pytest.ma
 uv run pytest --live                     # include live tests (network + credentials)
 uv run pytest tests/test_smoke.py        # single test file
 uv run ruff check .                      # lint
-uv run mypy                              # type check
+uv run mypy                              # type check (strict via pyproject)
 uv run python main.py                    # backend entrypoint (:8000)
+# production deploy (on host): DEPLOY_REF=<tag|sha> scripts/deploy.sh
+# see docs/DEPLOYMENT.md
 
 # frontend/ (WHI-808)
 cd frontend && pnpm install
