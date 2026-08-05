@@ -369,7 +369,12 @@ def apply_mid_stale(
     threshold = stale_threshold_sec
     # WHI-847: only WS-served quotes (raw_ref marker) use the tighter mid age.
     # WHI-846 store rows also set age_sec and must keep stale_threshold_sec alone.
-    if quote.raw_ref == "ws_book" and ws_mid_max_age_sec is not None:
+    # raw_ref may be appended with ";tob_error:…" — still a WS-served quote.
+    raw = quote.raw_ref or ""
+    if (
+        (raw == "ws_book" or raw.startswith("ws_book;"))
+        and ws_mid_max_age_sec is not None
+    ):
         threshold = min(threshold, ws_mid_max_age_sec)
     stale = is_mid_stale(
         quote.timestamp,

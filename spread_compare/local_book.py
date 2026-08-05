@@ -20,13 +20,17 @@ BookSideName = Literal["bid", "ask"]
 
 
 class BookHealth(StrEnum):
-    """Per-symbol local book lifecycle (WHI-847)."""
+    """Per-symbol local book lifecycle (WHI-847).
+
+    Staleness-by-age is enforced at serve time (``max_book_age_sec``), not as a
+    separate health enum value — a book that was healthy and then aged out still
+    reports HEALTHY so the age gate can emit ``book_stale`` (not REST fallback).
+    """
 
     CONNECTING = "connecting"
     SYNCING = "syncing"
     HEALTHY = "healthy"
     RESYNCING = "resyncing"
-    STALE = "stale"
     DISCONNECTED = "disconnected"
 
 
