@@ -144,7 +144,7 @@ class WsStreamFlags(BaseModel):
 
 
 class WsSettings(BaseModel):
-    """``config/ws.yaml`` — WebSocket orderbook ingest (WHI-847)."""
+    """``config/ws.yaml`` — WebSocket orderbook ingest (WHI-847 / WHI-855)."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -154,6 +154,17 @@ class WsSettings(BaseModel):
     reconnect_max_sec: float = Field(gt=0)
     lighter_min_resync_interval_sec: float = Field(gt=0)
     fast_mid_poll_interval_sec: float = Field(gt=0)
+    # Per-venue subscribe chunk sizes (args per op) — WHI-855.
+    bybit_spot_subscribe_chunk: int = Field(ge=1)
+    bybit_linear_subscribe_chunk: int = Field(ge=1)
+    apex_subscribe_chunk: int = Field(ge=1)
+    # Binance spot REST resync budget — WHI-855.
+    binance_spot_min_resync_interval_sec: float = Field(gt=0)
+    binance_spot_resync_weight: int = Field(ge=1)
+    binance_spot_resync_weight_budget_per_min: int = Field(ge=1)
+    # Hyperliquid heartbeat — app-level ping; transport ping optional.
+    hyperliquid_app_ping_interval_sec: float = Field(gt=0)
+    hyperliquid_transport_ping: bool
     streams: WsStreamFlags
 
     @model_validator(mode="after")

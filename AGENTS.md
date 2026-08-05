@@ -102,11 +102,13 @@ Infra deploy/CI (WHI-849): `.github/workflows/backend.yml` offline gate (`pytest
 `venues.yaml` disables `mock`); `scripts/deploy.sh` git-based deploy (secrets + host
 overlays + health); systemd unit under `deploy/`; ADR 0002 (systemd+uv, not Docker —
 template Dockerfile removed); runbook `docs/DEPLOYMENT.md`.
-WS orderbook ingest (WHI-847): per-venue local books over multiplexed WebSockets
-(Binance spot/futures, Bybit spot/linear, HL, Lighter, ApeX) with verified sequence
-rules; `GET /quotes` walks memory (zero REST when healthy); REST resync on gap + REST
-fallback when disconnected; fast mid path (~1 Hz `premiumIndex`) +
-`mid.max_age_for_ws_quote_sec`; `config/ws.yaml`.
+WS orderbook ingest (WHI-847 / WHI-855): per-venue local books over multiplexed
+WebSockets (Binance spot/futures, Bybit spot/linear, HL, Lighter, ApeX) with verified
+sequence rules; chunked subscribe (Bybit spot ≤10, ApeX chunk=1), HL app-level ping,
+ApeX pong, Lighter gap recovery via channel resubscribe, Binance spot resync weight
+budget, catalog/phase-1 subscription scope; `GET /quotes` walks memory (zero REST when
+healthy); REST resync on gap + REST fallback when disconnected; fast mid path
+(~1 Hz `premiumIndex`) + `mid.max_age_for_ws_quote_sec`; `config/ws.yaml`.
 Browser WebSocket push (WHI-848): `WS /stream` on FastAPI (`spread_compare/stream.py`
 hub + `api/stream.py`); snapshot-then-delta with coalesce interval, heartbeat, origin
 check against `cors_origins`, client/subscription caps + outbound queue backpressure;
@@ -187,7 +189,7 @@ load-bearing interfaces other modules may depend on.
 - **`spread_compare/poller.py`** — background sweep groups (Jupiter / Kyber / RPC); writes store; never recomputes bps.
 - **`spread_compare/stream.py`** — browser push hub (WHI-848): client registry, coalesce publish, shared collect per filter key, delta diff; never recomputes bps.
 - **`spread_compare/api/stream.py`** — `WS /stream` endpoint (origin validation, subscribe / resnapshot / ping).
-- **`spread_compare/local_book.py`** / **`ws_registry.py`** / **`ws_protocols.py`** / **`ws_connection.py`** / **`ws_feeds.py`** / **`ws_serve.py`** / **`ws_mid.py`** / **`ws_bootstrap.py`** — WS orderbook ingest (WHI-847): local books, per-venue sequence rules, reconnecting multiplexed feeds, serve-from-memory + REST fallback, fast mid poller.
+- **`spread_compare/local_book.py`** / **`ws_registry.py`** / **`ws_protocols.py`** / **`ws_connection.py`** / **`ws_feeds.py`** / **`ws_serve.py`** / **`ws_mid.py`** / **`ws_bootstrap.py`** — WS orderbook ingest (WHI-847 / WHI-855): local books, per-venue sequence rules, reconnecting multiplexed feeds (chunked subscribe, app heartbeats, throttled resync), serve-from-memory + REST fallback, phase-1 subscription scope, fast mid poller.
 - **`frontend/`** — Next.js dashboard (WHI-808): typed API client, SpreadMatrix, section config modules, route shell; `/simulate` UI (WHI-815) via `SimulateSection` + `simulatePairs`/`simulateView` pure libs; multi-tier matrix + size view preference (WHI-843 / WHI-841); page-level quote WebSocket (WHI-848) via `QuotesStreamProvider`.
 - **`main.py`** — CLI: `--dry-run` validates; live serves uvicorn.
 

@@ -1,4 +1,9 @@
-"""Collect symbols and start WS feeds + fast mid after adapter startup (WHI-847)."""
+"""Collect symbols and start WS feeds + fast mid after adapter startup (WHI-847 / WHI-855).
+
+Subscription set is the **product catalog / phase-1 assets that adapters actually
+serve** — not the full venue universe (WHI-855). Reconnect must not re-subscribe
+hundreds of unserved coins (quiet markets keep firing ``book_stale``).
+"""
 
 from __future__ import annotations
 
@@ -8,7 +13,12 @@ from typing import Any
 from spread_compare.adapters.registry import get as get_adapter
 from spread_compare.cex_symbols import resolve_cex_symbol, supported_cex_assets
 from spread_compare.mids import MidService
-from spread_compare.perp_symbols import resolve_apex_base, resolve_hl_coin, resolve_lighter_symbol
+from spread_compare.perp_symbols import (
+    HL_PHASE1_ASSETS,
+    resolve_apex_base,
+    resolve_hl_coin,
+    resolve_lighter_symbol,
+)
 from spread_compare.settings import WsSettings, load_ws_settings
 from spread_compare.ws_feeds import WsFeedManager, set_ws_feed_manager
 from spread_compare.ws_mid import FastMidPoller
@@ -30,6 +40,10 @@ _FAST_MID_ASSETS = (
     "ADA",
     "BNB",
 )
+
+# Phase-1 logical set shared across HL / Lighter / ApeX WS subscriptions.
+# Includes PEPE/BONK multiplier infrastructure (not in assets.ASSETS).
+_PERP_WS_ASSETS: tuple[str, ...] = HL_PHASE1_ASSETS
 
 
 async def start_ws_ingest(
@@ -127,66 +141,90 @@ def _cex_symbols(book_side: str, *, exclude_bstocks: bool = False) -> list[str]:
 
 
 def _hl_coins() -> list[str]:
-    adapter = _safe_adapter("hyperliquid")
-    assets: list[str] = []
-    if adapter is not None:
-        try:
-            assets = list(adapter.supported_assets())
-        except Exception:  # noqa: BLE001
-            assets = list(_FAST_MID_ASSETS)
-    else:
-        assets = list(_FAST_MID_ASSETS)
+    """Hyperliquid coins for WS — phase-1 product set only (WHI-855).
+
+    Previously used the adapter's full meta universe (300+ coins), so reconnect
+    re-subscribed hundreds of markets the dashboard never quotes.
+    """
     coins: list[str] = []
-    for asset in assets:
+    for asset in _PERP_WS_ASSETS:
         try:
             coins.append(resolve_hl_coin(asset).venue_symbol)
         except Exception:  # noqa: BLE001
             continue
-    return coins
+    # Prefer blue chips first.
+    priority = {"BTC", "ETH", "SOL"}
+    return sorted(set(coins), key=lambda c: (0 if c in priority else 1, c))
 
 
 def _lighter_markets() -> dict[str, str]:
-    """market_id → symbol."""
-    adapter = _safe_adapter("lighter")
-    if adapter is None:
-        return {}
-    markets: dict[str, str] = {}
-    # Prefer adapter's warm market table when startup succeeded.
-    by_sym = getattr(adapter, "_markets_by_symbol", None)
-    if isinstance(by_sym, dict):
-        for symbol, meta in by_sym.items():
-            mid = getattr(meta, "market_id", None)
-            if mid is not None:
-                markets[str(mid)] = str(symbol).upper()
-        return markets
-    # Fallback: resolve phase-1 assets if market_id_for is available.
-    for asset in _FAST_MID_ASSETS:
+    """market_id → symbol, scoped to phase-1 assets the product serves (WHI-855)."""
+    wanted: set[str] = set()
+    for asset in _PERP_WS_ASSETS:
         try:
-            resolved = resolve_lighter_symbol(asset)
-            market_id_for = getattr(adapter, "market_id_for", None)
-            if not callable(market_id_for):
-                continue
-            mid = market_id_for(asset)
-            if mid is not None:
-                markets[str(mid)] = resolved.venue_symbol.upper()
+            wanted.add(resolve_lighter_symbol(asset).venue_symbol.upper())
         except Exception:  # noqa: BLE001
             continue
+
+    adapter = _safe_adapter("lighter")
+    markets: dict[str, str] = {}
+    if adapter is not None:
+        by_sym = getattr(adapter, "_markets_by_symbol", None)
+        if isinstance(by_sym, dict):
+            for symbol, meta in by_sym.items():
+                sym_u = str(symbol).upper()
+                if sym_u not in wanted:
+                    continue
+                mid = getattr(meta, "market_id", None)
+                if mid is not None:
+                    markets[str(mid)] = sym_u
+            if markets:
+                return markets
+        # Fallback: market_id_for per phase-1 asset.
+        for asset in _PERP_WS_ASSETS:
+            try:
+                resolved = resolve_lighter_symbol(asset)
+                market_id_for = getattr(adapter, "market_id_for", None)
+                if not callable(market_id_for):
+                    continue
+                mid = market_id_for(asset)
+                if mid is not None:
+                    markets[str(mid)] = resolved.venue_symbol.upper()
+            except Exception:  # noqa: BLE001
+                continue
+        if markets:
+            return markets
+
+    # No adapter / cold path: empty — REST fallback until adapter starts.
     return markets
 
 
 def _apex_cross_symbols() -> list[str]:
+    """ApeX crossSymbolName list for phase-1 assets only (WHI-855)."""
+    wanted_bases: set[str] = set()
+    for asset in _PERP_WS_ASSETS:
+        try:
+            wanted_bases.add(resolve_apex_base(asset).venue_symbol.upper())
+        except Exception:  # noqa: BLE001
+            continue
+
     adapter = _safe_adapter("apex")
-    if adapter is None:
-        return [f"{a}USDT" for a in ("BTC", "ETH", "SOL")]
     symbols: list[str] = []
-    by_base = getattr(adapter, "_symbols_by_base", None)
-    if isinstance(by_base, dict):
-        for meta in by_base.values():
-            cross = getattr(meta, "cross_symbol_name", None)
-            if cross:
-                symbols.append(str(cross).upper())
-        return sorted(set(symbols))
-    for asset in _FAST_MID_ASSETS:
+    if adapter is not None:
+        by_base = getattr(adapter, "_symbols_by_base", None)
+        if isinstance(by_base, dict):
+            for base in wanted_bases:
+                meta = by_base.get(base)
+                if meta is None:
+                    continue
+                cross = getattr(meta, "cross_symbol_name", None)
+                if cross:
+                    symbols.append(str(cross).upper())
+            if symbols:
+                return sorted(set(symbols))
+
+    # Fallback: phase-1 assets as BASEUSDT (works for crypto; equity may differ).
+    for asset in _PERP_WS_ASSETS:
         try:
             base = resolve_apex_base(asset).venue_symbol
             symbols.append(f"{base}USDT")
@@ -200,5 +238,3 @@ def _safe_adapter(slug: str) -> Any | None:
         return get_adapter(slug)
     except Exception:  # noqa: BLE001
         return None
-
-
