@@ -124,9 +124,9 @@ Stream books-sync alerts (WHI-856): per-stream `books_healthy`/`books_expected`,
 partial) past `ws_books_sync_grace_sec`, `subscribe_failed` when `stream_error`
 and still zero healthy books, per-stream data-probe floor.
 HTTP client construction transport extras (WHI-858): missing optional SOCKS
-(`socksio` / `httpx[socks]`) at `BaseAdapter.http` raises `AdapterFetchError`
-(venue-named, degradable) instead of raw `ImportError` killing boot; dependency
-includes `httpx[socks]`.
+extra (`ImportError` for `socksio` / `httpx[socks]`) at `BaseAdapter.http`
+raises venue-named `AdapterFetchError` (degradable) instead of raw
+`ImportError` killing boot; dependency includes `httpx[socks]`.
 
 **Not implemented:** remaining venue adapters (WHI-805), collector.
 Do not assume a module exists until its issue lands.
@@ -169,9 +169,11 @@ env -u ALL_PROXY -u all_proxy -u HTTPS_PROXY -u https_proxy -u HTTP_PROXY -u htt
   uv run python main.py
 ```
 
-If a transport extra is still missing, WHI-858 classifies HTTP-client construction
-failure as a per-venue degradable transport error (not a process-killing config
-error); `GET /health` lists those venues under `unavailable_venues`.
+If the SOCKS transport extra is still missing (``ImportError`` on adapter
+client construction), WHI-858 remaps that to a per-venue degradable
+`AdapterFetchError` (not a process-killing config error); `GET /health` lists
+those venues under `unavailable_venues`. Other non-adapter `httpx.AsyncClient`
+call sites are not remapped — see `docs/DEFERRED_ISSUES.md`.
 
 ## Runtime configuration
 

@@ -558,19 +558,26 @@ async def test_simulate_failed_venue_is_not_initialized(
 
 # --- WHI-858: missing optional HTTP transport extra must degrade, not refuse boot ---
 
+_SOCKS_IMPORT_ERROR = ImportError(
+    "Using SOCKS proxy, but the 'socksio' package is not installed. "
+    "Make sure to install httpx using `pip install httpx[socks]`."
+)
+
+
+def _patch_async_client_socks_import_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Simulate httpx client construction without the SOCKS extra."""
+
+    def boom(**_kwargs: object) -> object:
+        raise _SOCKS_IMPORT_ERROR
+
+    monkeypatch.setattr("spread_compare.adapters.base.httpx.AsyncClient", boom)
+
 
 def test_http_client_import_error_becomes_adapter_fetch_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """SOCKS/missing-extra ImportError at client construction is transport, not config."""
-
-    def boom(**kwargs: object) -> object:
-        raise ImportError(
-            "Using SOCKS proxy, but the 'socksio' package is not installed. "
-            "Make sure to install httpx using `pip install httpx[socks]`."
-        )
-
-    monkeypatch.setattr("spread_compare.adapters.base.httpx.AsyncClient", boom)
+    _patch_async_client_socks_import_error(monkeypatch)
 
     class NamedAdapter(StubAdapter):
         venue: str = "binance"
@@ -592,13 +599,7 @@ async def test_startup_all_degrades_on_http_client_import_error(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     """Adapter that builds its HTTP client at startup degrades; peer venues still boot."""
-
-    def boom(**kwargs: object) -> object:
-        raise ImportError(
-            "Using SOCKS proxy, but the 'socksio' package is not installed."
-        )
-
-    monkeypatch.setattr("spread_compare.adapters.base.httpx.AsyncClient", boom)
+    _patch_async_client_socks_import_error(monkeypatch)
 
     class NeedsHttp(StubAdapter):
         venue: str = "lighter"
@@ -647,13 +648,7 @@ def test_health_reports_degradation_on_http_client_import_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """GET /health lists the venue in unavailable_venues when HTTP client cannot construct."""
-
-    def boom(**kwargs: object) -> object:
-        raise ImportError(
-            "Using SOCKS proxy, but the 'socksio' package is not installed."
-        )
-
-    monkeypatch.setattr("spread_compare.adapters.base.httpx.AsyncClient", boom)
+    _patch_async_client_socks_import_error(monkeypatch)
 
     class NeedsHttp(StubAdapter):
         venue: str = "lighter"

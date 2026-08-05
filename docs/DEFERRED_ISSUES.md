@@ -32,6 +32,20 @@ defines none: `docs/GIT_WORKFLOW.md` § High-risk paths), **Medium**
 
 ## Open
 
+- **Non-adapter lazy `httpx.AsyncClient` sites still raise raw `ImportError`** (Low, WHI-858).
+  `mids.py::MidService._http`, `ws_mid.py`, `ws_feeds.py`, `monitor.py` keep
+  bare client construction. Spec scoped remapping to adapter construction;
+  `httpx[socks]` in the dependency set makes the SOCKS case moot for all
+  sites. Fix: shared `new_async_client(timeout, *, label=...)` helper with
+  per-caller error types if another optional transport extra appears.
+
+- **Missing transport extra is retried as transient forever** (Low, WHI-858).
+  `AdapterFetchError` on missing `socksio` lands in `_DEGRADED` and the
+  WHI-840 startup retry loop; a missing install never self-heals without
+  process restart. Spec forbids changing fatal/degradable policy. Fix: a
+  non-retryable transport-install subclass, or log-once suppression, if the
+  noise becomes an ops issue.
+
 - **Sustained-429 alerts cover Jupiter / Kyber / RPC only** (Low, WHI-819).
   `upstream_events.RATE_LIMIT_SOURCES` matches the poller-fed sources the issue
   called out; CEX/perp REST resync 429s are not counted. Fix: record from

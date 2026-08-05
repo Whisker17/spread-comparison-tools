@@ -160,10 +160,12 @@ class BaseAdapter:
     def http(self) -> httpx.AsyncClient:
         """Lazily create a shared async HTTP client.
 
-        Transport-related construction failures (notably a missing optional
-        SOCKS extra when ``ALL_PROXY`` is set) raise :class:`AdapterFetchError`
-        so WHI-840 can degrade this venue instead of treating ``ImportError``
-        as a fatal config/programmer error (WHI-858).
+        A missing optional transport dependency (``ImportError`` — notably
+        ``socksio`` when ``ALL_PROXY`` selects SOCKS) is re-raised as
+        :class:`AdapterFetchError` so WHI-840 degrades this venue instead of
+        treating raw ``ImportError`` as a fatal config/programmer error
+        (WHI-858). Other construction failures (e.g. bad proxy URL
+        ``ValueError``) are not remapped and remain fatal.
         """
         if self._client is None:
             try:
