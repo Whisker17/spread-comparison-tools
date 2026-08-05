@@ -23,6 +23,7 @@ function quote(
     mid_source: "binance_usdm_index",
     mid_timestamp: "2026-08-03T12:00:00Z",
     mid_stale: false,
+    quote_stale: false,
     timestamp: "2026-08-03T12:00:01Z",
     fee_breakdown: {
       embedded_in_price: false,
@@ -60,6 +61,29 @@ function pair(
 }
 
 describe("bestVenuePerTier", () => {
+  it("excludes quote_stale from best ranking (WHI-846)", () => {
+    const pairs = [
+      pair(
+        "humidifi",
+        "1000",
+        quote({
+          venue: "humidifi",
+          status: "ok",
+          total_cost_bps: "5",
+          quote_stale: true,
+        }),
+      ),
+      pair(
+        "binance",
+        "1000",
+        quote({ venue: "binance", status: "ok", total_cost_bps: "20" }),
+      ),
+    ];
+    const picks = bestVenuePerTier(pairs, { side: "buy" });
+    expect(picks).toHaveLength(1);
+    expect(picks[0]).toMatchObject({ venue: "binance", valueBps: 20, empty: false });
+  });
+
   it("picks lowest total_cost_bps among eligible quotes", () => {
     const pairs = [
       pair(

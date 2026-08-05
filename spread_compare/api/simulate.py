@@ -80,6 +80,7 @@ class SimulateRowResponse(BaseModel):
     error_code: str | None = None
     error_message: str | None = None
     mid_stale: bool = False
+    quote_stale: bool = False
 
 
 class SimulateResponse(BaseModel):
@@ -141,6 +142,7 @@ def _row_to_response(row: SimulateRow) -> SimulateRowResponse:
         error_code=row.error_code,
         error_message=row.error_message,
         mid_stale=row.mid_stale,
+        quote_stale=row.quote_stale,
     )
 
 

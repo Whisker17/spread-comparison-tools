@@ -37,7 +37,7 @@ function quote(
     mid: "500",
     mid_source: "binance_spot_tob",
     mid_timestamp: "2026-08-03T12:00:00Z",
-    mid_stale: false,
+    mid_stale: false, quote_stale: false,
     timestamp: "2026-08-03T12:00:01Z",
     fee_breakdown: {
       embedded_in_price: false,

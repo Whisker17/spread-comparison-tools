@@ -126,7 +126,7 @@ function row(
     best: false,
     error_code: null,
     error_message: null,
-    mid_stale: false,
+    mid_stale: false, quote_stale: false,
     venue_symbol: null,
     ...partial,
   };

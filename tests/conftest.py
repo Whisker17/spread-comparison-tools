@@ -52,6 +52,48 @@ def clear_orderbook_snapshot_cache() -> Iterator[None]:
 
 
 @pytest.fixture(autouse=True)
+def clear_quote_store() -> Iterator[None]:
+    """Isolate the process-wide WHI-846 quote store between tests."""
+    from spread_compare.quote_store import default_quote_store, reset_default_quote_store
+
+    reset_default_quote_store()
+    default_quote_store().clear()
+    yield
+    reset_default_quote_store()
+
+
+@pytest.fixture(autouse=True)
+def disable_pull_poller(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """Keep offline tests free of background upstream sweeps (WHI-846).
+
+    Opt-in tests inject ``poller_settings=...`` on QuoteAggregator / PullQuotePoller
+    rather than re-enabling the process-wide background loop.
+    """
+    from spread_compare.settings import clear_settings_cache, load_poller_settings
+
+    clear_settings_cache()
+    base = load_poller_settings()
+    disabled = base.model_copy(update={"enabled": False})
+
+    def _disabled() -> object:
+        return disabled
+
+    # Preserve lru_cache API so clear_settings_cache() still works.
+    _disabled.cache_clear = load_poller_settings.cache_clear  # type: ignore[attr-defined]
+
+    monkeypatch.setattr("spread_compare.settings.load_poller_settings", _disabled)
+    monkeypatch.setattr("spread_compare.api.app.load_poller_settings", _disabled)
+    # aggregator imports the symbol at call time via default arg load — patch module attr.
+    monkeypatch.setattr(
+        "spread_compare.aggregator.load_poller_settings",
+        _disabled,
+        raising=False,
+    )
+    yield
+    clear_settings_cache()
+
+
+@pytest.fixture(autouse=True)
 def offline_perp_http(request: pytest.FixtureRequest) -> Iterator[None]:
     """Wire mock HTTP for registered perp adapters in non-live tests."""
     if request.node.get_closest_marker("live"):

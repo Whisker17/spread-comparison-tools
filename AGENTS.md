@@ -96,6 +96,8 @@ Core RPC hardening (WHI-842): Multicall3-batched AMM quoter probes, per-endpoint
 Price-impact guard (WHI-845): `price_impact_bps` on Quote + `status=excessive_impact`
 when over `config/impact.yaml` threshold (unvalidated); numbers stay readable, never
 §5.2 best / heat; Jupiter `priceImpactPct`, AMM/Kyber mid-relative `|spread_bps|`.
+Pull-only background poller (WHI-846): in-memory latest-quote store + per-upstream sweep groups for amm_dex/prop_amm; GET /quotes reads store (zero per-request Jupiter/Kyber/RPC); quote_stale age gate for §5.2 best; POST /simulate stays live; WHI-799 §3.1/§6.2 amended.
+
 
 **Not implemented:** remaining venue adapters (WHI-805), collector.
 Do not assume a module exists until its issue lands.
@@ -148,16 +150,18 @@ load-bearing interfaces other modules may depend on.
 - **`spread_compare/bookwalk.py`** — sole walk-the-book VWAP; CEX/perp adapters import only this.
 - **`spread_compare/costs.py`** — sole `spread_bps` / `total_cost_bps` / `basis_bps`; aggregator never recomputes.
 - **`spread_compare/impact.py`** — AMM/prop price-impact bps conversion + threshold reclassification to `excessive_impact` (WHI-845; not CEX/perp).
-- **`spread_compare/settings.py`** — typed YAML config loader (`config/mid.yaml`, `config/aggregator.yaml`, `config/jupiter.yaml`, `config/api.yaml`, `config/venues.yaml`, `config/rpc.yaml`, `config/impact.yaml`, `config/orderbook_cache.yaml`).
+- **`spread_compare/settings.py`** — typed YAML config loader (`config/mid.yaml`, `config/aggregator.yaml`, `config/jupiter.yaml`, `config/api.yaml`, `config/venues.yaml`, `config/rpc.yaml`, `config/impact.yaml`, `config/orderbook_cache.yaml`, `config/poller.yaml`).
 - **`spread_compare/ratelimit.py`** — shared `AsyncRateLimiter` / `TokenBucketRateLimiter` / `RollingWindowRateLimiter` with `max_wait_s` / `expected_wait_s` (WHI-836 / WHI-844); adapters must not define their own.
 - **`spread_compare/budget.py`** — per-call quote deadline + `acquire_within_budget` / `sleep_within_budget` (WHI-844).
 - **`spread_compare/fees.py`** — typed `config/fees/*.yaml` → `FeeSchedule` catalog; adapters + `GET /fees`.
 - **`spread_compare/mids.py`** — reference-mid service (WHI-799 §3 priority chain + cache).
-- **`spread_compare/aggregator.py`** — concurrent adapter fan-out, multi-notional packages (WHI-843), per-class timeout, SizeQuotePair assembly, response cache (multi-tier + single-tier subset hits); also hosts shared fan-out helpers (`quote_with_timeout`, `resolve_mid_with_budget`, `effective_instrument_type`) used by the simulator; never recomputes bps.
+- **`spread_compare/aggregator.py`** — concurrent adapter fan-out, multi-notional packages (WHI-843), per-class timeout, SizeQuotePair assembly, response cache (multi-tier + single-tier subset hits); partitions poller-served classes to the in-memory store (WHI-846); also hosts shared fan-out helpers (`quote_with_timeout`, `resolve_mid_with_budget`, `effective_instrument_type`) used by the simulator; never recomputes bps.
 - **`spread_compare/simulator.py`** — `POST /simulate` fan-out (WHI-814): pair validation, free-form notional, expected_output derivation, §5.2 best ranking; no response cache; never recomputes bps.
 - **`spread_compare/adapters/`** — async `VenueAdapter` + `BaseAdapter`, auto-discovery, `@register_adapter` registry with `startup_all`/`aclose_all` (WHI-840: degrade transient startup failures, disabled venues, background retry), `mock` + CEX (`binance`/`bybit`) + perp DEX (`perp_hyperliquid`/`perp_lighter`/`perp_apex`) + AMM DEX (`amm_uniswap`/`amm_aerodrome`/`amm_pancakeswap`) + prop AMM (`prop_jupiter`/`prop_kyberswap`), shared `_cex_common` / `_perp_common` / `_amm_common` / `_prop_common`; one module per real venue (no hand-import list).
 - **`spread_compare/api/`** — FastAPI app factory with lifespan; `/health` (degradation fields), `/quotes`, `/venues` (omits config-disabled), `/assets`, `/fees`, `POST /simulate`, `GET /simulate/pairs`; CORS for local FE.
 - **`spread_compare/orderbook_cache.py`** — short-TTL single-flight orderbook snapshot cache (WHI-843); depth is part of the key.
+- **`spread_compare/quote_store.py`** — in-memory latest-quote store for pull-only venues (WHI-846); no persistence.
+- **`spread_compare/poller.py`** — background sweep groups (Jupiter / Kyber / RPC); writes store; never recomputes bps.
 - **`frontend/`** — Next.js dashboard (WHI-808): typed API client, SpreadMatrix, section config modules, route shell; `/simulate` UI (WHI-815) via `SimulateSection` + `simulatePairs`/`simulateView` pure libs; multi-tier matrix + size view preference (WHI-843 / WHI-841).
 - **`main.py`** — CLI: `--dry-run` validates; live serves uvicorn.
 
