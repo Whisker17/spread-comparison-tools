@@ -226,7 +226,9 @@ def create_app() -> FastAPI:
         monitor = getattr(request.app.state, "engine_monitor", None)
         if isinstance(monitor, EngineMonitor):
             try:
-                engine = monitor.snapshot().to_view()
+                # Prefer last background evaluation — liveness must stay cheap
+                # and must not re-run alert evaluation on every LB poll.
+                engine = monitor.snapshot(force=False).to_view()
             except Exception:  # noqa: BLE001 — never fail liveness
                 logger.exception("engine health snapshot failed")
         return HealthResponse(
@@ -259,7 +261,7 @@ def create_app() -> FastAPI:
             return JSONResponse(
                 status_code=503, content=view.model_dump(mode="json")
             )
-        snap = monitor.snapshot()
+        snap = monitor.snapshot(force=True)
         body = snap.to_view().model_dump(mode="json")
         status = 200 if snap.data_ok else 503
         return JSONResponse(status_code=status, content=body)

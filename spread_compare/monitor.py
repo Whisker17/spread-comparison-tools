@@ -37,7 +37,7 @@ from spread_compare.upstream_events import (
     RollingEventCounter,
     default_rate_limit_counter,
 )
-from spread_compare.ws_feeds import WsFeedManager
+from spread_compare.ws_feeds import WsFeedManager, stream_id_for_book
 from spread_compare.ws_registry import WsBookRegistry, default_ws_registry
 
 logger = logging.getLogger(__name__)
@@ -361,15 +361,8 @@ def evaluate_alerts(
                 )
             )
 
-        if not snap.data_ok:
-            alerts.append(
-                _OpenAlert(
-                    code="data_stale",
-                    severity="critical",
-                    target="engine",
-                    message="Data probe failed: " + "; ".join(snap.data_failures),
-                )
-            )
+        # data_ok drives GET /health/data (503). Specific codes above already
+        # page mid/sweep/stream root causes — do not double-fire data_stale.
 
     for source, count in snap.rate_limits.items():
         if count >= cfg.rate_limit_count_threshold:
@@ -444,7 +437,7 @@ def _collect_streams(
     # Books only have venue + instrument_type — map via known rules.
     by_stream: dict[str, list[Any]] = {}
     for book in books:
-        sid = _stream_id_for_book(book.venue, book.instrument_type)
+        sid = stream_id_for_book(book.venue, book.instrument_type)
         by_stream.setdefault(sid, []).append(book)
 
     stream_ids: set[str] = set(by_stream)
@@ -491,27 +484,6 @@ def _collect_streams(
             )
         )
     return views
-
-
-def _stream_id_for_book(venue: str, instrument_type: str) -> str:
-    """Map book venue/instrument to WsFeedManager stream_id."""
-    v = venue.lower()
-    it = instrument_type.lower()
-    if v == "binance" and it == "spot":
-        return "binance_spot"
-    if v == "binance" and it == "perp":
-        return "binance_futures"
-    if v == "bybit" and it == "spot":
-        return "bybit_spot"
-    if v == "bybit" and it == "perp":
-        return "bybit_linear"
-    if v == "hyperliquid":
-        return "hyperliquid"
-    if v == "lighter":
-        return "lighter"
-    if v == "apex":
-        return "apex"
-    return f"{v}_{it}"
 
 
 def _count_fresh_store_quotes(
@@ -592,18 +564,14 @@ class WebhookAlerter:
         self._clock = clock or time.monotonic
         # key → last fired mono
         self._last_sent: dict[str, float] = {}
-        self._open_keys: set[str] = set()
+        # key → last open alert (for resolve payloads that retain severity).
+        self._open_alerts: dict[str, _OpenAlert] = {}
         # Last-cycle payloads only (tests assert delivery shape; not a log).
         self.last_cycle_payloads: list[dict[str, Any]] = []
 
     @property
     def configured(self) -> bool:
         return bool(self._url)
-
-    @property
-    def sent_payloads(self) -> list[dict[str, Any]]:
-        """Alias for tests that read the last cycle's attempted deliveries."""
-        return self.last_cycle_payloads
 
     async def aclose(self) -> None:
         if self._owns_client and self._client is not None:
@@ -622,7 +590,6 @@ class WebhookAlerter:
         now = self._clock()
         current = {a.key: a for a in alerts}
         current_keys = set(current)
-        payloads: list[dict[str, Any]] = []
         self.last_cycle_payloads = []
 
         # Newly open or cooled-down re-fire.
@@ -631,32 +598,29 @@ class WebhookAlerter:
             if last is not None and (now - last) < self._settings.alert_cooldown_sec:
                 continue
             payload = self._build_payload(alert, status="firing")
-            payloads.append(payload)
             await self._deliver(payload)
             self._last_sent[key] = now
 
         # Resolutions for alerts that cleared.
-        resolved = self._open_keys - current_keys
+        resolved = set(self._open_alerts) - current_keys
         for key in sorted(resolved):
-            code, _, target = key.partition(":")
-            payload = {
-                "status": "resolved",
-                "code": code,
-                "target": target,
-                "content": f"✅ RESOLVED {code} on {target}",
-                "text": f"RESOLVED {code} on {target}",
-                "timestamp": datetime.now(tz=UTC).isoformat(),
-            }
-            payloads.append(payload)
+            prior = self._open_alerts[key]
+            payload = self._build_payload(prior, status="resolved")
             await self._deliver(payload)
             self._last_sent.pop(key, None)
 
-        self._open_keys = current_keys
-        return payloads
+        self._open_alerts = current
+        return list(self.last_cycle_payloads)
 
     def _build_payload(self, alert: _OpenAlert, *, status: str) -> dict[str, Any]:
-        icon = "🚨" if alert.severity == "critical" else "⚠️"
-        content = f"{icon} [{alert.severity}] {alert.code} @ {alert.target}: {alert.message}"
+        if status == "resolved":
+            content = f"✅ RESOLVED {alert.code} on {alert.target}"
+        else:
+            icon = "🚨" if alert.severity == "critical" else "⚠️"
+            content = (
+                f"{icon} [{alert.severity}] {alert.code} @ {alert.target}: "
+                f"{alert.message}"
+            )
         return {
             "status": status,
             "code": alert.code,
@@ -749,7 +713,14 @@ class EngineMonitor:
         if ws_manager is not None:
             self._ws = ws_manager
 
-    def snapshot(self) -> EngineSnapshot:
+    def snapshot(self, *, force: bool = True) -> EngineSnapshot:
+        """Collect a fresh snapshot (``force=True``) or return the last one.
+
+        Background evaluation always forces. ``GET /health`` prefers the last
+        evaluated snapshot so liveness stays cheap and non-side-effecting.
+        """
+        if not force and self.last_snapshot is not None:
+            return self.last_snapshot
         snap = collect_engine_snapshot(
             settings=self._settings,
             poller=self._poller,
@@ -761,7 +732,7 @@ class EngineMonitor:
         return snap
 
     async def evaluate_once(self) -> EngineSnapshot:
-        snap = self.snapshot()
+        snap = self.snapshot(force=True)
         if self._settings.enabled:
             await self._alerter.process(snap.alerts)
         return snap

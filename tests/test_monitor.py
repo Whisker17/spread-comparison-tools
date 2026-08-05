@@ -82,32 +82,20 @@ def test_ws_disconnected_raises_alert() -> None:
         probe_min_fresh_store_quotes=0,
         probe_min_healthy_books=0,
     )
-    manager = WsFeedManager(settings=None)
-    # Simulate a stream that dropped 45s ago.
+    manager = WsFeedManager()
+    # Dropped 45s ago (same path as _on_stream_closed / never-connected spawn).
+    manager.mark_stream_connected("binance_spot", connected=False)
     manager._stream_disconnected_since["binance_spot"] = 100.0  # noqa: SLF001
-    manager._sockets = []  # noqa: SLF001 — no live sockets → not connected
-
-    now = 145.0  # 45s disconnected
-    snap = EngineSnapshot(
-        now_mono=now,
-        uptime_sec=200.0,
-        in_startup_grace=False,
-        mid_age_sec=1.0,
-        mid_probe_asset="BTC",
-        sweeps=[],
-        streams=[
-            StreamHealthView(
-                stream_id="binance_spot",
-                connected=False,
-                disconnected_age_sec=45.0,
-                books_total=1,
-                books_disconnected=1,
-            )
-        ],
-        rate_limits={"jupiter": 0, "kyber": 0, "rpc": 0},
-        fresh_store_quotes=1,
-        healthy_books=0,
-        data_ok=True,
+    now = 145.0
+    snap = collect_engine_snapshot(
+        settings=cfg,
+        ws_manager=manager,
+        registry=WsBookRegistry(),
+        rate_limits=RollingEventCounter(clock=lambda: now),
+        started_mono=0.0,
+        clock=lambda: now,
+        ws_settings=load_ws_settings_enabled(True),
+        poller_settings=load_poller_settings_enabled(False),
     )
     alerts = evaluate_alerts(snap, cfg)
     codes = {a.code for a in alerts}
@@ -115,7 +103,7 @@ def test_ws_disconnected_raises_alert() -> None:
     disc = next(a for a in alerts if a.code == "ws_disconnected")
     assert disc.target == "binance_spot"
     assert disc.severity == "critical"
-    assert disc.value == 45.0
+    assert disc.value == pytest.approx(45.0)
     assert disc.threshold == 30.0
 
 
@@ -264,7 +252,7 @@ def test_data_probe_fails_when_only_stale_rows() -> None:
     )
     assert snap.data_ok is False
     assert any("fresh store quotes" in f for f in snap.data_failures)
-    assert any(a.code == "data_stale" for a in snap.alerts)
+    # Specific mid/sweep/stream alerts page; data_ok alone drives /health/data.
 
 
 @pytest.mark.asyncio
@@ -289,8 +277,8 @@ async def test_health_data_endpoint_returns_503_when_stale(
 
     original = EngineMonitor.snapshot
 
-    def forced_stale(self: EngineMonitor) -> Any:
-        snap = original(self)
+    def forced_stale(self: EngineMonitor, *, force: bool = True) -> Any:
+        snap = original(self, force=force)
         # Re-evaluate with strict settings / no grace.
         snap.in_startup_grace = False
         snap.mid_age_sec = 999.0
@@ -533,6 +521,22 @@ def test_record_rate_limit_sources_hit_process_counter() -> None:
     assert counter.count("jupiter", window_sec=60.0) == 1
     assert counter.count("kyber", window_sec=60.0) == 1
     assert counter.count("rpc", window_sec=60.0) == 1
+
+
+def test_adapter_modules_wire_record_rate_limit_on_429() -> None:
+    """Guard the three 429 call sites so a removed import fails tests."""
+    import inspect
+
+    from spread_compare.adapters import _amm_common, prop_jupiter, prop_kyberswap
+
+    for mod, source in (
+        (prop_jupiter, "jupiter"),
+        (prop_kyberswap, "kyber"),
+        (_amm_common, "rpc"),
+    ):
+        text = inspect.getsource(mod)
+        assert "record_rate_limit" in text, mod.__name__
+        assert f'record_rate_limit("{source}")' in text, mod.__name__
 
 
 def test_mid_age_is_probe_asset_only() -> None:

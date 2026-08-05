@@ -378,14 +378,6 @@ class MidService:
         cached_at, _result = cached
         return max(0.0, self._clock() - cached_at)
 
-    def freshest_cache_age_sec(self) -> float | None:
-        """Age of the most recently refreshed cache entry, or None if empty."""
-        if not self._cache:
-            return None
-        now = self._clock()
-        newest = max(cached_at for cached_at, _ in self._cache.values())
-        return max(0.0, now - newest)
-
     async def _resolve_source(self, asset: str) -> _SourceResult:
         now = self._clock()
         cached = self._cache.get(asset)

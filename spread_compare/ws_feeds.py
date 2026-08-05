@@ -135,9 +135,6 @@ class WsFeedManager:
         ts = time.monotonic() if now is None else now
         return max(0.0, ts - since)
 
-    def stream_ids(self) -> list[str]:
-        return [s.stream_id for s in self._sockets]
-
     def known_stream_ids(self) -> list[str]:
         """Configured sockets plus any stream that has a disconnect timestamp."""
         ids = {s.stream_id for s in self._sockets}
@@ -498,12 +495,10 @@ class WsFeedManager:
                 "a": result.get("a") or [],
             }
             sync.on_message("snapshot", data)
-            stream_id = "bybit_spot" if category == "spot" else "bybit_linear"
-            self.note_resync(stream_id, ok=True)
+            self.note_resync(bybit_stream_id(category), ok=True)
             logger.info("bybit %s resync ok %s", category, symbol)
         except Exception as exc:  # noqa: BLE001
-            stream_id = "bybit_spot" if category == "spot" else "bybit_linear"
-            self.note_resync(stream_id, ok=False)
+            self.note_resync(bybit_stream_id(category), ok=False)
             sync.book.set_health(BookHealth.DISCONNECTED, error=str(exc))
             logger.warning("bybit %s resync failed %s: %s", category, symbol, exc)
 
@@ -749,6 +744,32 @@ class WsFeedManager:
             self.note_resync("apex", ok=False)
             sync.book.set_health(BookHealth.DISCONNECTED, error=str(exc))
             logger.warning("apex resync failed %s: %s", symbol, exc)
+
+
+def stream_id_for_book(venue: str, instrument_type: str) -> str:
+    """Map local-book venue/instrument to multiplex stream_id (WHI-819 monitor)."""
+    v = venue.lower()
+    it = instrument_type.lower()
+    if v == "binance" and it == "spot":
+        return "binance_spot"
+    if v == "binance" and it == "perp":
+        return "binance_futures"
+    if v == "bybit" and it == "spot":
+        return "bybit_spot"
+    if v == "bybit" and it == "perp":
+        return "bybit_linear"
+    if v == "hyperliquid":
+        return "hyperliquid"
+    if v == "lighter":
+        return "lighter"
+    if v == "apex":
+        return "apex"
+    return f"{v}_{it}"
+
+
+def bybit_stream_id(category: str) -> str:
+    """Bybit WS stream_id for spot vs linear category."""
+    return "bybit_spot" if category == "spot" else "bybit_linear"
 
 
 def _normalize_lighter_levels(raw: object) -> list[list[str]]:
