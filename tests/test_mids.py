@@ -16,6 +16,7 @@ _TEST_MID = MidSettings(
     stale_threshold_sec=5,
     cache_max_age_sec=30,
     http_timeout_sec=5,
+    max_age_for_ws_quote_sec=2.0,
     pyth_feed_ids={},
 )
 
@@ -130,6 +131,7 @@ async def test_force_pyth() -> None:
         stale_threshold_sec=5,
         cache_max_age_sec=30,
         http_timeout_sec=5,
+        max_age_for_ws_quote_sec=2.0,
         pyth_feed_ids={
             "BTC": "e62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43"
         },

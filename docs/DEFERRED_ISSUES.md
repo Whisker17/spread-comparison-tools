@@ -32,12 +32,12 @@ defines none: `docs/GIT_WORKFLOW.md` § High-risk paths), **Medium**
 
 ## Open
 
-- **Orderbook stream freshness still gated by response-cache TTL** (Medium, WHI-848).
-  `QuoteStreamHub.publish_once` → `aggregator.collect(use_cache=True)` reuses the
-  35s live package cache (WHI-844). Store-backed (poller) rows re-stamp age on
-  every tick; CEX/perp deltas only change when the cache misses until WHI-847
-  writes books into memory. Fix: WHI-847 WS ingest, or hub-side `use_cache=False`
-  with a shared background collector.
+- **Stream hub still uses aggregator response cache for live packages** (Low, WHI-848).
+  `QuoteStreamHub.publish_once` → `aggregator.collect(use_cache=True)`. WHI-847
+  serves orderbooks from memory (zero REST when healthy), so cache hits are
+  cheap; residual is only stale packaging when a stream is disconnected and REST
+  fallback is cached. Fix: hub-side shorter TTL or `use_cache=False` with shared
+  single-flight if sub-second push for REST-fallback paths is required.
 
 - **Stream delta fingerprint excludes `age_sec` alone** (Low, WHI-848).
   `pair_fingerprint` drops `age_sec` so poller rows do not re-send every coalesce

@@ -53,6 +53,16 @@ def clear_orderbook_snapshot_cache() -> Iterator[None]:
 
 
 @pytest.fixture(autouse=True)
+def clear_ws_book_registry() -> Iterator[None]:
+    """Isolate the process-wide WHI-847 local book registry between tests."""
+    from spread_compare.ws_registry import default_ws_registry
+
+    default_ws_registry().clear()
+    yield
+    default_ws_registry().clear()
+
+
+@pytest.fixture(autouse=True)
 def enable_mock_adapter_for_offline_tests(
     monkeypatch: pytest.MonkeyPatch,
 ) -> Iterator[None]:
@@ -73,6 +83,10 @@ def enable_mock_adapter_for_offline_tests(
         raw = dict(original_merge(name))
         if name == "venues":
             raw["disabled"] = []
+        # Offline suite: do not open live venue WebSockets (WHI-847).
+        # Protocol/fixture tests inject books into the registry directly.
+        if name == "ws":
+            raw["enabled"] = False
         return raw
 
     clear_settings_cache()

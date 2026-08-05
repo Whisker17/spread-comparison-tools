@@ -16,6 +16,7 @@ from spread_compare.adapters._perp_common import (
     DEFAULT_FEE_TIER,
     OrderbookLevels,
     aggregate_orders_by_price,
+    build_error_quote,
     build_quote_from_book,
     build_quotes_from_book_batch,
     build_top_of_book,
@@ -44,6 +45,7 @@ from spread_compare.models import (
 )
 from spread_compare.perp_symbols import resolve_lighter_symbol, scaled_1000_logical_id
 from spread_compare.ratelimit import RollingWindowRateLimiter
+from spread_compare.ws_serve import LocalBookUnavailable
 
 logger = logging.getLogger(__name__)
 
@@ -136,7 +138,23 @@ class LighterAdapter(BaseAdapter):
                 fee_tier=tier,
             )
 
-        bids, asks = await self._fetch_orders(meta.market_id)
+        try:
+            bids, asks, from_ws, book_age = await self._fetch_orders(
+                meta.market_id, meta.symbol
+            )
+        except LocalBookUnavailable as exc:
+            return build_error_quote(
+                venue=self.venue,
+                asset=asset_key,
+                side=side,
+                notional_usd=notional_usd,
+                mid=mid,
+                instrument_type=itype,
+                error_code=exc.code,
+                message=exc.message,
+                fee_tier=tier,
+                venue_symbol=meta.symbol,
+            )
         schedule = self.get_fees(asset_key, instrument_type=itype)
         return build_quote_from_book(
             venue=self.venue,
@@ -153,6 +171,8 @@ class LighterAdapter(BaseAdapter):
             funding_rate_8h=None,  # not exposed on orderBookDetails (Phase 1)
             venue_mark=meta.mark_price,
             multiplier=resolved.multiplier,
+            from_ws=from_ws,
+            book_age_sec=book_age,
         )
 
     async def get_orderbook_spread(
@@ -172,7 +192,7 @@ class LighterAdapter(BaseAdapter):
         meta = self._markets_by_symbol.get(resolved.venue_symbol)
         if meta is None:
             raise UnsupportedAssetError(f"{asset} not supported by lighter")
-        bids, asks = await self._fetch_orders(meta.market_id)
+        bids, asks, _from_ws, _age = await self._fetch_orders(meta.market_id, meta.symbol)
         return build_top_of_book(
             venue=self.venue,
             asset=asset_key,
@@ -295,7 +315,27 @@ class LighterAdapter(BaseAdapter):
                 for side in sides
             ]
 
-        bids, asks = await self._fetch_orders(meta.market_id)
+        try:
+            bids, asks, from_ws, book_age = await self._fetch_orders(
+                meta.market_id, meta.symbol
+            )
+        except LocalBookUnavailable as exc:
+            return [
+                build_error_quote(
+                    venue=self.venue,
+                    asset=asset_key,
+                    side=side,
+                    notional_usd=n,
+                    mid=mid,
+                    instrument_type=itype,
+                    error_code=exc.code,
+                    message=exc.message,
+                    fee_tier=tier,
+                    venue_symbol=meta.symbol,
+                )
+                for n in notionals
+                for side in sides
+            ]
         schedule = self.get_fees(asset_key, instrument_type=itype)
         return build_quotes_from_book_batch(
             venue=self.venue,
@@ -312,11 +352,13 @@ class LighterAdapter(BaseAdapter):
             funding_rate_8h=None,
             venue_mark=meta.mark_price,
             multiplier=resolved.multiplier,
+            from_ws=from_ws,
+            book_age_sec=book_age,
         )
 
     async def _fetch_orders(
-        self, market_id: int
-    ) -> tuple[OrderbookLevels, OrderbookLevels]:
+        self, market_id: int, symbol: str
+    ) -> tuple[OrderbookLevels, OrderbookLevels, bool, float | None]:
         async def _raw() -> tuple[OrderbookLevels, OrderbookLevels]:
             url = f"{_BASE}{_ORDERS_PATH}"
             params = {"market_id": str(market_id), "limit": str(_ORDER_LIMIT)}
@@ -344,9 +386,10 @@ class LighterAdapter(BaseAdapter):
                 )
             return bids, asks
 
+        # Registry key is venue symbol (e.g. BTC) so WS feed + REST share one book.
         return await cached_book_fetch(
             venue=self.venue,
-            symbol=str(market_id),
+            symbol=symbol,
             instrument_type="perp",
             depth=_ORDER_LIMIT,
             fetch=_raw,

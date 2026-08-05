@@ -15,6 +15,7 @@ from typing import Any, Literal
 from spread_compare.adapters._perp_common import (
     DEFAULT_FEE_TIER,
     OrderbookLevels,
+    build_error_quote,
     build_quote_from_book,
     build_quotes_from_book_batch,
     build_top_of_book,
@@ -44,6 +45,7 @@ from spread_compare.models import (
 )
 from spread_compare.perp_symbols import resolve_apex_base, scaled_1000_logical_id
 from spread_compare.ratelimit import AsyncRateLimiter
+from spread_compare.ws_serve import LocalBookUnavailable
 
 logger = logging.getLogger(__name__)
 
@@ -130,7 +132,21 @@ class ApexAdapter(BaseAdapter):
                 fee_tier=tier,
             )
 
-        bids, asks = await self._fetch_depth(sym.cross_symbol_name)
+        try:
+            bids, asks, from_ws, book_age = await self._fetch_depth(sym.cross_symbol_name)
+        except LocalBookUnavailable as exc:
+            return build_error_quote(
+                venue=self.venue,
+                asset=asset_key,
+                side=side,
+                notional_usd=notional_usd,
+                mid=mid,
+                instrument_type=itype,
+                error_code=exc.code,
+                message=exc.message,
+                fee_tier=tier,
+                venue_symbol=sym.cross_symbol_name,
+            )
         mark = self._mark_by_cross.get(sym.cross_symbol_name)
         schedule = self.get_fees(asset_key, instrument_type=itype)
         return build_quote_from_book(
@@ -150,6 +166,8 @@ class ApexAdapter(BaseAdapter):
             funding_rate_8h=None,
             venue_mark=mark,
             multiplier=resolved.multiplier,
+            from_ws=from_ws,
+            book_age_sec=book_age,
         )
 
     async def get_orderbook_spread(
@@ -169,7 +187,7 @@ class ApexAdapter(BaseAdapter):
         sym = self._symbols_by_base.get(resolved.venue_symbol)
         if sym is None:
             raise UnsupportedAssetError(f"{asset} not supported by apex")
-        bids, asks = await self._fetch_depth(sym.cross_symbol_name)
+        bids, asks, _from_ws, _age = await self._fetch_depth(sym.cross_symbol_name)
         return build_top_of_book(
             venue=self.venue,
             asset=asset_key,
@@ -321,7 +339,25 @@ class ApexAdapter(BaseAdapter):
                 for side in sides
             ]
 
-        bids, asks = await self._fetch_depth(sym.cross_symbol_name)
+        try:
+            bids, asks, from_ws, book_age = await self._fetch_depth(sym.cross_symbol_name)
+        except LocalBookUnavailable as exc:
+            return [
+                build_error_quote(
+                    venue=self.venue,
+                    asset=asset_key,
+                    side=side,
+                    notional_usd=n,
+                    mid=mid,
+                    instrument_type=itype,
+                    error_code=exc.code,
+                    message=exc.message,
+                    fee_tier=tier,
+                    venue_symbol=sym.cross_symbol_name,
+                )
+                for n in notionals
+                for side in sides
+            ]
         mark = self._mark_by_cross.get(sym.cross_symbol_name)
         schedule = self.get_fees(asset_key, instrument_type=itype)
         return build_quotes_from_book_batch(
@@ -339,11 +375,13 @@ class ApexAdapter(BaseAdapter):
             funding_rate_8h=None,
             venue_mark=mark,
             multiplier=resolved.multiplier,
+            from_ws=from_ws,
+            book_age_sec=book_age,
         )
 
     async def _fetch_depth(
         self, cross_symbol: str
-    ) -> tuple[OrderbookLevels, OrderbookLevels]:
+    ) -> tuple[OrderbookLevels, OrderbookLevels, bool, float | None]:
         async def _raw() -> tuple[OrderbookLevels, OrderbookLevels]:
             payload = await self._get_json(
                 f"{_BASE}{_DEPTH_PATH}",

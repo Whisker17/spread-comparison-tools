@@ -18,6 +18,7 @@ from typing import Any, Literal
 from spread_compare.adapters._perp_common import (
     DEFAULT_FEE_TIER,
     OrderbookLevels,
+    build_error_quote,
     build_quote_from_book,
     build_quotes_from_book_batch,
     build_top_of_book,
@@ -52,6 +53,7 @@ from spread_compare.perp_symbols import (
     resolve_hl_coin,
 )
 from spread_compare.ratelimit import AsyncRateLimiter
+from spread_compare.ws_serve import LocalBookUnavailable
 
 logger = logging.getLogger(__name__)
 
@@ -146,7 +148,21 @@ class HyperliquidAdapter(BaseAdapter):
                 fee_tier=tier,
             )
 
-        bids, asks = await self._fetch_l2_book(coin)
+        try:
+            bids, asks, from_ws, book_age = await self._fetch_l2_book(coin)
+        except LocalBookUnavailable as exc:
+            return build_error_quote(
+                venue=self.venue,
+                asset=asset_key,
+                side=side,
+                notional_usd=notional_usd,
+                mid=mid,
+                instrument_type=itype,
+                error_code=exc.code,
+                message=exc.message,
+                fee_tier=tier,
+                venue_symbol=coin,
+            )
         funding_8h = self._funding_rate_8h(coin)
         mark = self._mark_px.get(coin)
         schedule = self.get_fees(asset_key, instrument_type=itype)
@@ -165,6 +181,8 @@ class HyperliquidAdapter(BaseAdapter):
             funding_rate_8h=funding_8h,
             venue_mark=mark,
             multiplier=resolved.multiplier,
+            from_ws=from_ws,
+            book_age_sec=book_age,
         )
 
     async def get_orderbook_spread(
@@ -189,7 +207,7 @@ class HyperliquidAdapter(BaseAdapter):
             raise UnsupportedAssetError(
                 f"{asset} (coin={coin!r}) not on hyperliquid allowed dexes"
             )
-        bids, asks = await self._fetch_l2_book(coin)
+        bids, asks, _from_ws, _age = await self._fetch_l2_book(coin)
         return build_top_of_book(
             venue=self.venue,
             asset=asset_key,
@@ -361,7 +379,25 @@ class HyperliquidAdapter(BaseAdapter):
                 for side in sides
             ]
 
-        bids, asks = await self._fetch_l2_book(coin)
+        try:
+            bids, asks, from_ws, book_age = await self._fetch_l2_book(coin)
+        except LocalBookUnavailable as exc:
+            return [
+                build_error_quote(
+                    venue=self.venue,
+                    asset=asset_key,
+                    side=side,
+                    notional_usd=n,
+                    mid=mid,
+                    instrument_type=itype,
+                    error_code=exc.code,
+                    message=exc.message,
+                    fee_tier=tier,
+                    venue_symbol=coin,
+                )
+                for n in notionals
+                for side in sides
+            ]
         schedule = self.get_fees(asset_key, instrument_type=itype)
         return build_quotes_from_book_batch(
             venue=self.venue,
@@ -378,9 +414,13 @@ class HyperliquidAdapter(BaseAdapter):
             funding_rate_8h=self._funding_rate_8h(coin),
             venue_mark=self._mark_px.get(coin),
             multiplier=resolved.multiplier,
+            from_ws=from_ws,
+            book_age_sec=book_age,
         )
 
-    async def _fetch_l2_book(self, coin: str) -> tuple[OrderbookLevels, OrderbookLevels]:
+    async def _fetch_l2_book(
+        self, coin: str
+    ) -> tuple[OrderbookLevels, OrderbookLevels, bool, float | None]:
         async def _raw() -> tuple[OrderbookLevels, OrderbookLevels]:
             payload = await self._post_info({"type": "l2Book", "coin": coin})
             try:
