@@ -32,6 +32,30 @@ vi.mock("@/hooks/useQuotes", async (importOriginal) => ({
   useQuotesMatrix: useQuotesMatrixMock,
 }));
 
+// WHI-848: passthrough stream so AssetSpreadBlock still exercises the HTTP mock.
+vi.mock("@/hooks/useQuotesStream", () => ({
+  QuotesStreamProvider: ({ children }: { children: ReactNode }) => children,
+  useQuotesStream: () => ({
+    status: "live" as const,
+    byAsset: {},
+    matrixFor: () => undefined,
+    resnapshot: vi.fn(),
+    lastError: null,
+    hasAsset: () => false,
+  }),
+  useQuotesStreamOptional: () => null,
+  useStreamAssetQuotes: () => ({
+    data: undefined,
+    isLoading: false,
+    isFetching: false,
+    isError: false,
+    error: null,
+    status: "live" as const,
+    refetch: vi.fn(),
+    dataUpdatedAt: 0,
+  }),
+}));
+
 vi.mock("@/lib/api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/api")>()),
   fetchAssets: fetchAssetsMock,

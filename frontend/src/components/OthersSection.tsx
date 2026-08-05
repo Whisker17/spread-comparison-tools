@@ -5,6 +5,7 @@ import { Suspense, useMemo } from "react";
 import { AssetSpreadBlock } from "@/components/AssetSpreadBlock";
 import { SectionShellLoading } from "@/components/SectionShellLoading";
 import { SizeSelector } from "@/components/SizeSelector";
+import { StreamStatusBadge } from "@/components/StreamStatusBadge";
 import {
   OTHER_ASSET_GROUPS,
   OTHER_P2_WATCHLIST,
@@ -20,13 +21,19 @@ import {
 } from "@/config/sections/others";
 import { venuesForAsset } from "@/config/sections/helpers";
 import { useNotionalSize } from "@/hooks/useNotionalSize";
+import {
+  QuotesStreamProvider,
+  useQuotesStream,
+} from "@/hooks/useQuotesStream";
 import { formatNotional } from "@/lib/format";
+import type { StreamFilter } from "@/lib/streamQuotes";
 
 /**
  * Full `/others` content: config-driven P0+P1 boards and a collapsed P2
  * watchlist (WHI-811). Venue filter is CEX + three perp DEXes only.
  *
- * WHI-841: page-level size selector → one `/quotes` per asset.
+ * WHI-841: page-level size selector.
+ * WHI-848: one WebSocket (spot + preferPerp meme filters).
  */
 export function OthersSection() {
   return (
@@ -45,6 +52,61 @@ function OthersSectionInner() {
   const venueList = otherVenuesDisplayList();
   const venueFilter = otherVenuesQueryParam();
 
+  const streamFilters = useMemo<StreamFilter[]>(() => {
+    const spotAssets: string[] = [];
+    const perpAssets: string[] = [];
+    for (const group of OTHER_ASSET_GROUPS) {
+      if (group.preferPerp) {
+        perpAssets.push(...group.assets);
+      } else {
+        spotAssets.push(...group.assets);
+      }
+    }
+    const venues = [...OTHER_VENUES];
+    const filters: StreamFilter[] = [];
+    if (spotAssets.length > 0) {
+      filters.push({
+        assets: spotAssets,
+        notionals: [...section.notionals],
+        venues,
+      });
+    }
+    if (perpAssets.length > 0) {
+      filters.push({
+        assets: perpAssets,
+        notionals: [...section.notionals],
+        venues,
+        instrument_type: "perp",
+      });
+    }
+    return filters;
+  }, [section.notionals]);
+
+  return (
+    <QuotesStreamProvider filters={streamFilters}>
+      <OthersStreamBody
+        notional={notional}
+        setNotional={setNotional}
+        venueList={venueList}
+        venueFilter={venueFilter}
+      />
+    </QuotesStreamProvider>
+  );
+}
+
+function OthersStreamBody({
+  notional,
+  setNotional,
+  venueList,
+  venueFilter,
+}: {
+  notional: string;
+  setNotional: (v: string) => void;
+  venueList: string;
+  venueFilter: string;
+}) {
+  const section = othersSection;
+  const stream = useQuotesStream();
   return (
     <div className="space-y-6">
       <header className="space-y-3">
@@ -57,18 +119,20 @@ function OthersSectionInner() {
               {section.description}
             </p>
           </div>
-          <SizeSelector
-            tiers={section.notionals}
-            value={notional}
-            onChange={setNotional}
-          />
+          <div className="flex flex-wrap items-center gap-2">
+            <StreamStatusBadge status={stream.status} />
+            <SizeSelector
+              tiers={section.notionals}
+              value={notional}
+              onChange={setNotional}
+            />
+          </div>
         </div>
         <p className="mt-2 text-xs text-zinc-500">
-          Venues: {venueList} ({OTHER_VENUES.length}-venue filter on every{" "}
-          <code className="text-[11px]">/quotes</code> call). Prop AMM columns
-          are omitted — coverage beyond blue chips is ≈ zero and would only burn
-          Jupiter quota (WHI-798 §5). P0 uses CEX spot + perp DEX books; P1
-          scaled memes force CEX perp so 1000× contracts surface. Size{" "}
+          Venues: {venueList} ({OTHER_VENUES.length}-venue filter on one live
+          WebSocket; prop AMM omitted — WHI-798 §5 / WHI-848). P0 uses CEX spot +
+          perp DEX books; P1 scaled memes force CEX perp so 1000× contracts
+          surface. Size{" "}
           <strong className="font-medium text-zinc-700 dark:text-zinc-300">
             {formatNotional(notional)}
           </strong>
@@ -111,9 +175,8 @@ function OthersSectionInner() {
         </summary>
         <div className="space-y-3 border-t border-zinc-200 px-4 py-4 dark:border-zinc-800">
           <p className="text-xs text-zinc-500">
-            Observation labels only — no <code className="text-[11px]">/quotes</code>{" "}
-            for these tickers (not on the Phase-1 CEX+perp board). Caveats document
-            prop-side gaps.
+            Observation labels only — no live quotes for these tickers (not on
+            the Phase-1 CEX+perp board). Caveats document prop-side gaps.
           </p>
           <ul className="space-y-2">
             {OTHER_P2_WATCHLIST.map((row) => (

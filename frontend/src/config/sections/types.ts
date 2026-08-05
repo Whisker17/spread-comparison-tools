@@ -47,8 +47,9 @@ export type SectionConfig = {
   /** Show TopOfBookRow under the matrix when TOB data exists. */
   showTopOfBook: boolean;
   /**
-   * Auto-poll interval for live quotes (ms). Section pages pass this into
-   * `useQuotesMatrix`; omit to use the hook default.
+   * Legacy HTTP poll interval (ms). WHI-848 section pages use a page-level
+   * WebSocket instead; this only applies when no `QuotesStreamProvider` is
+   * present (fixtures / isolated AssetSpreadBlock). Omit to use hook default.
    */
   pollIntervalMs?: number;
   /**

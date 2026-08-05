@@ -6,6 +6,7 @@ import { Suspense, useMemo } from "react";
 import { AssetSpreadBlock } from "@/components/AssetSpreadBlock";
 import { SectionShellLoading } from "@/components/SectionShellLoading";
 import { SizeSelector } from "@/components/SizeSelector";
+import { StreamStatusBadge } from "@/components/StreamStatusBadge";
 import {
   blueChipsSection,
   buildVenueLabels,
@@ -14,17 +15,22 @@ import {
 } from "@/config/sections/blue-chips";
 import { venuesForAsset } from "@/config/sections/helpers";
 import { useNotionalSize } from "@/hooks/useNotionalSize";
+import {
+  QuotesStreamProvider,
+  useQuotesStream,
+} from "@/hooks/useQuotesStream";
 import { fetchAssets } from "@/lib/api";
 import { formatNotional } from "@/lib/format";
 import { isSizeAll } from "@/lib/notionalSize";
+import type { StreamFilter } from "@/lib/streamQuotes";
 
 /**
  * Full `/blue-chips` content: BTC / ETH / SOL blocks with live data (WHI-809).
  * Owns section-config helpers so AssetSpreadBlock stays section-agnostic.
  * Representation labels prefer GET /assets (backend SSOT) with static fallback.
  *
- * WHI-843: page-level size selector is a view preference; one multi-tier
- * `/quotes` per asset restores the side-by-side matrix.
+ * WHI-843: page-level size selector is a view preference; multi-tier matrix.
+ * WHI-848: one WebSocket for the page (zero periodic GET /quotes).
  */
 export function BlueChipsSection() {
   // useSearchParams requires a Suspense boundary in the App Router.
@@ -56,6 +62,48 @@ function BlueChipsSectionInner() {
     return map;
   }, [assetsQuery.data]);
 
+  const streamFilters = useMemo<StreamFilter[]>(() => {
+    // Union of per-asset venues so the single socket covers every block.
+    const venueSet = new Set<string>();
+    for (const asset of section.assets) {
+      for (const v of venuesForAsset(section, asset)) {
+        venueSet.add(v);
+      }
+    }
+    return [
+      {
+        assets: [...section.assets],
+        notionals: [...section.notionals],
+        venues: [...venueSet],
+        instrument_type: section.instrumentType,
+      },
+    ];
+  }, [section]);
+
+  return (
+    <QuotesStreamProvider filters={streamFilters}>
+      <BlueChipsStreamBody
+        section={section}
+        notional={notional}
+        setNotional={setNotional}
+        repsByAsset={repsByAsset}
+      />
+    </QuotesStreamProvider>
+  );
+}
+
+function BlueChipsStreamBody({
+  section,
+  notional,
+  setNotional,
+  repsByAsset,
+}: {
+  section: typeof blueChipsSection;
+  notional: string;
+  setNotional: (v: string) => void;
+  repsByAsset: Map<string, Readonly<Record<string, string>>>;
+}) {
+  const stream = useQuotesStream();
   return (
     <div className="space-y-6">
       <header className="space-y-3">
@@ -68,11 +116,14 @@ function BlueChipsSectionInner() {
               {section.description}
             </p>
           </div>
-          <SizeSelector
-            tiers={section.notionals}
-            value={notional}
-            onChange={setNotional}
-          />
+          <div className="flex flex-wrap items-center gap-2">
+            <StreamStatusBadge status={stream.status} />
+            <SizeSelector
+              tiers={section.notionals}
+              value={notional}
+              onChange={setNotional}
+            />
+          </div>
         </div>
         <p className="text-xs text-zinc-500">
           {isSizeAll(notional) ? (
@@ -81,7 +132,7 @@ function BlueChipsSectionInner() {
               <strong className="font-medium text-zinc-700 dark:text-zinc-300">
                 all sizes
               </strong>{" "}
-              (one multi-tier request per asset).
+              over one live WebSocket (WHI-848).
             </>
           ) : (
             <>

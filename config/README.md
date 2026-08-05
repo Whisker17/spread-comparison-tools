@@ -28,7 +28,7 @@ Loaders:
 - `spread_compare/settings.py` — `load_mid_settings`, `load_aggregator_settings`,
   `load_jupiter_settings`, `load_api_settings`, `load_venue_settings`,
   `load_rpc_settings`, `load_impact_settings`, `load_orderbook_cache_settings`,
-  `load_poller_settings`, `load_ws_settings`
+  `load_poller_settings`, `load_stream_settings`, `load_ws_settings`
 - `spread_compare/fees.py` — `get_fee_catalog` / `get_fee_schedule` (one YAML per venue)
 
 Checked-in files:
@@ -49,6 +49,10 @@ Checked-in files:
   AMM DEX + prop AMM quotes are written to an in-memory store; `GET /quotes`
   reads them (zero per-request upstream). Unvalidated pending DESIGN.md §2;
   override with `poller.local.yaml`.
+- `stream.yaml` — browser WebSocket push stream (WHI-848): coalesce interval,
+  heartbeat / client liveness, max clients, subscription breadth caps, outbound
+  queue depth. Origin allowlist reuses `api.yaml` `cors_origins`. Unvalidated
+  pending DESIGN.md §2; override with `stream.local.yaml`.
 - `ws.yaml` — WebSocket orderbook ingest (WHI-847): enable flag, max book age,
   reconnect backoff, Lighter resync floor, fast-mid poll interval, per-stream
   flags. When healthy, CEX/perp quotes walk in-memory books (zero REST).

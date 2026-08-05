@@ -1,8 +1,10 @@
 // @vitest-environment jsdom
 
 /**
- * Blue-chips page wiring for WHI-841: one shared size selector and exactly
- * one `/quotes` notional per asset (BTC/ETH/SOL → 3 requests, not 15).
+ * Blue-chips page wiring for WHI-841 / WHI-843 size selector.
+ * WHI-848: production uses one WebSocket; unit tests mock the stream so
+ * AssetSpreadBlock falls back to the HTTP hook (still one multi-tier call
+ * per asset when stream is absent).
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -24,6 +26,30 @@ const { useQuotesMatrixMock, fetchAssetsMock, replaceMock } = vi.hoisted(() => (
 vi.mock("@/hooks/useQuotes", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/hooks/useQuotes")>()),
   useQuotesMatrix: useQuotesMatrixMock,
+}));
+
+// Passthrough provider + optional null so AssetSpreadBlock uses the HTTP mock.
+vi.mock("@/hooks/useQuotesStream", () => ({
+  QuotesStreamProvider: ({ children }: { children: ReactNode }) => children,
+  useQuotesStream: () => ({
+    status: "live" as const,
+    byAsset: {},
+    matrixFor: () => undefined,
+    resnapshot: vi.fn(),
+    lastError: null,
+    hasAsset: () => false,
+  }),
+  useQuotesStreamOptional: () => null,
+  useStreamAssetQuotes: () => ({
+    data: undefined,
+    isLoading: false,
+    isFetching: false,
+    isError: false,
+    error: null,
+    status: "live" as const,
+    refetch: vi.fn(),
+    dataUpdatedAt: 0,
+  }),
 }));
 
 vi.mock("@/lib/api", async (importOriginal) => ({

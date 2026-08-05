@@ -84,6 +84,38 @@ describe("bestVenuePerTier", () => {
     expect(picks[0]).toMatchObject({ venue: "binance", valueBps: 20, empty: false });
   });
 
+  it("mixed-age fixture: stale store row never wins best (WHI-848 push path)", () => {
+    // Simulates a pushed view: poller sweep (stale age) beside a live book row.
+    const staleBuy = quote({
+      venue: "humidifi",
+      status: "ok",
+      total_cost_bps: "3",
+      quote_stale: true,
+      age_sec: 45,
+      snapshot_id: "sweep-old",
+    });
+    const liveBuy = quote({
+      venue: "binance",
+      status: "ok",
+      total_cost_bps: "18",
+      quote_stale: false,
+      age_sec: null,
+      snapshot_id: "live-now",
+    });
+    const pairs = [
+      pair("humidifi", "10000", staleBuy, { snapshot_id: "sweep-old" }),
+      pair("binance", "10000", liveBuy, { snapshot_id: "live-now" }),
+    ];
+    // Client must not assume one snapshot_id per asset.
+    expect(new Set(pairs.map((p) => p.snapshot_id)).size).toBe(2);
+    const picks = bestVenuePerTier(pairs, { side: "buy" });
+    expect(picks[0]).toMatchObject({
+      venue: "binance",
+      valueBps: 18,
+      empty: false,
+    });
+  });
+
   it("picks lowest total_cost_bps among eligible quotes", () => {
     const pairs = [
       pair(

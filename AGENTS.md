@@ -107,9 +107,15 @@ WS orderbook ingest (WHI-847): per-venue local books over multiplexed WebSockets
 rules; `GET /quotes` walks memory (zero REST when healthy); REST resync on gap + REST
 fallback when disconnected; fast mid path (~1 Hz `premiumIndex`) +
 `mid.max_age_for_ws_quote_sec`; `config/ws.yaml`.
+Browser WebSocket push (WHI-848): `WS /stream` on FastAPI (`spread_compare/stream.py`
+hub + `api/stream.py`); snapshot-then-delta with coalesce interval, heartbeat, origin
+check against `cors_origins`, client/subscription caps + outbound queue backpressure;
+`config/stream.yaml`. FE `QuotesStreamProvider` / `useQuotesStream` replaces section
+`GET /quotes` polling (one socket per page); `live`/`reconnecting` badge; Resnapshot
+button; per-row `snapshot_id` / age / `quote_stale` on the wire. `GET /quotes` kept.
 
 **Not implemented:** remaining venue adapters (WHI-805), collector; real-time monitoring
-(WHI-819); server→client push (WHI-848).
+(WHI-819).
 Do not assume a module exists until its issue lands.
 
 **Blocking gap:** `docs/DESIGN.md` is still mostly the empty template stub (§4.2 module
@@ -162,7 +168,7 @@ load-bearing interfaces other modules may depend on.
 - **`spread_compare/bookwalk.py`** — sole walk-the-book VWAP; CEX/perp adapters import only this.
 - **`spread_compare/costs.py`** — sole `spread_bps` / `total_cost_bps` / `basis_bps`; aggregator never recomputes.
 - **`spread_compare/impact.py`** — AMM/prop price-impact bps conversion + threshold reclassification to `excessive_impact` (WHI-845; not CEX/perp).
-- **`spread_compare/settings.py`** — typed YAML config loader (`config/mid.yaml`, `config/aggregator.yaml`, `config/jupiter.yaml`, `config/api.yaml`, `config/venues.yaml`, `config/rpc.yaml`, `config/impact.yaml`, `config/orderbook_cache.yaml`, `config/poller.yaml`, `config/ws.yaml`).
+- **`spread_compare/settings.py`** — typed YAML config loader (`config/mid.yaml`, `config/aggregator.yaml`, `config/jupiter.yaml`, `config/api.yaml`, `config/venues.yaml`, `config/rpc.yaml`, `config/impact.yaml`, `config/orderbook_cache.yaml`, `config/poller.yaml`, `config/stream.yaml`, `config/ws.yaml`).
 - **`spread_compare/ratelimit.py`** — shared `AsyncRateLimiter` / `TokenBucketRateLimiter` / `RollingWindowRateLimiter` with `max_wait_s` / `expected_wait_s` (WHI-836 / WHI-844); adapters must not define their own.
 - **`spread_compare/budget.py`** — per-call quote deadline + `acquire_within_budget` / `sleep_within_budget` (WHI-844).
 - **`spread_compare/fees.py`** — typed `config/fees/*.yaml` → `FeeSchedule` catalog; adapters + `GET /fees`.
@@ -174,8 +180,10 @@ load-bearing interfaces other modules may depend on.
 - **`spread_compare/orderbook_cache.py`** — short-TTL single-flight orderbook snapshot cache (WHI-843); depth is part of the key.
 - **`spread_compare/quote_store.py`** — in-memory latest-quote store for pull-only venues (WHI-846); no persistence.
 - **`spread_compare/poller.py`** — background sweep groups (Jupiter / Kyber / RPC); writes store; never recomputes bps.
+- **`spread_compare/stream.py`** — browser push hub (WHI-848): client registry, coalesce publish, shared collect per filter key, delta diff; never recomputes bps.
+- **`spread_compare/api/stream.py`** — `WS /stream` endpoint (origin validation, subscribe / resnapshot / ping).
 - **`spread_compare/local_book.py`** / **`ws_registry.py`** / **`ws_protocols.py`** / **`ws_connection.py`** / **`ws_feeds.py`** / **`ws_serve.py`** / **`ws_mid.py`** / **`ws_bootstrap.py`** — WS orderbook ingest (WHI-847): local books, per-venue sequence rules, reconnecting multiplexed feeds, serve-from-memory + REST fallback, fast mid poller.
-- **`frontend/`** — Next.js dashboard (WHI-808): typed API client, SpreadMatrix, section config modules, route shell; `/simulate` UI (WHI-815) via `SimulateSection` + `simulatePairs`/`simulateView` pure libs; multi-tier matrix + size view preference (WHI-843 / WHI-841).
+- **`frontend/`** — Next.js dashboard (WHI-808): typed API client, SpreadMatrix, section config modules, route shell; `/simulate` UI (WHI-815) via `SimulateSection` + `simulatePairs`/`simulateView` pure libs; multi-tier matrix + size view preference (WHI-843 / WHI-841); page-level quote WebSocket (WHI-848) via `QuotesStreamProvider`.
 - **`main.py`** — CLI: `--dry-run` validates; live serves uvicorn.
 
 ## Git workflow (mandatory)

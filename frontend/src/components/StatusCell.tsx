@@ -102,6 +102,27 @@ export function StatusCell({
       {decision.kind === "excessive_impact" && decision.badge && (
         <Badge variant={decision.badgeVariant ?? "warning"}>{decision.badge}</Badge>
       )}
+      {/* WHI-846/848: stale store rows keep the number but badge age. */}
+      {decision.kind === "value" && decision.badge && (
+        <Badge variant={decision.badgeVariant ?? "muted"}>{decision.badge}</Badge>
+      )}
+      {(() => {
+        // Prefer server-stamped age_sec; else derive from quote.timestamp so
+        // store rows still show age when the stream omits age-only deltas.
+        const age =
+          decision.ageSec ??
+          (quote?.timestamp ? ageFromTimestamp(quote.timestamp) : null);
+        if (age == null) return null;
+        return (
+          <span
+            className="text-[10px] tabular-nums text-zinc-500"
+            data-testid="quote-age"
+            title={`Observation age ${Math.round(age)}s`}
+          >
+            {formatAgeSec(age)}
+          </span>
+        );
+      })()}
 
       {decision.midStale && (
         <span
@@ -127,6 +148,18 @@ export function StatusCell({
   return <Tooltip content={tip}>{body}</Tooltip>;
 }
 
+function formatAgeSec(ageSec: number): string {
+  if (ageSec < 10) return `${ageSec.toFixed(1)}s`;
+  if (ageSec < 60) return `${Math.round(ageSec)}s`;
+  return `${Math.round(ageSec / 60)}m`;
+}
+
+function ageFromTimestamp(iso: string): number | null {
+  const ms = Date.parse(iso);
+  if (Number.isNaN(ms)) return null;
+  return Math.max(0, (Date.now() - ms) / 1000);
+}
+
 function buildTooltip(
   quote: Quote | null | undefined,
   kind: CellRenderKind,
@@ -149,6 +182,13 @@ function buildTooltip(
             : ""}
         </p>
       )}
+      {quote.quote_stale && (
+        <p className="text-amber-700 dark:text-amber-300">
+          quote stale
+          {quote.age_sec != null ? ` · age ${Math.round(quote.age_sec)}s` : ""}
+          {" · excluded from best"}
+        </p>
+      )}
       {kind === "value" ||
       kind === "cost_incomplete" ||
       kind === "excessive_impact" ? (
@@ -169,8 +209,12 @@ function buildTooltip(
               ? "unknown"
               : `${formatBps(quote.fee_breakdown.gas_bps)} bps`}
           </li>
+          {quote.age_sec != null ? (
+            <li>age: {Math.round(quote.age_sec)}s</li>
+          ) : null}
           <li>quote ts: {formatTimestamp(quote.timestamp)}</li>
           <li>mid ts: {formatTimestamp(quote.mid_timestamp)}</li>
+          <li>row snapshot: {quote.snapshot_id.slice(0, 12)}…</li>
         </ul>
       ) : (
         <ul className="space-y-0.5 text-zinc-600 dark:text-zinc-300">

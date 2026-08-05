@@ -1,0 +1,27 @@
+# WebSocket push stream for the dashboard (WHI-848).
+# Unvalidated defaults pending DESIGN.md §2 — starting points only.
+#
+# Clients subscribe once; the hub coalesces store/live package rebuilds and
+# pushes snapshot-then-delta frames. N viewers share one collect per filter
+# key (aggregator single-flight + response cache still apply for live venues).
+
+# Batch window: max push rate ≈ 1000/coalesce_interval_ms frames per client.
+# 400 ms ⇒ ≤ 2.5 frames/s even if a venue updates every 50 ms.
+coalesce_interval_ms: 400
+
+# Application-level heartbeat (JSON type=heartbeat). Clients treat silence
+# longer than client_liveness_timeout_sec as a dead connection (TCP can hang
+# without a close frame — onclose alone is not sufficient).
+heartbeat_interval_sec: 15.0
+client_liveness_timeout_sec: 45.0
+
+# Concurrent connected browsers (cap server fan-out work).
+max_clients: 50
+
+# Per-client subscription breadth caps (reject oversize subscribe).
+max_assets_per_client: 20
+max_venues_per_client: 40
+
+# Outbound queue depth per client. When full, drop the oldest pending frame
+# rather than unbounded memory growth (slow client backpressure).
+max_queue_depth: 8
