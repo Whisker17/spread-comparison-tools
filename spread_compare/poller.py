@@ -571,9 +571,10 @@ def pair_from_store(
     now = mono()
     buy: Quote | None = None
     sell: Quote | None = None
-    # Prefer a *stored priced/error sample* for pair identity — never a
-    # not_yet_sampled placeholder (those carry the package mid) (WHI-846).
-    stored_ref: Quote | None = None
+    # Freshest *stored* sample wins pair identity (not first side in order).
+    # A failed refresh keeps the old snapshot_id; the surviving leg from the
+    # current sweep must not be dropped in favour of the stale one (WHI-846).
+    freshest: tuple[float, Quote] | None = None
 
     for side in sides:
         key = QuoteStoreKey(
@@ -616,8 +617,8 @@ def pair_from_store(
                 age_sec=age,
                 max_quote_age_for_best_sec=max_best,
             )
-            if stored_ref is None:
-                stored_ref = q
+            if freshest is None or entry.observed_mono > freshest[0]:
+                freshest = (entry.observed_mono, q)
 
         if side == "buy":
             buy = q
@@ -626,10 +627,11 @@ def pair_from_store(
 
     # SizeQuotePair requires legs to share snapshot_id with the pair.
     # When both stored legs share a sweep, use that. When they disagree
-    # (one kept across a failed refresh of the other), drop the older
+    # (one kept across a failed refresh of the other), drop the *older*
     # priced leg rather than silently rewriting mid under a foreign
     # snapshot_id (WHI-799 §6.2 inv. 3 / pairing invariant).
-    if stored_ref is not None:
+    if freshest is not None:
+        stored_ref = freshest[1]
         pair_snap = stored_ref.snapshot_id
         pair_mid_value = stored_ref.mid
         pair_mid_source = stored_ref.mid_source
@@ -656,37 +658,43 @@ def pair_from_store(
 
         buy = _align(buy)
         sell = _align(sell)
-        # If both legs were dropped, re-seed placeholders from package mid.
-        if buy is None and sell is None:
-            pair_mid = mid
-        else:
-            pair_mid = ReferenceMid(
-                snapshot_id=pair_snap,
+        pair_mid = ReferenceMid(
+            snapshot_id=pair_snap,
+            asset=asset_key,
+            mid=pair_mid_value,
+            mid_source=pair_mid_source,
+            timestamp=pair_mid_ts,
+        )
+        # Re-fill a missing leg with a truthful error (not not_yet_sampled —
+        # the key was sampled, but under a different sweep mid).
+        if "buy" in sides and buy is None:
+            buy = error_quote(
+                mid=pair_mid,
+                venue=venue,
                 asset=asset_key,
-                mid=pair_mid_value,
-                mid_source=pair_mid_source,
-                timestamp=pair_mid_ts,
+                side="buy",
+                notional_usd=notional_usd,
+                instrument_type=itype,
+                error_code="snapshot_mismatch",
+                error_message=(
+                    f"{venue}: buy leg kept under a prior sweep snapshot; "
+                    "serving fresher sell only"
+                ),
             )
-            # Re-fill a missing leg with a package-aligned placeholder so the
-            # pair still surfaces the surviving stored leg.
-            if "buy" in sides and buy is None:
-                buy = not_yet_sampled_quote(
-                    mid=pair_mid,
-                    venue=venue,
-                    asset=asset_key,
-                    side="buy",
-                    notional_usd=notional_usd,
-                    instrument_type=itype,
-                )
-            if "sell" in sides and sell is None:
-                sell = not_yet_sampled_quote(
-                    mid=pair_mid,
-                    venue=venue,
-                    asset=asset_key,
-                    side="sell",
-                    notional_usd=notional_usd,
-                    instrument_type=itype,
-                )
+        if "sell" in sides and sell is None:
+            sell = error_quote(
+                mid=pair_mid,
+                venue=venue,
+                asset=asset_key,
+                side="sell",
+                notional_usd=notional_usd,
+                instrument_type=itype,
+                error_code="snapshot_mismatch",
+                error_message=(
+                    f"{venue}: sell leg kept under a prior sweep snapshot; "
+                    "serving fresher buy only"
+                ),
+            )
     else:
         pair_mid = mid
 

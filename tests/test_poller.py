@@ -645,6 +645,86 @@ def test_inter_call_delay_respects_budget_share(
     assert abs(delay_keyless - (1.0 / 3.0)) < 1e-9
 
 
+@pytest.mark.asyncio
+async def test_freshest_leg_wins_pair_identity() -> None:
+    """When buy is stale-kept and sell is fresh, serve the fresh sell (WHI-846)."""
+    store = QuoteStore(clock=lambda: 100.0)
+    settings = _poller_settings()
+    old_mid = _MID.model_copy(update={"snapshot_id": "old-snap", "mid": Decimal("100000")})
+    new_mid = _MID.model_copy(update={"snapshot_id": "new-snap", "mid": Decimal("100100")})
+    # Stale buy observed earlier.
+    store.put(
+        QuoteStoreKey(
+            venue="humidifi",
+            asset="BTC",
+            instrument_type="prop_amm",
+            notional_usd=Decimal("10000"),
+            side="buy",
+        ),
+        _ok_quote(side="buy", mid=old_mid, snapshot_id="old-snap", spread=Decimal("9")),
+        group="jupiter",
+        success=True,
+        observed_at=_TS,
+    )
+    # Force older observed_mono by writing with a frozen clock then advancing.
+    # Re-put buy as failed keep so observed_mono stays low; put sell fresh later.
+    mono = {"t": 10.0}
+    store2 = QuoteStore(clock=lambda: mono["t"])
+    store2.put(
+        QuoteStoreKey(
+            venue="humidifi",
+            asset="BTC",
+            instrument_type="prop_amm",
+            notional_usd=Decimal("10000"),
+            side="buy",
+        ),
+        _ok_quote(side="buy", mid=old_mid, snapshot_id="old-snap", spread=Decimal("9")),
+        group="jupiter",
+        success=True,
+        observed_at=_TS,
+    )
+    mono["t"] = 50.0
+    store2.put(
+        QuoteStoreKey(
+            venue="humidifi",
+            asset="BTC",
+            instrument_type="prop_amm",
+            notional_usd=Decimal("10000"),
+            side="sell",
+        ),
+        _ok_quote(side="sell", mid=new_mid, snapshot_id="new-snap", spread=Decimal("2")),
+        group="jupiter",
+        success=True,
+        observed_at=_TS,
+    )
+    agg = QuoteAggregator(
+        FixedMid(new_mid),
+        aggregator_settings=AggregatorSettings(
+            venue_timeout_sec=2.0,
+            venue_timeout_by_class={},
+            response_cache_ttl_sec=0,
+        ),
+        mid_settings=TEST_MID_SETTINGS,
+        poller_settings=settings,
+        quote_store=store2,
+        clock=lambda: 55.0,
+    )
+    pkg = await agg.collect(
+        "BTC",
+        Decimal("10000"),
+        venues=["humidifi"],
+        use_cache=False,
+    )
+    pair = pkg.pairs[0]
+    assert pair.sell is not None
+    assert pair.sell.snapshot_id == "new-snap"
+    assert pair.sell.spread_bps == Decimal("2")
+    # Buy dropped as foreign snapshot; truthful mismatch, not not_yet_sampled.
+    assert pair.buy is not None
+    assert pair.buy.status == "error"
+    assert pair.buy.error_code == "snapshot_mismatch"
+
+
 def test_failed_refresh_preserves_observed_mono_for_age() -> None:
     """Failed keep-previous must not reset age (WHI-846 best gate)."""
     mono = {"t": 0.0}
