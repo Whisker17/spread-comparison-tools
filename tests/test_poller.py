@@ -616,7 +616,9 @@ async def test_mixed_live_and_store_snapshot_ids(
     assert counting_humidifi.calls == 0
 
 
-def test_inter_call_delay_respects_budget_share() -> None:
+def test_inter_call_delay_respects_budget_share(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     settings = _poller_settings()
     poller = PullQuotePoller(
         FixedMid(_MID),
@@ -628,8 +630,41 @@ def test_inter_call_delay_respects_budget_share() -> None:
             response_cache_ttl_sec=0,
         ),
     )
-    # 90 calls / 15s = 6 RPS; budget 0.6 * 10 = 6 → delay ≈ 1/6.
+    # Keyed: 90 calls / 15s = 6 RPS; budget 0.6 * 10 = 6 → delay ≈ 1/6.
+    monkeypatch.setenv("JUPITER_API_KEY", "test-key")
     delay = poller._inter_call_delay(  # noqa: SLF001
         "jupiter", settings.groups["jupiter"], n_calls=90
     )
     assert abs(delay - (1.0 / 6.0)) < 1e-9
+
+    # Keyless: capacity 5 → max 3 RPS → delay ≈ 1/3 (stricter than interval).
+    monkeypatch.delenv("JUPITER_API_KEY", raising=False)
+    delay_keyless = poller._inter_call_delay(  # noqa: SLF001
+        "jupiter", settings.groups["jupiter"], n_calls=90
+    )
+    assert abs(delay_keyless - (1.0 / 3.0)) < 1e-9
+
+
+def test_failed_refresh_preserves_observed_mono_for_age() -> None:
+    """Failed keep-previous must not reset age (WHI-846 best gate)."""
+    mono = {"t": 0.0}
+    store = QuoteStore(clock=lambda: mono["t"])
+    key = QuoteStoreKey(
+        venue="humidifi",
+        asset="BTC",
+        instrument_type="prop_amm",
+        notional_usd=Decimal("10000"),
+        side="buy",
+    )
+    store.put(key, _ok_quote(), group="jupiter", success=True, observed_at=_TS)
+    mono["t"] = 40.0
+    store.put(key, _ok_quote(), group="jupiter", success=False, observed_at=_TS)
+    entry = store.get(key)
+    assert entry is not None
+    assert entry.observed_mono == 0.0  # not reset to 40
+    assert entry.last_success_mono == 0.0
+    age = mono["t"] - entry.observed_mono
+    stamped = stamp_stored_quote(
+        entry.quote, age_sec=age, max_quote_age_for_best_sec=30.0
+    )
+    assert stamped.quote_stale is True

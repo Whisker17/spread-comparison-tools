@@ -34,6 +34,7 @@ from spread_compare.aggregator import (
 )
 from spread_compare.mids import MidResolutionError, MidService
 from spread_compare.models import (
+    PRICED_QUOTE_STATUSES,
     InstrumentType,
     Quote,
     ReferenceMid,
@@ -41,7 +42,12 @@ from spread_compare.models import (
     SizeQuotePair,
     VenueClass,
 )
-from spread_compare.quote_store import QuoteStore, QuoteStoreKey, default_quote_store
+from spread_compare.quote_store import (
+    QuoteStore,
+    QuoteStoreKey,
+    StoredQuote,
+    default_quote_store,
+)
 from spread_compare.settings import (
     AggregatorSettings,
     PollerGroupSettings,
@@ -297,10 +303,8 @@ class PullQuotePoller:
             g = group_for_venue(adapter.venue, adapter.venue_class)
             if g != group:
                 continue
-            if not is_available(adapter.venue):
-                # Startup-failed venues: still plan work so we can write
-                # not_initialized rows; quote_with_timeout handles that.
-                pass
+            # Startup-failed venues stay in the plan; quote_with_timeout
+            # writes not_initialized rows so the store is not empty.
             itype = default_instrument_type(adapter.venue_class)
             try:
                 assets = adapter.supported_assets(instrument_type=itype)
@@ -351,9 +355,13 @@ class PullQuotePoller:
         """Known upstream capacity for budget_share calculation."""
         if group == POLLER_GROUP_JUPITER:
             jup = load_jupiter_settings()
-            # Prefer keyed capacity (production has a key); window_sec is the
-            # refill window so capacity/window is the sustained RPS.
-            return float(jup.keyed_capacity) / float(jup.window_sec)
+            # Match prop_jupiter active mode: keyless when no API key is set.
+            import os
+
+            has_key = bool(os.environ.get("JUPITER_API_KEY", "").strip())
+            capacity = jup.keyed_capacity if has_key else jup.keyless_capacity
+            # window_sec is the refill window → sustained RPS = capacity/window.
+            return float(capacity) / float(jup.window_sec)
         return None
 
     async def _sample_one(
@@ -425,7 +433,7 @@ class PullQuotePoller:
             if prev is None:
                 return
             # Keep previous value; mark via last_success_mono path.
-            degraded = self._maybe_expire(prev, cfg=cfg, mid=prev.quote)
+            degraded = self._maybe_expire(prev, cfg=cfg, quote=prev.quote)
             if degraded is not None:
                 self._store.put(
                     key,
@@ -512,31 +520,28 @@ class PullQuotePoller:
 
     def _maybe_expire(
         self,
-        prev: object,
+        prev: StoredQuote,
         *,
         cfg: PollerGroupSettings,
-        mid: Quote,
+        quote: Quote,
     ) -> Quote | None:
         """Return an error quote when past max_stale_sec, else None to keep."""
-        from spread_compare.quote_store import StoredQuote as _SQ
-
-        assert isinstance(prev, _SQ)
         age = self._clock() - prev.last_success_mono
         if age <= cfg.max_stale_sec:
             return None
         return error_quote(
             mid=ReferenceMid(
-                snapshot_id=mid.snapshot_id,
-                asset=mid.asset,
-                mid=mid.mid,
-                mid_source=mid.mid_source,
-                timestamp=mid.mid_timestamp,
+                snapshot_id=quote.snapshot_id,
+                asset=quote.asset,
+                mid=quote.mid,
+                mid_source=quote.mid_source,
+                timestamp=quote.mid_timestamp,
             ),
-            venue=mid.venue,
-            asset=mid.asset,
-            side=mid.side,
-            notional_usd=mid.notional_usd,
-            instrument_type=mid.instrument_type,
+            venue=quote.venue,
+            asset=quote.asset,
+            side=quote.side,
+            notional_usd=quote.notional_usd,
+            instrument_type=quote.instrument_type,
             error_code="stale",
             error_message=(
                 f"quote older than max_stale_sec={cfg.max_stale_sec} "
@@ -552,85 +557,6 @@ class PullQuotePoller:
                 await result
             return
         await asyncio.sleep(seconds)
-
-    def read_pair(
-        self,
-        *,
-        venue: str,
-        asset: str,
-        instrument_type: InstrumentType,
-        notional_usd: Decimal,
-        sides: Sequence[Side],
-        stale_threshold_sec: float,
-    ) -> SizeQuotePair:
-        """Assemble a SizeQuotePair from the store for one venue/tier.
-
-        Stamps ``age_sec`` / ``quote_stale``; never recomputes bps.
-        Missing legs become ``not_yet_sampled`` error quotes when a package mid
-        is unavailable — caller should pass through aggregator which has a mid.
-        """
-        # This method is used when we already know the store path; mid for
-        # missing legs comes from a sibling stored leg when possible.
-        buy: Quote | None = None
-        sell: Quote | None = None
-        group_cfg: PollerGroupSettings | None = None
-        now = self._clock()
-
-        for side in sides:
-            key = QuoteStoreKey(
-                venue=venue,
-                asset=asset.upper(),
-                instrument_type=instrument_type,
-                notional_usd=notional_usd,
-                side=side,
-            )
-            entry = self._store.get(key)
-            if entry is None:
-                continue
-            gcfg = self._settings.groups.get(entry.group)
-            group_cfg = gcfg or group_cfg
-            age = max(0.0, now - entry.observed_mono)
-            max_best = (
-                gcfg.max_quote_age_for_best_sec
-                if gcfg is not None
-                else float("inf")
-            )
-            stamped = stamp_stored_quote(
-                entry.quote,
-                age_sec=age,
-                max_quote_age_for_best_sec=max_best,
-            )
-            if side == "buy":
-                buy = stamped
-            else:
-                sell = stamped
-
-        # Build a synthetic mid from whichever leg we have for assemble_pair.
-        ref_leg = buy or sell
-        if ref_leg is None:
-            # Completely missing — assemble empty pair with a placeholder mid
-            # is not possible without mid; return identity-empty via caller.
-            raise KeyError(f"no stored quotes for {venue}/{asset}/{notional_usd}")
-
-        mid = ReferenceMid(
-            snapshot_id=ref_leg.snapshot_id,
-            asset=ref_leg.asset,
-            mid=ref_leg.mid,
-            mid_source=ref_leg.mid_source,
-            timestamp=ref_leg.mid_timestamp,
-        )
-        return assemble_pair(
-            mid=mid,
-            venue=venue,
-            asset=asset.upper(),
-            instrument_type=instrument_type,
-            notional_usd=notional_usd,
-            buy=buy if "buy" in sides else None,
-            sell=sell if "sell" in sides else None,
-            top_of_book=None,
-            stale_threshold_sec=stale_threshold_sec,
-        )
-
 
 def not_yet_sampled_quote(
     *,
@@ -684,7 +610,9 @@ def pair_from_store(
     now = mono()
     buy: Quote | None = None
     sell: Quote | None = None
-    snap_id: str | None = None
+    # Prefer a *stored priced/error sample* for pair identity — never a
+    # not_yet_sampled placeholder (those carry the package mid) (WHI-846).
+    stored_ref: Quote | None = None
 
     for side in sides:
         key = QuoteStoreKey(
@@ -716,8 +644,6 @@ def pair_from_store(
                     notional_usd=notional_usd,
                     instrument_type=itype,
                 )
-            # Missing legs use package snapshot so pair identity matches mid
-            # only when no stored leg exists; if mixed, rewrite later.
         else:
             gcfg = poller_settings.groups.get(entry.group)
             max_best = (
@@ -729,32 +655,35 @@ def pair_from_store(
                 age_sec=age,
                 max_quote_age_for_best_sec=max_best,
             )
-            snap_id = q.snapshot_id
+            if stored_ref is None:
+                stored_ref = q
 
         if side == "buy":
             buy = q
         else:
             sell = q
 
-    # SizeQuotePair requires legs to share snapshot_id with the pair. Stored
-    # legs share a sweep id; not_yet_sampled legs used package mid.snapshot_id.
-    # Prefer the stored snapshot when any leg is from the store; rewrite
-    # placeholder legs to that snapshot so identity holds (bps already null
-    # on error legs).
-    if snap_id is not None:
-        pair_snap = snap_id
-        ref = buy if buy is not None else sell
-        assert ref is not None  # snap_id set only when a stored leg exists
-        pair_mid_value = ref.mid
-        pair_mid_source = ref.mid_source
-        pair_mid_ts = ref.mid_timestamp
+    # SizeQuotePair requires legs to share snapshot_id with the pair.
+    # When both stored legs share a sweep, use that. When they disagree
+    # (one kept across a failed refresh of the other), drop the older
+    # priced leg rather than silently rewriting mid under a foreign
+    # snapshot_id (WHI-799 §6.2 inv. 3 / pairing invariant).
+    if stored_ref is not None:
+        pair_snap = stored_ref.snapshot_id
+        pair_mid_value = stored_ref.mid
+        pair_mid_source = stored_ref.mid_source
+        pair_mid_ts = stored_ref.mid_timestamp
 
         def _align(q: Quote | None) -> Quote | None:
             if q is None:
                 return None
-            if q.snapshot_id == pair_snap:
+            if q.snapshot_id == pair_snap and q.mid == pair_mid_value:
                 return q
-            # Error placeholder aligned to store snapshot (no bps recompute).
+            # Placeholder / foreign-snapshot legs: only rewrite when they
+            # carry no priced bps (error / not_yet_sampled). Priced foreign
+            # legs are dropped so we never mix two mids under one id.
+            if q.status in PRICED_QUOTE_STATUSES and q.snapshot_id != pair_snap:
+                return None
             return q.model_copy(
                 update={
                     "snapshot_id": pair_snap,
@@ -766,13 +695,37 @@ def pair_from_store(
 
         buy = _align(buy)
         sell = _align(sell)
-        pair_mid = ReferenceMid(
-            snapshot_id=pair_snap,
-            asset=asset_key,
-            mid=pair_mid_value,
-            mid_source=pair_mid_source,
-            timestamp=pair_mid_ts,
-        )
+        # If both legs were dropped, re-seed placeholders from package mid.
+        if buy is None and sell is None:
+            pair_mid = mid
+        else:
+            pair_mid = ReferenceMid(
+                snapshot_id=pair_snap,
+                asset=asset_key,
+                mid=pair_mid_value,
+                mid_source=pair_mid_source,
+                timestamp=pair_mid_ts,
+            )
+            # Re-fill a missing leg with a package-aligned placeholder so the
+            # pair still surfaces the surviving stored leg.
+            if "buy" in sides and buy is None:
+                buy = not_yet_sampled_quote(
+                    mid=pair_mid,
+                    venue=venue,
+                    asset=asset_key,
+                    side="buy",
+                    notional_usd=notional_usd,
+                    instrument_type=itype,
+                )
+            if "sell" in sides and sell is None:
+                sell = not_yet_sampled_quote(
+                    mid=pair_mid,
+                    venue=venue,
+                    asset=asset_key,
+                    side="sell",
+                    notional_usd=notional_usd,
+                    instrument_type=itype,
+                )
     else:
         pair_mid = mid
 

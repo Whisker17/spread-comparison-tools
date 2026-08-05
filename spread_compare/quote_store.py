@@ -71,22 +71,40 @@ class QuoteStore:
         success: bool = True,
         observed_at: datetime | None = None,
     ) -> StoredQuote:
-        """Insert or overwrite. ``success=False`` keeps last_success_mono from prior."""
+        """Insert or overwrite.
+
+        ``success=True`` (fresh sample): refresh observation clocks and
+        ``last_success_mono``.
+
+        ``success=False`` (failed refresh keeping previous or writing error):
+        keep the prior ``observed_mono`` / ``observed_at`` when a previous
+        entry exists so ``age_sec`` / ``quote_stale`` continue to advance
+        from the last *good* sample (WHI-846 pairing + best gate). Only
+        ``last_success_mono`` semantics differ: preserved on failure when
+        prior exists, else set to now.
+        """
         now_mono = self._clock()
         now_wall = observed_at or datetime.now(tz=UTC)
         with self._lock:
             prev = self._entries.get(key)
             if success:
                 last_ok = now_mono
+                obs_mono = now_mono
+                obs_at = now_wall
             elif prev is not None:
                 last_ok = prev.last_success_mono
+                # Keep observation clocks so age_sec grows across failures.
+                obs_mono = prev.observed_mono
+                obs_at = prev.observed_at
             else:
                 last_ok = now_mono
+                obs_mono = now_mono
+                obs_at = now_wall
             entry = StoredQuote(
                 quote=quote,
                 group=group,
-                observed_at=now_wall,
-                observed_mono=now_mono,
+                observed_at=obs_at,
+                observed_mono=obs_mono,
                 last_success_mono=last_ok,
             )
             self._entries[key] = entry

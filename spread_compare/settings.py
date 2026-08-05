@@ -173,10 +173,17 @@ class PollerSettings(BaseModel):
 
     @field_validator("notionals_usd")
     @classmethod
-    def _positive_notionals(cls, value: list[Decimal]) -> list[Decimal]:
+    def _tier_notionals(cls, value: list[Decimal]) -> list[Decimal]:
+        # Must be WHI-799 §4.1 tiers so store keys match GET /quotes requests.
+        from spread_compare.models import NOTIONAL_TIERS_USD
+
+        allowed = set(NOTIONAL_TIERS_USD)
         for n in value:
-            if n <= 0:
-                raise ValueError(f"notionals_usd entries must be > 0, got {n}")
+            if n not in allowed:
+                raise ValueError(
+                    f"notionals_usd entry {n} is not a WHI-799 §4.1 tier "
+                    f"{list(NOTIONAL_TIERS_USD)}"
+                )
         return value
 
     @field_validator("groups")
