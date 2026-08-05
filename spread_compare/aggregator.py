@@ -367,7 +367,9 @@ def apply_mid_stale(
     ``max_age_for_ws_quote_sec`` gate (WHI-847).
     """
     threshold = stale_threshold_sec
-    if quote.age_sec is not None and ws_mid_max_age_sec is not None:
+    # WHI-847: only WS-served quotes (raw_ref marker) use the tighter mid age.
+    # WHI-846 store rows also set age_sec and must keep stale_threshold_sec alone.
+    if quote.raw_ref == "ws_book" and ws_mid_max_age_sec is not None:
         threshold = min(threshold, ws_mid_max_age_sec)
     stale = is_mid_stale(
         quote.timestamp,

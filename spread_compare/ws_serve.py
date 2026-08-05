@@ -7,9 +7,7 @@ live here so every venue shares one policy.
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from decimal import Decimal
 
-from spread_compare.bookwalk import OrderbookLevels
 from spread_compare.local_book import BookHealth
 from spread_compare.mids import is_mid_stale
 from spread_compare.models import ReferenceMid
@@ -79,7 +77,12 @@ def stamp_ws_quote_fields(
     quote_timestamp: datetime | None = None,
     mid_settings: MidSettings | None = None,
 ) -> dict[str, object]:
-    """Extra Quote fields for WS-served rows (age + tighter mid_stale)."""
+    """Extra Quote fields for WS-served rows (age + tighter mid_stale).
+
+    Sets ``raw_ref=\"ws_book\"`` so the aggregator can apply
+    ``max_age_for_ws_quote_sec`` without colliding with WHI-846 store rows that
+    also carry ``age_sec``.
+    """
     settings = mid_settings if mid_settings is not None else load_mid_settings()
     now = quote_timestamp or datetime.now(tz=UTC)
     # Tighter gate for WS books (default 2s); still the §3.2 abs(delta) rule.
@@ -93,36 +96,5 @@ def stamp_ws_quote_fields(
         "mid_stale": mid_stale,
         # quote_stale stays False for live path unless we later wire best-age.
         "quote_stale": False,
+        "raw_ref": "ws_book",
     }
-
-
-def levels_from_servable(book: ServableBook) -> tuple[OrderbookLevels, OrderbookLevels]:
-    return book.bids, book.asks
-
-
-def mid_too_old_for_ws(
-    mid: ReferenceMid,
-    *,
-    now: datetime | None = None,
-    mid_settings: MidSettings | None = None,
-) -> bool:
-    """True when mid is older than ``max_age_for_ws_quote_sec`` vs ``now``."""
-    settings = mid_settings if mid_settings is not None else load_mid_settings()
-    ts = now or datetime.now(tz=UTC)
-    age = abs((ts - mid.timestamp).total_seconds())
-    return age > settings.max_age_for_ws_quote_sec
-
-
-def depth_covers_notional(
-    levels: OrderbookLevels,
-    *,
-    notional_usd: Decimal,
-    mid: Decimal,
-) -> bool:
-    """Whether walking ``levels`` can fill ``notional_usd / mid`` base."""
-    from spread_compare.bookwalk import walk_book
-
-    if mid <= 0:
-        return False
-    q_star = notional_usd / mid
-    return walk_book(levels, q_star) is not None

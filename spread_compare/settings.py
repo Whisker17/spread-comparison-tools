@@ -152,7 +152,6 @@ class WsSettings(BaseModel):
     max_book_age_sec: float = Field(gt=0)
     reconnect_min_sec: float = Field(gt=0)
     reconnect_max_sec: float = Field(gt=0)
-    calibration_interval_sec: float = Field(ge=0)
     lighter_min_resync_interval_sec: float = Field(gt=0)
     fast_mid_poll_interval_sec: float = Field(gt=0)
     streams: WsStreamFlags

@@ -166,6 +166,58 @@ class WsFeedManager:
             self._client = None
         self._started = False
 
+
+    def _on_stream_closed(
+        self,
+        stream_id: str,
+        venue: str,
+        instrument_type: str,
+        symbols: Sequence[str],
+    ) -> None:
+        """Mark connection closed and books disconnected so REST fallback engages."""
+        self._registry.mark_connection(stream_id, open=False)
+        for sym in symbols:
+            book = self._registry.get(venue, sym, instrument_type)
+            if book is not None and book.health is BookHealth.HEALTHY:
+                book.set_health(
+                    BookHealth.DISCONNECTED, error=f"{stream_id} socket closed"
+                )
+
+    def _spawn_socket(
+        self,
+        url: str,
+        *,
+        stream_id: str,
+        on_message: Callable[
+            [dict[str, Any] | list[Any] | str], Awaitable[None]
+        ],
+        on_open: Callable[[], Awaitable[None]] | None,
+        venue: str,
+        instrument_type: str,
+        symbols: Sequence[str],
+        sock_holder: list[ReconnectingWebSocket] | None = None,
+    ) -> ReconnectingWebSocket:
+        """Build one multiplexed socket; on drop → REST fallback for those books."""
+        syms = list(symbols)
+
+        async def on_close() -> None:
+            self._on_stream_closed(stream_id, venue, instrument_type, syms)
+
+        sock = ReconnectingWebSocket(
+            url,
+            stream_id=stream_id,
+            on_message=on_message,
+            on_open=on_open,
+            on_close=on_close,
+            reconnect_min_sec=self._settings.reconnect_min_sec,
+            reconnect_max_sec=self._settings.reconnect_max_sec,
+        )
+        if sock_holder is not None:
+            sock_holder.append(sock)
+        self._sockets.append(sock)
+        sock.start()
+        return sock
+
     # ----- Binance spot -------------------------------------------------
 
     async def _start_binance_spot(self) -> None:
@@ -198,16 +250,15 @@ class WsFeedManager:
             if result.needs_resync:
                 await self._resync_binance_spot(sym)
 
-        sock = ReconnectingWebSocket(
+        self._spawn_socket(
             url,
             stream_id=stream_id,
             on_message=on_message,
             on_open=on_open,
-            reconnect_min_sec=self._settings.reconnect_min_sec,
-            reconnect_max_sec=self._settings.reconnect_max_sec,
+            venue="binance",
+            instrument_type="spot",
+            symbols=symbols,
         )
-        self._sockets.append(sock)
-        sock.start()
 
     async def _resync_binance_spot(self, symbol: str) -> None:
         sync = self._spot_syncs.get(symbol)
@@ -266,16 +317,15 @@ class WsFeedManager:
             if result.needs_resync:
                 await self._resync_binance_futures(sym)
 
-        sock = ReconnectingWebSocket(
+        self._spawn_socket(
             url,
             stream_id=stream_id,
             on_message=on_message,
             on_open=on_open,
-            reconnect_min_sec=self._settings.reconnect_min_sec,
-            reconnect_max_sec=self._settings.reconnect_max_sec,
+            venue="binance",
+            instrument_type="perp",
+            symbols=symbols,
         )
-        self._sockets.append(sock)
-        sock.start()
 
     async def _resync_binance_futures(self, symbol: str) -> None:
         sync = self._fut_syncs.get(symbol)
@@ -320,11 +370,12 @@ class WsFeedManager:
 
         stream_id = f"bybit_{category}"
         topics = [f"orderbook.1000.{s}" for s in symbols]
+        sock_holder: list[ReconnectingWebSocket] = []
 
         async def on_open() -> None:
             self._registry.mark_connection(stream_id, open=True)
             # Bybit multiplex: one subscribe op with multiple args.
-            await sock.send_json({"op": "subscribe", "args": topics})
+            await sock_holder[0].send_json({"op": "subscribe", "args": topics})
 
         async def on_message(payload: dict[str, Any] | list[Any] | str) -> None:
             if not isinstance(payload, dict):
@@ -348,16 +399,16 @@ class WsFeedManager:
             if result.needs_resync:
                 await self._resync_bybit(category, sym, sync)
 
-        sock = ReconnectingWebSocket(
+        self._spawn_socket(
             ws_url,
             stream_id=stream_id,
             on_message=on_message,
             on_open=on_open,
-            reconnect_min_sec=self._settings.reconnect_min_sec,
-            reconnect_max_sec=self._settings.reconnect_max_sec,
+            venue="bybit",
+            instrument_type=instrument,
+            symbols=symbols,
+            sock_holder=sock_holder,
         )
-        self._sockets.append(sock)
-        sock.start()
 
     async def _resync_bybit(self, category: str, symbol: str, sync: BybitSync) -> None:
         sync.book.set_health(BookHealth.RESYNCING)
@@ -391,14 +442,19 @@ class WsFeedManager:
             self._hl_syncs[coin] = HyperliquidSync(book)
 
         stream_id = "hyperliquid"
+        sock_holder: list[ReconnectingWebSocket] = []
 
         async def on_open() -> None:
             self._registry.mark_connection(stream_id, open=True)
             for coin in coins:
-                await sock.send_json(
+                await sock_holder[0].send_json(
                     {
                         "method": "subscribe",
-                        "subscription": {"type": "l2Book", "coin": coin},
+                        "subscription": {
+                            "type": "l2Book",
+                            "coin": coin,
+                            "fast": False,  # 20 levels; fast:true is 5 (WHI-847)
+                        },
                     }
                 )
 
@@ -426,16 +482,16 @@ class WsFeedManager:
             asks_raw = [[lvl.get("px"), lvl.get("sz")] for lvl in levels[1]]
             sync.on_snapshot(bids_raw, asks_raw)
 
-        sock = ReconnectingWebSocket(
+        self._spawn_socket(
             _HL_WS,
             stream_id=stream_id,
             on_message=on_message,
             on_open=on_open,
-            reconnect_min_sec=self._settings.reconnect_min_sec,
-            reconnect_max_sec=self._settings.reconnect_max_sec,
+            venue="hyperliquid",
+            instrument_type="perp",
+            symbols=coins,
+            sock_holder=sock_holder,
         )
-        self._sockets.append(sock)
-        sock.start()
 
     # ----- Lighter ------------------------------------------------------
 
@@ -446,11 +502,12 @@ class WsFeedManager:
             self._lighter_syncs[str(market_id)] = LighterSync(book)
 
         stream_id = "lighter"
+        sock_holder: list[ReconnectingWebSocket] = []
 
         async def on_open() -> None:
             self._registry.mark_connection(stream_id, open=True)
             for market_id in self._lighter_markets:
-                await sock.send_json(
+                await sock_holder[0].send_json(
                     {"type": "subscribe", "channel": f"order_book/{market_id}"}
                 )
 
@@ -493,16 +550,16 @@ class WsFeedManager:
                 if result.needs_resync:
                     await self._resync_lighter(str(market_id), sync)
 
-        sock = ReconnectingWebSocket(
+        self._spawn_socket(
             _LIGHTER_WS,
             stream_id=stream_id,
             on_message=on_message,
             on_open=on_open,
-            reconnect_min_sec=self._settings.reconnect_min_sec,
-            reconnect_max_sec=self._settings.reconnect_max_sec,
+            venue="lighter",
+            instrument_type="perp",
+            symbols=list(self._lighter_markets.values()),
+            sock_holder=sock_holder,
         )
-        self._sockets.append(sock)
-        sock.start()
 
     async def _resync_lighter(self, market_id: str, sync: LighterSync) -> None:
         now = time.monotonic()
@@ -541,11 +598,12 @@ class WsFeedManager:
         stream_id = "apex"
         ts_ms = int(time.time() * 1000)
         url = f"{_APEX_WS_BASE}?{urlencode({'v': '2', 'timestamp': str(ts_ms)})}"
+        sock_holder: list[ReconnectingWebSocket] = []
 
         async def on_open() -> None:
             self._registry.mark_connection(stream_id, open=True)
             args = [f"orderBook200.H.{s}" for s in symbols]
-            await sock.send_json({"op": "subscribe", "args": args})
+            await sock_holder[0].send_json({"op": "subscribe", "args": args})
 
         async def on_message(payload: dict[str, Any] | list[Any] | str) -> None:
             if not isinstance(payload, dict):
@@ -579,16 +637,16 @@ class WsFeedManager:
             if result.needs_resync:
                 await self._resync_apex(sym, sync)
 
-        sock = ReconnectingWebSocket(
+        self._spawn_socket(
             url,
             stream_id=stream_id,
             on_message=on_message,
             on_open=on_open,
-            reconnect_min_sec=self._settings.reconnect_min_sec,
-            reconnect_max_sec=self._settings.reconnect_max_sec,
+            venue="apex",
+            instrument_type="perp",
+            symbols=symbols,
+            sock_holder=sock_holder,
         )
-        self._sockets.append(sock)
-        sock.start()
 
     async def _resync_apex(self, symbol: str, sync: ApexSync) -> None:
         sync.book.set_health(BookHealth.RESYNCING)

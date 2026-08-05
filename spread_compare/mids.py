@@ -26,8 +26,6 @@ from spread_compare.cex_symbols import resolve_cex_multiplier, resolve_cex_symbo
 from spread_compare.models import MidSource, ReferenceMid
 from spread_compare.settings import MidSettings, load_mid_settings
 
-# MidSource is a Literal in models; seed_cache accepts the same labels.
-
 logger = logging.getLogger(__name__)
 
 _BINANCE_FAPI = "https://fapi.binance.com"

@@ -25,8 +25,8 @@ async def test_ws_start_failure_does_not_raise(
 
     monkeypatch.setattr(WsFeedManager, "start", boom)
     manager, poller = await start_ws_ingest(mid, settings=settings)
-    # start_ws_ingest catches and returns None manager on outer failure
-    assert manager is None or True  # either path is non-raising
+    # Outer start failure → no manager; must not raise / block boot.
+    assert manager is None
     await stop_ws_ingest(manager, poller)
     await mid.aclose()
 

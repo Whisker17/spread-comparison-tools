@@ -174,7 +174,7 @@ load-bearing interfaces other modules may depend on.
 - **`spread_compare/orderbook_cache.py`** — short-TTL single-flight orderbook snapshot cache (WHI-843); depth is part of the key.
 - **`spread_compare/quote_store.py`** — in-memory latest-quote store for pull-only venues (WHI-846); no persistence.
 - **`spread_compare/poller.py`** — background sweep groups (Jupiter / Kyber / RPC); writes store; never recomputes bps.
-- **`spread_compare/local_book.py`** / **`ws_registry.py`** / **`ws_protocols.py`** / **`ws_feeds.py`** / **`ws_serve.py`** / **`ws_mid.py`** / **`ws_bootstrap.py`** — WS orderbook ingest (WHI-847): local books, per-venue sequence rules, multiplexed feeds, serve-from-memory + REST fallback, fast mid poller.
+- **`spread_compare/local_book.py`** / **`ws_registry.py`** / **`ws_protocols.py`** / **`ws_connection.py`** / **`ws_feeds.py`** / **`ws_serve.py`** / **`ws_mid.py`** / **`ws_bootstrap.py`** — WS orderbook ingest (WHI-847): local books, per-venue sequence rules, reconnecting multiplexed feeds, serve-from-memory + REST fallback, fast mid poller.
 - **`frontend/`** — Next.js dashboard (WHI-808): typed API client, SpreadMatrix, section config modules, route shell; `/simulate` UI (WHI-815) via `SimulateSection` + `simulatePairs`/`simulateView` pure libs; multi-tier matrix + size view preference (WHI-843 / WHI-841).
 - **`main.py`** — CLI: `--dry-run` validates; live serves uvicorn.
 

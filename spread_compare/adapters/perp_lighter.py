@@ -16,6 +16,7 @@ from spread_compare.adapters._perp_common import (
     DEFAULT_FEE_TIER,
     OrderbookLevels,
     aggregate_orders_by_price,
+    build_error_quote,
     build_quote_from_book,
     build_quotes_from_book_batch,
     build_top_of_book,
@@ -44,6 +45,7 @@ from spread_compare.models import (
 )
 from spread_compare.perp_symbols import resolve_lighter_symbol, scaled_1000_logical_id
 from spread_compare.ratelimit import RollingWindowRateLimiter
+from spread_compare.ws_serve import LocalBookUnavailable
 
 logger = logging.getLogger(__name__)
 
@@ -136,9 +138,23 @@ class LighterAdapter(BaseAdapter):
                 fee_tier=tier,
             )
 
-        bids, asks, from_ws, book_age = await self._fetch_orders(
-            meta.market_id, meta.symbol
-        )
+        try:
+            bids, asks, from_ws, book_age = await self._fetch_orders(
+                meta.market_id, meta.symbol
+            )
+        except LocalBookUnavailable as exc:
+            return build_error_quote(
+                venue=self.venue,
+                asset=asset_key,
+                side=side,
+                notional_usd=notional_usd,
+                mid=mid,
+                instrument_type=itype,
+                error_code=exc.code,
+                message=exc.message,
+                fee_tier=tier,
+                venue_symbol=meta.symbol,
+            )
         schedule = self.get_fees(asset_key, instrument_type=itype)
         return build_quote_from_book(
             venue=self.venue,
@@ -299,9 +315,27 @@ class LighterAdapter(BaseAdapter):
                 for side in sides
             ]
 
-        bids, asks, from_ws, book_age = await self._fetch_orders(
-            meta.market_id, meta.symbol
-        )
+        try:
+            bids, asks, from_ws, book_age = await self._fetch_orders(
+                meta.market_id, meta.symbol
+            )
+        except LocalBookUnavailable as exc:
+            return [
+                build_error_quote(
+                    venue=self.venue,
+                    asset=asset_key,
+                    side=side,
+                    notional_usd=n,
+                    mid=mid,
+                    instrument_type=itype,
+                    error_code=exc.code,
+                    message=exc.message,
+                    fee_tier=tier,
+                    venue_symbol=meta.symbol,
+                )
+                for n in notionals
+                for side in sides
+            ]
         schedule = self.get_fees(asset_key, instrument_type=itype)
         return build_quotes_from_book_batch(
             venue=self.venue,

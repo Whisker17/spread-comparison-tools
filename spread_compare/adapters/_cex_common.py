@@ -52,7 +52,11 @@ from spread_compare.orderbook_cache import (
 )
 from spread_compare.ratelimit import AsyncRateLimiter
 from spread_compare.ws_registry import WsBookRegistry, default_ws_registry
-from spread_compare.ws_serve import LocalBookUnavailable, stamp_ws_quote_fields, try_local_book
+from spread_compare.ws_serve import (
+    LocalBookUnavailable,
+    stamp_ws_quote_fields,
+    try_local_book,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -314,12 +318,10 @@ class CexBaseAdapter(BaseAdapter, ABC):
         q_star: Decimal | None = None,
     ) -> tuple[OrderbookLevels, OrderbookLevels, bool, float | None]:
         """Prefer local WS book; fall back to REST. Returns ``(bids, asks, from_ws, age)``."""
-        try:
-            local = try_local_book(
-                self.venue, symbol, book_side, registry=self._registry()
-            )
-        except LocalBookUnavailable as exc:
-            raise AdapterFetchError(f"{self.venue}: {exc.message}") from exc
+        local = try_local_book(
+            self.venue, symbol, book_side, registry=self._registry()
+        )
+        # LocalBookUnavailable propagates (typed) so callers map book_stale.
         if local is not None:
             return local.bids, local.asks, True, local.age_sec
         bids, asks = await self._fetch_book(
@@ -516,22 +518,20 @@ class CexBaseAdapter(BaseAdapter, ABC):
             bids, asks, from_ws, book_age = await self._resolve_book(
                 symbol, book_side, side=side, q_star=q_star
             )
-        except AdapterFetchError as exc:
-            if "book_stale" in str(exc) or "local book age" in str(exc).lower():
-                return build_error_quote(
-                    venue=self.venue,
-                    asset=asset_key,
-                    side=side,
-                    notional_usd=notional_usd,
-                    mid=mid,
-                    instrument_type=book_side,
-                    error_code="book_stale",
-                    message=str(exc),
-                    fee_tier=tier,
-                    venue_symbol=symbol,
-                    status="error",
-                )
-            raise
+        except LocalBookUnavailable as exc:
+            return build_error_quote(
+                venue=self.venue,
+                asset=asset_key,
+                side=side,
+                notional_usd=notional_usd,
+                mid=mid,
+                instrument_type=book_side,
+                error_code=exc.code,
+                message=exc.message,
+                fee_tier=tier,
+                venue_symbol=symbol,
+                status="error",
+            )
         return build_quote_from_book(
             venue=self.venue,
             asset=asset_key,
@@ -647,26 +647,24 @@ class CexBaseAdapter(BaseAdapter, ABC):
             bids, asks, from_ws, book_age = await self._resolve_book(
                 symbol, book_side, side=side_order[0], q_star=q_max
             )
-        except AdapterFetchError as exc:
-            if "book_stale" in str(exc) or "local book age" in str(exc).lower():
-                return [
-                    build_error_quote(
-                        venue=self.venue,
-                        asset=asset_key,
-                        side=side,
-                        notional_usd=n,
-                        mid=mid,
-                        instrument_type=book_side,
-                        error_code="book_stale",
-                        message=str(exc),
-                        fee_tier=tier,
-                        venue_symbol=symbol,
-                        status="error",
-                    )
-                    for n in notionals
-                    for side in sides
-                ]
-            raise
+        except LocalBookUnavailable as exc:
+            return [
+                build_error_quote(
+                    venue=self.venue,
+                    asset=asset_key,
+                    side=side,
+                    notional_usd=n,
+                    mid=mid,
+                    instrument_type=book_side,
+                    error_code=exc.code,
+                    message=exc.message,
+                    fee_tier=tier,
+                    venue_symbol=symbol,
+                    status="error",
+                )
+                for n in notionals
+                for side in sides
+            ]
         if not from_ws:
             for extra_side in side_order[1:]:
                 levels = asks if extra_side == "buy" else bids

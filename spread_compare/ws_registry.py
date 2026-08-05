@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import threading
 from dataclasses import dataclass
-from decimal import Decimal
 
 from spread_compare.bookwalk import OrderbookLevels
 from spread_compare.local_book import BookHealth, LocalOrderBook
@@ -117,12 +116,9 @@ class WsBookRegistry:
         return book
 
     def mark_connection(self, stream_id: str, *, open: bool) -> None:
+        """Set connection presence for ``stream_id`` (0 or 1 — not a reconnect counter)."""
         with self._lock:
-            cur = self._connections.get(stream_id, 0)
-            if open:
-                self._connections[stream_id] = cur + 1
-            else:
-                self._connections[stream_id] = max(0, cur - 1)
+            self._connections[stream_id] = 1 if open else 0
 
     def connection_count(self, stream_id: str) -> int:
         with self._lock:
@@ -163,15 +159,3 @@ def reset_ws_registry(registry: WsBookRegistry | None = None) -> WsBookRegistry:
         return _REGISTRY
 
 
-def depth_notional_usd(
-    levels: OrderbookLevels,
-    *,
-    mid: Decimal,
-    side: str,
-) -> Decimal:
-    """Rough notional capacity of a side at mid (for depth tests / logging)."""
-    _ = side
-    total = Decimal("0")
-    for price, size in levels:
-        total += price * size
-    return total

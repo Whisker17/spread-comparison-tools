@@ -6,7 +6,6 @@ import logging
 from typing import Any
 
 from spread_compare.adapters.registry import get as get_adapter
-from spread_compare.adapters.registry import list_venues
 from spread_compare.cex_symbols import resolve_cex_symbol, supported_cex_assets
 from spread_compare.mids import MidService
 from spread_compare.perp_symbols import resolve_apex_base, resolve_hl_coin, resolve_lighter_symbol
@@ -111,9 +110,12 @@ async def stop_ws_ingest(
 
 
 def _cex_symbols(book_side: str, *, exclude_bstocks: bool = False) -> list[str]:
+    from spread_compare.assets import TOKENIZED_CEX_SPOT
+
     out: list[str] = []
     for asset in supported_cex_assets(book_side):  # type: ignore[arg-type]
-        if exclude_bstocks and asset in {"QQQB", "SPCXB", "NVDAB"}:
+        # Bybit has no bStocks (*B); use catalog membership, not a hand list.
+        if exclude_bstocks and asset in TOKENIZED_CEX_SPOT:
             continue
         sym = resolve_cex_symbol(asset, book_side)  # type: ignore[arg-type]
         if sym:
@@ -200,10 +202,3 @@ def _safe_adapter(slug: str) -> Any | None:
         return None
 
 
-def list_orderbook_adapters() -> list[str]:
-    out: list[str] = []
-    for slug in list_venues():
-        adapter = get_adapter(slug)
-        if adapter.venue_class in ("cex", "perp_dex"):
-            out.append(slug)
-    return out

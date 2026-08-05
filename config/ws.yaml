@@ -11,9 +11,6 @@ max_book_age_sec: 5.0
 reconnect_min_sec: 1.0
 reconnect_max_sec: 30.0
 
-# Periodic REST snapshot comparison against the local book (log-only calibration).
-calibration_interval_sec: 60.0
-
 # Lighter REST resync budget: min seconds between snapshot fetches (60 req/min Standard).
 lighter_min_resync_interval_sec: 2.0
 

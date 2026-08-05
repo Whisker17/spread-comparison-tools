@@ -22,6 +22,7 @@ class ReconnectingWebSocket:
     """Single logical connection with auto-reconnect.
 
     ``on_open`` is invoked after each successful connect (subscribe there).
+    ``on_close`` is invoked when the socket drops (mark books disconnected).
     """
 
     def __init__(
@@ -31,14 +32,16 @@ class ReconnectingWebSocket:
         stream_id: str,
         on_message: MessageHandler,
         on_open: Callable[[], Awaitable[None]] | None = None,
-        reconnect_min_sec: float = 1.0,
-        reconnect_max_sec: float = 30.0,
+        on_close: Callable[[], Awaitable[None]] | None = None,
+        reconnect_min_sec: float,
+        reconnect_max_sec: float,
         ping_interval: float | None = 20.0,
     ) -> None:
         self.url = url
         self.stream_id = stream_id
         self._on_message = on_message
         self._on_open = on_open
+        self._on_close = on_close
         self._reconnect_min = reconnect_min_sec
         self._reconnect_max = reconnect_max_sec
         self._ping_interval = ping_interval
@@ -47,7 +50,6 @@ class ReconnectingWebSocket:
         self._send_queue: asyncio.Queue[str] = asyncio.Queue()
         self._connected = asyncio.Event()
         self._ws: Any = None
-        self._connect_attempts = 0
         self._open_count = 0
 
     @property
@@ -96,7 +98,6 @@ class ReconnectingWebSocket:
             except asyncio.CancelledError:
                 raise
             except Exception as exc:  # noqa: BLE001 — reconnect loop
-                self._connect_attempts += 1
                 logger.warning(
                     "ws %s disconnected: %s; reconnect in %.1fs",
                     self.stream_id,
@@ -154,6 +155,11 @@ class ReconnectingWebSocket:
                     pass
                 self._ws = None
                 self._connected.clear()
+                if self._on_close is not None:
+                    try:
+                        await self._on_close()
+                    except Exception:  # noqa: BLE001
+                        logger.exception("ws %s on_close failed", self.stream_id)
 
     async def _sender(self, ws: Any) -> None:
         while True:

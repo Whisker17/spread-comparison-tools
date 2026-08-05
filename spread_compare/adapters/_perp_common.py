@@ -44,7 +44,7 @@ from spread_compare.orderbook_cache import (
 )
 from spread_compare.ratelimit import AsyncRateLimiter, RollingWindowRateLimiter
 from spread_compare.ws_registry import WsBookRegistry, default_ws_registry
-from spread_compare.ws_serve import LocalBookUnavailable, stamp_ws_quote_fields, try_local_book
+from spread_compare.ws_serve import stamp_ws_quote_fields, try_local_book
 
 # Rate/depth defaults trace to docs/research/WHI-800-venue-api-survey.md §4
 # until DESIGN.md §2 exists (see docs/DEFERRED_ISSUES.md).
@@ -261,6 +261,40 @@ def build_unsupported_quote(
     )
 
 
+def build_error_quote(
+    *,
+    venue: str,
+    asset: str,
+    side: Side,
+    notional_usd: Decimal,
+    mid: ReferenceMid,
+    instrument_type: InstrumentType,
+    error_code: str,
+    message: str,
+    fee_tier: str = DEFAULT_FEE_TIER,
+    venue_symbol: str | None = None,
+) -> Quote:
+    """Non-ok quote for typed failures (e.g. book_stale — WHI-847)."""
+    now = datetime.now(tz=UTC)
+    return Quote(
+        snapshot_id=mid.snapshot_id,
+        venue=venue,
+        asset=asset,
+        venue_symbol=venue_symbol,
+        instrument_type=instrument_type,
+        side=side,
+        notional_usd=notional_usd,
+        mid=mid.mid,
+        mid_source=mid.mid_source,
+        mid_timestamp=mid.timestamp,
+        fee_breakdown=non_ok_fees(fee_tier=fee_tier),
+        timestamp=now,
+        status="error",
+        error_code=error_code,
+        error_message=message,
+    )
+
+
 def build_quotes_from_book_batch(
     *,
     venue: str,
@@ -327,10 +361,8 @@ async def resolve_orderbook_levels(
     Returns ``(bids, asks, from_ws, book_age_sec)``.
     """
     reg = registry if registry is not None else default_ws_registry()
-    try:
-        local = try_local_book(venue, symbol, instrument_type, registry=reg)
-    except LocalBookUnavailable as exc:
-        raise AdapterFetchError(f"{venue}: {exc.message}") from exc
+    # LocalBookUnavailable propagates (typed) so adapters map book_stale uniformly.
+    local = try_local_book(venue, symbol, instrument_type, registry=reg)
     if local is not None:
         return local.bids, local.asks, True, local.age_sec
     bids, asks = await fetch_rest()
