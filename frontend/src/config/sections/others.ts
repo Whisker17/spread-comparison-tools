@@ -1,5 +1,5 @@
 import {
-  DEFAULT_SIZE_VIEW,
+  DEFAULT_NOTIONAL_USD,
   NOTIONAL_TIERS_USD,
 } from "@/config/notionals";
 import type {
@@ -167,7 +167,7 @@ export const othersSection: SectionConfig = {
   assets: expandedOtherAssets(),
   venues: [...OTHER_VENUES],
   notionals: [...NOTIONAL_TIERS_USD],
-  defaultNotional: DEFAULT_SIZE_VIEW,
+  defaultNotional: DEFAULT_NOTIONAL_USD,
   defaultSideView: "buy",
   cellMetric: "total_cost_bps",
   showTopOfBook: true,

@@ -2,17 +2,15 @@ import { describe, expect, it } from "vitest";
 
 import { NOTIONAL_TIERS_USD } from "@/config/notionals";
 import {
-  isSizeAll,
   notionalsForSizeView,
   resolveNotionalSize,
-  SIZE_ALL,
 } from "@/lib/notionalSize";
 
-describe("resolveNotionalSize (WHI-841 / WHI-843)", () => {
-  const allowed = [...NOTIONAL_TIERS_USD];
+describe("resolveNotionalSize", () => {
+  const allowed = NOTIONAL_TIERS_USD;
   const defaultNotional = "1000";
 
-  it("returns a valid size param when it is in the allowed set", () => {
+  it("accepts a valid tier param", () => {
     expect(resolveNotionalSize("10000", allowed, defaultNotional)).toBe(
       "10000",
     );
@@ -22,47 +20,36 @@ describe("resolveNotionalSize (WHI-841 / WHI-843)", () => {
     );
   });
 
-  it("accepts the all multi-column sentinel", () => {
-    expect(resolveNotionalSize(SIZE_ALL, allowed, defaultNotional)).toBe(
-      SIZE_ALL,
+  it("rejects legacy all and unknown values, falling back to default", () => {
+    // WHI-864: multi-column all is no longer a valid size view.
+    expect(resolveNotionalSize("all", allowed, defaultNotional)).toBe(
+      defaultNotional,
     );
-    expect(resolveNotionalSize(null, allowed, SIZE_ALL)).toBe(SIZE_ALL);
-  });
-
-  it("falls back to the config default when the param is absent", () => {
     expect(resolveNotionalSize(null, allowed, defaultNotional)).toBe("1000");
     expect(resolveNotionalSize(undefined, allowed, defaultNotional)).toBe(
       "1000",
     );
     expect(resolveNotionalSize("", allowed, defaultNotional)).toBe("1000");
-  });
-
-  it("falls back to the config default when the param is invalid", () => {
     expect(resolveNotionalSize("999", allowed, defaultNotional)).toBe("1000");
     expect(resolveNotionalSize("abc", allowed, defaultNotional)).toBe("1000");
     expect(resolveNotionalSize("1e3", allowed, defaultNotional)).toBe("1000");
   });
 
-  it("falls back to the first allowed tier when the default is not allowed", () => {
-    const subset = ["10000", "100000"] as const;
-    expect(resolveNotionalSize(null, subset, "1000")).toBe("10000");
-    expect(resolveNotionalSize("100", subset, "1000")).toBe("10000");
+  it("falls back to first allowed when default is invalid", () => {
+    expect(resolveNotionalSize(null, allowed, "all")).toBe(allowed[0]);
   });
 });
 
 describe("notionalsForSizeView", () => {
-  const tiers = [...NOTIONAL_TIERS_USD];
-
-  it("returns all tiers for all-view", () => {
-    expect(notionalsForSizeView(SIZE_ALL, tiers)).toEqual(tiers);
-    expect(isSizeAll(SIZE_ALL)).toBe(true);
-  });
+  const tiers = NOTIONAL_TIERS_USD;
 
   it("returns a single focus tier", () => {
     expect(notionalsForSizeView("10000", tiers)).toEqual(["10000"]);
+    expect(notionalsForSizeView("1000", tiers)).toEqual(["1000"]);
   });
 
-  it("falls back to the first section tier on unknown size (not all columns)", () => {
+  it("falls back to first tier for unknown sizes (including legacy all)", () => {
+    expect(notionalsForSizeView("all", tiers)).toEqual([tiers[0]]);
     expect(notionalsForSizeView("999", tiers)).toEqual([tiers[0]]);
   });
 });

@@ -188,11 +188,12 @@ describe("StocksSection (WHI-810)", () => {
     expect(nvdaon.getByText(/Tessera \(BSC\)/)).toBeTruthy();
   });
 
-  it("renders one shared size selector and fetches all notionals per asset", () => {
+  it("renders one shared size selector and fetches only the selected tier", () => {
     render(<StocksSection />, { wrapper: Wrapper });
 
-    // Page-level selector only — no per-block duplicate.
+    // Page-level selector only — no per-block duplicate; no All chip.
     expect(screen.getAllByTestId("size-selector")).toHaveLength(1);
+    expect(screen.queryByTestId("size-option-all")).toBeNull();
 
     // Both boards share size config so page-level ?size= is not board-skewed.
     expect(tokenizedStocksBoard.defaultNotional).toBe(
@@ -210,8 +211,8 @@ describe("StocksSection (WHI-810)", () => {
       );
       expect(call, `no /quotes request for ${asset}`).toBeDefined();
       const params = call?.[0] as { notionals: string[] };
-      // WHI-843: full multi-tier package per asset (not a single focus tier).
-      expect(params.notionals).toEqual([...tokenizedStocksBoard.notionals]);
+      // WHI-864: single displayed tier only.
+      expect(params.notionals).toEqual([tokenizedStocksBoard.defaultNotional]);
     }
   });
 });

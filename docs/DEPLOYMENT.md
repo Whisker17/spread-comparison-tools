@@ -227,7 +227,9 @@ fire/resolve is logged at WARNING (`journalctl -u spread-comparison`).
   book counts by health, max age, resync window counts, `stream_error`,
   `connected_age_sec`.
 - **`engine.sweeps[]`**: per poller group — `age_sec` since last completed sweep,
-  `stale` vs `interval_sec × sweep_stale_multiplier`.
+  `stale` vs `interval_sec × sweep_stale_multiplier`, `sweep_count`, and
+  `skip_count` (WHI-864 ticks skipped while a sweep was still in flight or
+  overran the interval).
 - **`engine.mid_age_sec`**: age of the probe asset mid (default BTC).
 - **`engine.alerts`**: currently open conditions (same codes as webhook).
 - **`engine.in_startup_grace`**: true during `startup_grace_sec` — data probe and

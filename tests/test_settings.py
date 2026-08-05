@@ -41,7 +41,8 @@ def test_load_jupiter_settings_defaults() -> None:
     jup = load_jupiter_settings()
     assert jup.keyless_capacity == 5
     assert jup.keyed_capacity == 10
-    assert jup.window_sec == 1.0
+    # WHI-864: Free-plan refill ~1 token/s → window = capacity / 1 = 10s.
+    assert jup.window_sec == 10.0
     assert jup.adapt_from_headers is True
 
 

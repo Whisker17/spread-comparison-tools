@@ -1,10 +1,11 @@
 "use client";
 
 /**
- * Persist the selected notional tier in `?size=` (WHI-841).
+ * Persist the selected notional tier in `?size=` (WHI-841 / WHI-864).
  *
  * Shared by every section page so a refresh or shared link restores the view.
  * Resolution rules live in `lib/notionalSize.ts` (pure / unit-tested).
+ * One tier at a time — legacy ``all`` is not a valid selection.
  */
 
 import { useCallback, useMemo } from "react";
@@ -12,7 +13,6 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import {
   resolveNotionalSize,
-  SIZE_ALL,
   SIZE_QUERY_PARAM,
 } from "@/lib/notionalSize";
 
@@ -21,20 +21,13 @@ export type UseNotionalSizeOptions = {
   allowed: readonly string[];
   /**
    * Config default when the URL param is missing or invalid.
-   * Pass `"all"` (WHI-843) for multi-column matrix by default.
+   * Must be a tier USD string (not ``all``).
    */
   defaultNotional: string;
-  /**
-   * When true, `"all"` is a valid selection (multi-column view).
-   * Default true — size selector is a view preference over a full fetch.
-   */
-  allowAll?: boolean;
 };
 
 export type UseNotionalSizeResult = {
-  /**
-   * Resolved size view: a tier USD string, or `"all"` for multi-column.
-   */
+  /** Resolved size view: a tier USD string. */
   notional: string;
   /** Update selection and write `?size=` (scroll preserved). */
   setNotional: (next: string) => void;
@@ -46,7 +39,6 @@ export function useNotionalSize(
   const searchParams = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
-  const allowAll = options.allowAll !== false;
 
   const notional = useMemo(
     () =>
@@ -60,9 +52,7 @@ export function useNotionalSize(
 
   const setNotional = useCallback(
     (next: string) => {
-      if (next === SIZE_ALL) {
-        if (!allowAll) return;
-      } else if (!options.allowed.includes(next)) {
+      if (!options.allowed.includes(next)) {
         return;
       }
       const params = new URLSearchParams(searchParams.toString());
@@ -70,7 +60,7 @@ export function useNotionalSize(
       const qs = params.toString();
       router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
     },
-    [options.allowed, allowAll, searchParams, router, pathname],
+    [options.allowed, searchParams, router, pathname],
   );
 
   return { notional, setNotional };

@@ -1,54 +1,73 @@
-# Pull-only background poller (WHI-846).
+# Pull-only background poller (WHI-846 / WHI-864).
 # Defaults are **unvalidated** pending docs/DESIGN.md §2 — engineering starting
-# points from VPS measurements 2026-08-05 (Jupiter 10 RPS keyed bucket; Kyber /
-# RPC 429s under per-request fan-out). Override with poller.local.yaml.
+# points from VPS measurements 2026-08-05. Override with poller.local.yaml.
 
 # Master switch. When false, GET /quotes keeps the live fan-out for all classes.
 enabled: true
 
 # Venue classes served exclusively from the in-memory store on GET /quotes.
-# Orderbook classes (cex / perp_dex) stay on the live path until WHI-847.
+# Orderbook classes (cex / perp_dex) stay on the live path (WS + REST).
 poller_served_classes:
   - amm_dex
   - prop_amm
 
-# Notional tiers swept every cycle (WHI-799 §4.1 full matrix so any size
-# selector is pre-warmed without an extra upstream call).
-notionals_usd:
-  - 100
-  - 1000
-  - 10000
-  - 100000
-  - 1000000
-
 # Per-upstream sweep groups. Membership is resolved at runtime from venue
 # slug / class (see spread_compare.poller.group_for_venue). Each group owns
-# its pacing so Jupiter, KyberSwap, and RPC budgets stay independent.
+# its pacing and sampled notional tiers so Jupiter can stay sparse while
+# free orderbook-side AMM / Kyber sweeps keep the full §4.1 matrix.
 #
-# interval_sec: target sweep period. budget_share of a known capacity (or
-# max_rps when capacity is unpublished) caps average call rate so /simulate
-# keeps headroom on shared limiters.
+# interval_sec: must exceed worst-case sweep wall time with headroom for
+# retries and /simulate's share of the shared limiter. Sweeps never overlap
+# within a group (in-flight skip is counted and visible on /health).
 groups:
   jupiter:
-    # 3 Solana props × 3 assets × 5 tiers × 2 sides = 90 calls.
-    # Keyed 10 RPS × 0.6 share = 6 RPS → ~15 s of start-spacing (deadline
-    # pacing absorbs RTT). Keyless falls back to 5 × 0.6 = 3 RPS (~30 s).
-    interval_sec: 15.0
+    # Sampled matrix (WHI-864): keep both sides (round-trip / half-spread is
+    # the basis-immune metric vs perps); cut tiers, not sides.
+    #
+    # | Sampled matrix              | Calls (3v×3a) | Time @ 1 RPS |
+    # | 5 tiers × 2 sides (was)     | 90            | 90 s         |
+    # | 3 tiers × 2 sides (chosen)  | 54            | 54 s         |
+    # | 2 tiers × 2 sides           | 36            | 36 s         |
+    # | 5 tiers × buy only          | 45            | 45 s         |
+    #
+    # Anchors $100 / $10k / $1M cover small·mid·large without intermediate
+    # tiers. Keyed sustained budget is 1 RPS (config/jupiter.yaml); poller
+    # budget_share 0.6 → 0.6 RPS → 54/0.6 ≈ 90 s start-spacing.
+    # interval_sec = 120s = ~1.33× that (headroom for RTT, 429 backoff, and
+    # /simulate competing for the remaining 0.4 RPS).
+    notionals_usd:
+      - 100
+      - 10000
+      - 1000000
+    interval_sec: 120.0
     budget_share: 0.6
-    # 2× worst-case keyless sweep (~30 s) so rows stay best-eligible.
-    max_quote_age_for_best_sec: 60.0
-    max_stale_sec: 120.0
+    # 1.25× interval so a just-finished row stays §5.2 best until the next
+    # sample lands under normal pacing.
+    max_quote_age_for_best_sec: 150.0
+    max_stale_sec: 240.0
   kyber:
     # Unpublished limit (WHI-797 §7.2); pace conservatively — production saw
     # KyberSwap 429 backoff loops under per-request fan-out.
-    # ~100 calls at 2 RPS → ~50 s start-spacing; interval/age track that.
+    # Full §4.1 matrix is affordable at 2 RPS (~100 calls → ~50 s).
+    notionals_usd:
+      - 100
+      - 1000
+      - 10000
+      - 100000
+      - 1000000
     interval_sec: 60.0
     max_rps: 2.0
     max_quote_age_for_best_sec: 120.0
     max_stale_sec: 180.0
   rpc:
     # On-chain quoter eth_call budget is shared per RPC endpoint (WHI-842).
-    # ~100 calls at 5 RPS → ~20 s start-spacing.
+    # Full matrix at 5 RPS → ~20 s start-spacing for ~100 calls.
+    notionals_usd:
+      - 100
+      - 1000
+      - 10000
+      - 100000
+      - 1000000
     interval_sec: 20.0
     max_rps: 5.0
     max_quote_age_for_best_sec: 60.0

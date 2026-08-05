@@ -1,14 +1,23 @@
-# Jupiter Quote API rate budget (WHI-836).
-# Defaults are **unvalidated** pending docs/DESIGN.md §2 — engineering starting
-# points derived from live probing (2026-08-04 against api.jup.ag):
-#   keyed headers remaining+current=10, x-ratelimit-reset ~1s → ~10 RPS
-#   keyless burst of 5 then 429 (WHI-797 §3.3); window length re-measured as ~1s
-#   under the keyed plan. Token bucket: capacity N, refill N/window_sec.
-# Plan upgrades are config edits only. Secrets (JUPITER_API_KEY) stay in .env.
+# Jupiter Quote API rate budget (WHI-836 / WHI-864).
+#
+# Measured on VPS with the service stopped (2026-08-05, Free-plan shape):
+#   spacing 1.0 s (1 RPS) → 15×200 / 0×429
+#   spacing 0.5 s (2 RPS) → 10×200 / 5×429
+#   spacing 0.2 s (5 RPS) → 10×200 / 5×429
+# Real contract: burst ≈10, then refill ~1 token/s — NOT sustained 10 RPS.
+# An earlier cold-start read (x-ratelimit-remaining: 9 + six back-to-back 200s)
+# was the burst allowance misread as a Developer-tier 10 RPS plan.
+#
+# Token bucket: capacity N, refill N/window_sec tokens per second.
+# keyed_capacity=10, window_sec=10.0 → burst 10, sustained 1 RPS.
+# keyless_capacity=5 keeps the same window (sustained 0.5 RPS).
+# adapt_from_headers may tighten capacity from remaining+current but never
+# retunes window_sec (see docs/DEFERRED_ISSUES.md). Plan upgrades are config
+# edits only. Secrets (JUPITER_API_KEY) stay in .env.
 
 keyless_capacity: 5
 keyed_capacity: 10
-window_sec: 1.0
+window_sec: 10.0
 # When true, sync bucket from x-ratelimit-remaining / x-ratelimit-current
 # (never raised above the configured capacity for the active mode).
 adapt_from_headers: true

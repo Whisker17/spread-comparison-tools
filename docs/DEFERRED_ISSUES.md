@@ -115,9 +115,10 @@ defines none: `docs/GIT_WORKFLOW.md` § High-risk paths), **Medium**
   the mint/address map so live smoke can still probe QQQB once mid exists.
 
 - **Jupiter header adaptation does not retune `window_sec` from `x-ratelimit-reset`**
-  (Low, WHI-836). Capacity adapts from remaining+current; window stays config-fixed
-  at the measured ~1s. If a plan's reset interval diverges, add reset-based window
-  adaptation.
+  (Low, WHI-836 / WHI-864). Capacity adapts from remaining+current; window stays
+  config-fixed at the measured Free-plan refill (~10s for capacity 10 → 1 RPS
+  sustained; see `config/jupiter.yaml`). If a plan's reset interval diverges, add
+  reset-based window adaptation.
 
 - **AdapterConfigError collapses to generic adapter_error in aggregator** (Low, WHI-806).
   `AdapterConfigError` subclasses `AdapterError`; the aggregator maps both to

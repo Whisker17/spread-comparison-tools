@@ -8,17 +8,17 @@ import { NOTIONAL_TIERS_USD } from "@/config/notionals";
 
 afterEach(cleanup);
 
-describe("SizeSelector (WHI-841 / WHI-843)", () => {
-  it("renders All + one button per tier from the props list", () => {
+describe("SizeSelector (WHI-841 / WHI-864)", () => {
+  it("renders one button per tier and no All chip", () => {
     render(
       <SizeSelector
         tiers={NOTIONAL_TIERS_USD}
-        value="all"
+        value="1000"
         onChange={() => {}}
       />,
     );
 
-    expect(screen.getByTestId("size-option-all").textContent).toBe("All");
+    expect(screen.queryByTestId("size-option-all")).toBeNull();
     for (const tier of NOTIONAL_TIERS_USD) {
       expect(screen.getByTestId(`size-option-${tier}`)).toBeTruthy();
     }
@@ -26,10 +26,10 @@ describe("SizeSelector (WHI-841 / WHI-843)", () => {
     expect(screen.getByTestId("size-option-1000000").textContent).toBe("$1M");
     expect(
       screen.getByTestId("size-selector").querySelectorAll("button"),
-    ).toHaveLength(6); // All + 5 tiers
+    ).toHaveLength(5);
   });
 
-  it("adds a seventh button when a sixth tier is passed — no component edit", () => {
+  it("adds a sixth button when a sixth tier is passed — no component edit", () => {
     const tiers = [...NOTIONAL_TIERS_USD, "5000000"] as const;
     render(
       <SizeSelector tiers={tiers} value="1000" onChange={() => {}} />,
@@ -38,7 +38,7 @@ describe("SizeSelector (WHI-841 / WHI-843)", () => {
     expect(screen.getByTestId("size-option-5000000").textContent).toBe("$5M");
     expect(
       screen.getByTestId("size-selector").querySelectorAll("button"),
-    ).toHaveLength(7); // All + 6 tiers
+    ).toHaveLength(6);
   });
 
   it("marks the selected tier as pressed and calls onChange", () => {
@@ -60,7 +60,5 @@ describe("SizeSelector (WHI-841 / WHI-843)", () => {
 
     fireEvent.click(screen.getByTestId("size-option-10000"));
     expect(onChange).toHaveBeenCalledWith("10000");
-    fireEvent.click(screen.getByTestId("size-option-all"));
-    expect(onChange).toHaveBeenCalledWith("all");
   });
 });

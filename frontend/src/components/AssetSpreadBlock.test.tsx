@@ -127,21 +127,20 @@ describe("AssetSpreadBlock mid-source rendering (WHI-810)", () => {
   });
 });
 
-describe("AssetSpreadBlock multi-tier fetch (WHI-843)", () => {
-  it("always requests the full section notional list (one multi-tier package)", () => {
+describe("AssetSpreadBlock single-tier fetch (WHI-864)", () => {
+  it("requests only the displayed notional (not the full section list)", () => {
     renderBlock({ notional: "10000" });
 
     expect(useQuotesMatrixMock).toHaveBeenCalledWith(
       expect.objectContaining({
         asset: "QQQB",
-        notionals: [...tokenizedStocksBoard.notionals],
+        notionals: ["10000"],
       }),
     );
-    // One request carries every tier — size focus is a view preference only.
     const call = useQuotesMatrixMock.mock.calls[0]?.[0] as {
       notionals: string[];
     };
-    expect(call.notionals.length).toBeGreaterThan(1);
+    expect(call.notionals).toEqual(["10000"]);
   });
 
   it("tags the block with the active notional for network/debug inspection", () => {
