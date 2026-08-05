@@ -42,7 +42,8 @@ class ReconnectingWebSocket:
         on_close: Callable[[], Awaitable[None]] | None = None,
         reconnect_min_sec: float,
         reconnect_max_sec: float,
-        ping_interval: float | None = 20.0,
+        # None disables transport pings (required for Hyperliquid — WHI-855).
+        ping_interval: float | None = None,
         app_ping_interval_sec: float | None = None,
         app_ping_payload: dict[str, Any] | None = None,
     ) -> None:

@@ -43,7 +43,9 @@ _FAST_MID_ASSETS = (
 
 # Phase-1 logical set shared across HL / Lighter / ApeX WS subscriptions.
 # Includes PEPE/BONK multiplier infrastructure (not in assets.ASSETS).
-_PERP_WS_ASSETS: tuple[str, ...] = HL_PHASE1_ASSETS
+# Named after the product surface, not one venue — HL_PHASE1_ASSETS is the
+# shared constant in perp_symbols.py.
+_WS_SERVED_PERP_ASSETS: tuple[str, ...] = HL_PHASE1_ASSETS
 
 
 async def start_ws_ingest(
@@ -147,7 +149,7 @@ def _hl_coins() -> list[str]:
     re-subscribed hundreds of markets the dashboard never quotes.
     """
     coins: list[str] = []
-    for asset in _PERP_WS_ASSETS:
+    for asset in _WS_SERVED_PERP_ASSETS:
         try:
             coins.append(resolve_hl_coin(asset).venue_symbol)
         except Exception:  # noqa: BLE001
@@ -160,7 +162,7 @@ def _hl_coins() -> list[str]:
 def _lighter_markets() -> dict[str, str]:
     """market_id → symbol, scoped to phase-1 assets the product serves (WHI-855)."""
     wanted: set[str] = set()
-    for asset in _PERP_WS_ASSETS:
+    for asset in _WS_SERVED_PERP_ASSETS:
         try:
             wanted.add(resolve_lighter_symbol(asset).venue_symbol.upper())
         except Exception:  # noqa: BLE001
@@ -181,7 +183,7 @@ def _lighter_markets() -> dict[str, str]:
             if markets:
                 return markets
         # Fallback: market_id_for per phase-1 asset.
-        for asset in _PERP_WS_ASSETS:
+        for asset in _WS_SERVED_PERP_ASSETS:
             try:
                 resolved = resolve_lighter_symbol(asset)
                 market_id_for = getattr(adapter, "market_id_for", None)
@@ -202,7 +204,7 @@ def _lighter_markets() -> dict[str, str]:
 def _apex_cross_symbols() -> list[str]:
     """ApeX crossSymbolName list for phase-1 assets only (WHI-855)."""
     wanted_bases: set[str] = set()
-    for asset in _PERP_WS_ASSETS:
+    for asset in _WS_SERVED_PERP_ASSETS:
         try:
             wanted_bases.add(resolve_apex_base(asset).venue_symbol.upper())
         except Exception:  # noqa: BLE001
@@ -224,7 +226,7 @@ def _apex_cross_symbols() -> list[str]:
                 return sorted(set(symbols))
 
     # Fallback: phase-1 assets as BASEUSDT (works for crypto; equity may differ).
-    for asset in _PERP_WS_ASSETS:
+    for asset in _WS_SERVED_PERP_ASSETS:
         try:
             base = resolve_apex_base(asset).venue_symbol
             symbols.append(f"{base}USDT")

@@ -19,7 +19,7 @@ import logging
 import threading
 import time
 from collections.abc import Awaitable, Callable, Sequence
-from decimal import Decimal
+from types import EllipsisType
 from typing import Any
 from urllib.parse import urlencode
 
@@ -89,6 +89,8 @@ class WsFeedManager:
         self._lighter_syncs: dict[str, LighterSync] = {}
         self._apex_syncs: dict[str, ApexSync] = {}
         self._lighter_last_resync_mono: dict[str, float] = {}
+        # market_ids awaiting a post-resubscribe snapshot before note_resync(ok=True)
+        self._lighter_resync_pending: set[str] = set()
         self._binance_spot_last_resync_mono: dict[str, float] = {}
         # Monotonic timestamps of successful binance-spot depth calls (weight budget).
         self._binance_spot_resync_weight_mono: list[float] = []
@@ -97,6 +99,8 @@ class WsFeedManager:
         self._symbols: dict[str, list[str]] = {}
         # stream_id → last subscribe / stream error (WHI-855 surface failures)
         self._stream_errors: dict[str, str] = {}
+        # stream_id → symbols from the most recently sent subscribe batch (for partial fail)
+        self._subscribe_batch_symbols: dict[str, list[str]] = {}
         # WHI-819: rolling resync outcomes per stream_id (monotonic timestamps).
         # Locked: asyncio tasks write; /health may read from the threadpool.
         self._diag_lock = threading.Lock()
@@ -193,6 +197,32 @@ class WsFeedManager:
 
     def _clear_stream_error(self, stream_id: str) -> None:
         self._stream_errors.pop(stream_id, None)
+
+    def _fail_subscribe_books(
+        self,
+        stream_id: str,
+        *,
+        venue: str,
+        instrument_type: str,
+        symbols: Sequence[str],
+        message: str,
+    ) -> None:
+        """Surface a subscribe failure without wiping already-HEALTHY books.
+
+        Only the symbols in the failed batch (or still-CONNECTING books) go
+        DISCONNECTED so a single bad chunk cannot poison a whole multiplex stream.
+        """
+        self._set_stream_error(stream_id, message)
+        batch = self._subscribe_batch_symbols.get(stream_id)
+        targets = list(batch) if batch else list(symbols)
+        for sym in targets:
+            book = self._registry.get(venue, sym, instrument_type)
+            if book is None:
+                continue
+            # Leave HEALTHY books from prior successful chunks alone.
+            if book.health is BookHealth.HEALTHY:
+                continue
+            book.set_health(BookHealth.DISCONNECTED, error=message)
 
     async def start(
         self,
@@ -294,12 +324,18 @@ class WsFeedManager:
         instrument_type: str,
         symbols: Sequence[str],
         sock_holder: list[ReconnectingWebSocket] | None = None,
-        ping_interval: float | None = 20.0,
+        # Ellipsis = use config default; explicit None disables transport pings (HL).
+        ping_interval: float | None | EllipsisType = ...,
         app_ping_interval_sec: float | None = None,
         app_ping_payload: dict[str, Any] | None = None,
     ) -> ReconnectingWebSocket:
         """Build one multiplexed socket; on drop → REST fallback for those books."""
         syms = list(symbols)
+        transport_ping: float | None
+        if ping_interval is ...:
+            transport_ping = self._settings.default_transport_ping_interval_sec
+        else:
+            transport_ping = ping_interval
 
         async def on_close() -> None:
             self._on_stream_closed(stream_id, venue, instrument_type, syms)
@@ -320,7 +356,7 @@ class WsFeedManager:
             on_close=on_close,
             reconnect_min_sec=self._settings.reconnect_min_sec,
             reconnect_max_sec=self._settings.reconnect_max_sec,
-            ping_interval=ping_interval,
+            ping_interval=transport_ping,
             app_ping_interval_sec=app_ping_interval_sec,
             app_ping_payload=app_ping_payload,
         )
@@ -519,11 +555,20 @@ class WsFeedManager:
         topic_chunks = chunked(topics, chunk_size)
         sock_holder: list[ReconnectingWebSocket] = []
 
+        def _symbols_from_topics(batch: Sequence[str]) -> list[str]:
+            out: list[str] = []
+            for t in batch:
+                # orderbook.1000.BTCUSDT
+                parts = t.split(".")
+                out.append(parts[-1].upper() if parts else t.upper())
+            return out
+
         async def on_open() -> None:
             self._registry.mark_connection(stream_id, open=True)
             self._clear_stream_error(stream_id)
             # Chunked subscribe — Bybit spot rejects args size > 10 (WHI-855).
             for batch in topic_chunks:
+                self._subscribe_batch_symbols[stream_id] = _symbols_from_topics(batch)
                 await sock_holder[0].send_json({"op": "subscribe", "args": batch})
 
         async def on_message(payload: dict[str, Any] | list[Any] | str) -> None:
@@ -533,12 +578,16 @@ class WsFeedManager:
             if payload.get("op") == "subscribe" or "success" in payload:
                 ok = payload.get("success")
                 if ok is False:
-                    ret = str(payload.get("ret_msg") or payload.get("retMsg") or "subscribe failed")
-                    self._set_stream_error(stream_id, ret)
-                    for sym in symbols:
-                        book = self._registry.get("bybit", sym, instrument)
-                        if book is not None:
-                            book.set_health(BookHealth.DISCONNECTED, error=ret)
+                    ret = str(
+                        payload.get("ret_msg") or payload.get("retMsg") or "subscribe failed"
+                    )
+                    self._fail_subscribe_books(
+                        stream_id,
+                        venue="bybit",
+                        instrument_type=instrument,
+                        symbols=symbols,
+                        message=ret,
+                    )
                     return
                 if ok is True:
                     return
@@ -607,8 +656,11 @@ class WsFeedManager:
 
         stream_id = "hyperliquid"
         sock_holder: list[ReconnectingWebSocket] = []
+        # HL ignores transport pings → disable unless config explicitly re-enables.
         transport_ping: float | None = (
-            20.0 if self._settings.hyperliquid_transport_ping else None
+            self._settings.default_transport_ping_interval_sec
+            if self._settings.hyperliquid_transport_ping
+            else None
         )
         app_ping_iv = self._settings.hyperliquid_app_ping_interval_sec
 
@@ -712,6 +764,11 @@ class WsFeedManager:
                 if msg_type.startswith("subscribed") or "nonce" in data:
                     if data.get("begin_nonce") is None or msg_type.startswith("subscribed"):
                         sync.on_snapshot(bids=bids_n, asks=asks_n, nonce=nonce)
+                        # Complete a pending resubscribe only when a real snapshot lands.
+                        mid_key = str(market_id)
+                        if mid_key in self._lighter_resync_pending:
+                            self._lighter_resync_pending.discard(mid_key)
+                            self.note_resync("lighter", ok=True)
                         return
             begin_raw = data.get("begin_nonce")
             nonce_raw = data.get("nonce")
@@ -760,13 +817,14 @@ class WsFeedManager:
             logger.warning("lighter resync aborted market=%s: socket not connected", market_id)
             return
         try:
+            self._lighter_resync_pending.add(market_id)
             await sock.send_json(
                 {"type": "subscribe", "channel": f"order_book/{market_id}"}
             )
-            # Snapshot with a real nonce arrives on the normal message path.
-            self.note_resync("lighter", ok=True)
+            # note_resync(ok=True) only when the server's snapshot arrives (on_message).
             logger.info("lighter resync resubscribed market=%s", market_id)
         except Exception as exc:  # noqa: BLE001
+            self._lighter_resync_pending.discard(market_id)
             self.note_resync("lighter", ok=False)
             sync.book.set_health(BookHealth.DISCONNECTED, error=str(exc))
             logger.warning("lighter resync failed market=%s: %s", market_id, exc)
@@ -789,11 +847,19 @@ class WsFeedManager:
             [f"orderBook200.H.{s}" for s in symbols], chunk_size
         )
 
+        def _symbols_from_apex_topics(batch: Sequence[str]) -> list[str]:
+            out: list[str] = []
+            for t in batch:
+                # orderBook200.H.BTCUSDT
+                out.append(t.rsplit(".", 1)[-1].upper())
+            return out
+
         async def on_open() -> None:
             self._registry.mark_connection(stream_id, open=True)
             self._clear_stream_error(stream_id)
             # Chunked subscribe — multi-arg batches return "handler not found" (WHI-855).
             for batch in topic_chunks:
+                self._subscribe_batch_symbols[stream_id] = _symbols_from_apex_topics(batch)
                 await sock_holder[0].send_json({"op": "subscribe", "args": batch})
 
         async def on_message(payload: dict[str, Any] | list[Any] | str) -> None:
@@ -811,11 +877,13 @@ class WsFeedManager:
                 err = payload.get("error") or payload.get("ret_msg") or payload.get("retMsg")
                 if ok is False or err:
                     msg = str(err or "subscribe failed")
-                    self._set_stream_error(stream_id, msg)
-                    for failed_sym in symbols:
-                        book = self._registry.get("apex", failed_sym, "perp")
-                        if book is not None:
-                            book.set_health(BookHealth.DISCONNECTED, error=msg)
+                    self._fail_subscribe_books(
+                        stream_id,
+                        venue="apex",
+                        instrument_type="perp",
+                        symbols=symbols,
+                        message=msg,
+                    )
                     return
                 if ok is True:
                     return
@@ -927,32 +995,6 @@ def _normalize_lighter_levels(raw: object) -> list[list[str]]:
     return out
 
 
-def _aggregate_lighter_orders(orders: object) -> list[list[str]]:
-    """Aggregate REST order rows by price (kept for tests / optional calibration)."""
-    if not isinstance(orders, list):
-        return []
-    buckets: dict[Decimal, Decimal] = {}
-    for order in orders:
-        if not isinstance(order, dict):
-            continue
-        try:
-            px = Decimal(str(order.get("price") or order.get("px")))
-            sz = Decimal(
-                str(
-                    order.get("remaining_base_amount")
-                    or order.get("size")
-                    or order.get("sz")
-                    or "0"
-                )
-            )
-        except Exception:  # noqa: BLE001
-            continue
-        if sz <= 0:
-            continue
-        buckets[px] = buckets.get(px, Decimal("0")) + sz
-    return [[str(px), str(sz)] for px, sz in buckets.items()]
-
-
 def _apex_symbol_from_topic(topic: str, symbols: Sequence[str]) -> str | None:
     upper = topic.upper()
     for s in symbols:
@@ -976,14 +1018,3 @@ def default_ws_feed_manager() -> WsFeedManager | None:
 def set_ws_feed_manager(manager: WsFeedManager | None) -> None:
     global _MANAGER
     _MANAGER = manager
-
-
-# Re-export for tests that import chunked helpers via the module.
-__all__ = [
-    "WsFeedManager",
-    "bybit_stream_id",
-    "chunked",
-    "default_ws_feed_manager",
-    "set_ws_feed_manager",
-    "stream_id_for_book",
-]

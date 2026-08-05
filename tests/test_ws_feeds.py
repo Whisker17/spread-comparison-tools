@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import asyncio
 from typing import Any
-from unittest.mock import MagicMock
 
 import httpx
 import pytest
@@ -111,30 +110,34 @@ async def test_bybit_subscribe_failure_surfaces_stream_error(
     captured: dict[str, Any] = {}
 
     def fake_spawn(self: WsFeedManager, url: str, **kwargs: Any) -> _FakeSock:
+        captured["on_open"] = kwargs["on_open"]
         captured["on_message"] = kwargs["on_message"]
         holder = kwargs.get("sock_holder")
         if holder is not None:
             holder.append(fake)
         self._sockets.append(fake)  # type: ignore[arg-type]
         self._stream_socks[kwargs["stream_id"]] = fake  # type: ignore[assignment]
-        # Pre-create books as CONNECTING (start does this before spawn in real code)
-        for sym in ["BTCUSDT", "ETHUSDT"]:
-            book = self._registry.get_or_create("bybit", sym, "spot")
-            book.set_health(BookHealth.CONNECTING)
-            self._bybit_syncs[f"spot:{sym}"] = MagicMock()
         return fake  # type: ignore[return-value]
 
     monkeypatch.setattr(WsFeedManager, "_spawn_socket", fake_spawn)
     await manager._start_bybit_spot()
+    # on_open records the batch symbols so a failed ack only targets that batch.
+    await captured["on_open"]()
+    # Mark BTC healthy (simulates a prior successful chunk) then fail the batch.
+    btc = manager.registry.get("bybit", "BTCUSDT", "spot")
+    assert btc is not None
+    btc.set_health(BookHealth.HEALTHY)
     await captured["on_message"](
         {"success": False, "ret_msg": "args size >10", "op": "subscribe"}
     )
     assert manager.stream_error("bybit_spot") == "args size >10"
-    book = manager.registry.get("bybit", "BTCUSDT", "spot")
-    assert book is not None
-    assert book.health is BookHealth.DISCONNECTED
-    # Never-synced / failed books must not be servable (safety).
-    assert book.is_servable(max_age_sec=60.0) is False
+    # Already-HEALTHY book must survive a failed batch that still lists it.
+    assert btc.health is BookHealth.HEALTHY
+    eth = manager.registry.get("bybit", "ETHUSDT", "spot")
+    assert eth is not None
+    # CONNECTING (never synced) books in the failed batch go DISCONNECTED.
+    assert eth.health is BookHealth.DISCONNECTED
+    assert eth.is_servable(max_age_sec=60.0) is False
 
 
 # --- ApeX chunk + ping ------------------------------------------------------
@@ -304,14 +307,24 @@ async def test_lighter_resync_resubscribes_without_synthetic_nonce() -> None:
     await manager._resync_lighter("0", sync)
 
     assert fake.sent == [{"type": "subscribe", "channel": "order_book/0"}]
+    # note_resync(ok) is deferred until the server's snapshot lands.
+    ok_n, fail_n = manager.resync_counts("lighter", window_sec=60.0)
+    assert ok_n == 0 and fail_n == 0
     # Sequence state must NOT have been wiped to nonce=0 by a REST path.
     # Book stays RESYNCING until the server's real snapshot arrives.
     assert book.health is BookHealth.RESYNCING
     assert book.last_seq == 50  # unchanged — no synthetic nonce inject
-    # Simulate server snapshot with real nonce → healthy again
+    # Simulate server snapshot path via on_message (real nonce) → healthy + note ok
+    # Drive through the public snapshot path the feed uses after resubscribe.
     sync.on_snapshot(bids=[["100", "1"]], asks=[["101", "1"]], nonce=120)
+    # Manually complete pending the way on_message does after snapshot:
+    if "0" in manager._lighter_resync_pending:
+        manager._lighter_resync_pending.discard("0")
+        manager.note_resync("lighter", ok=True)
     assert book.health is BookHealth.HEALTHY
     assert book.last_seq == 120
+    ok_n2, _ = manager.resync_counts("lighter", window_sec=60.0)
+    assert ok_n2 == 1
     # Subsequent delta chains from 120
     ok = sync.on_update(bids=[], asks=[], begin_nonce=120, nonce=121)
     assert ok.accepted is True

@@ -7,6 +7,7 @@ Offline suite skips these unless ``pytest --live``.
 from __future__ import annotations
 
 import asyncio
+import os
 import time
 
 import pytest
@@ -18,10 +19,11 @@ from spread_compare.ws_registry import WsBookRegistry
 
 # Bound for first healthy book on a real network (generous for cold start).
 _SYNC_TIMEOUT_SEC = 25.0
-# Hyperliquid connection hold (acceptance: >10 min; keep CI-live shorter but
-# document a longer manual run in the PR). Live default here is 90s to avoid
-# CI timeouts; override with WS_LIVE_HL_HOLD_SEC for a full 10-minute probe.
-_HL_HOLD_SEC = float(__import__("os").environ.get("WS_LIVE_HL_HOLD_SEC", "90"))
+# Hyperliquid connection hold. Acceptance criterion is >10 min without
+# "no close frame" disconnects — set WS_LIVE_HL_HOLD_SEC=600 for a full probe.
+# Default 90s keeps CI-live runs bounded (still long enough to catch the old
+# ~40s transport-ping teardown).
+_HL_HOLD_SEC = float(os.environ.get("WS_LIVE_HL_HOLD_SEC", "90"))
 
 
 async def _wait_healthy(
@@ -162,7 +164,7 @@ async def test_live_hyperliquid_book_syncs_and_holds() -> None:
         assert healthy, "hyperliquid never reached HEALTHY"
         # Hold connection; disconnects used to fire every ~40s with transport pings.
         opens_before = mgr._sockets[0].open_count if mgr._sockets else 0
-        await asyncio.sleep(min(_HL_HOLD_SEC, 90.0))
+        await asyncio.sleep(_HL_HOLD_SEC)
         opens_after = mgr._sockets[0].open_count if mgr._sockets else 0
         # At most one reconnect is tolerable; the old bug was ~1.5/min.
         assert opens_after - opens_before <= 1, (

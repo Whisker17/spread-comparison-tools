@@ -30,9 +30,11 @@ binance_spot_min_resync_interval_sec: 2.0
 binance_spot_resync_weight: 50
 binance_spot_resync_weight_budget_per_min: 1500
 
-# Application-level heartbeats. Hyperliquid ignores transport pings → disable
-# them and send {"method":"ping"} instead. ApeX *sends* {"op":"ping"} and
-# expects {"op":"pong"} (handled in the feed, not a client timer).
+# Heartbeats. Default transport (WebSocket-layer) ping interval applies to
+# venues that answer it (Binance / Bybit / Lighter / ApeX). Hyperliquid ignores
+# transport pings → disable them and send application {"method":"ping"} instead.
+# ApeX *sends* {"op":"ping"} and expects {"op":"pong"} (handled in the feed).
+default_transport_ping_interval_sec: 20.0
 hyperliquid_app_ping_interval_sec: 20.0
 hyperliquid_transport_ping: false
 

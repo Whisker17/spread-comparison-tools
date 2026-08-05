@@ -162,7 +162,8 @@ class WsSettings(BaseModel):
     binance_spot_min_resync_interval_sec: float = Field(gt=0)
     binance_spot_resync_weight: int = Field(ge=1)
     binance_spot_resync_weight_budget_per_min: int = Field(ge=1)
-    # Hyperliquid heartbeat — app-level ping; transport ping optional.
+    # Heartbeats — transport ping default + Hyperliquid app-level override.
+    default_transport_ping_interval_sec: float = Field(gt=0)
     hyperliquid_app_ping_interval_sec: float = Field(gt=0)
     hyperliquid_transport_ping: bool
     streams: WsStreamFlags

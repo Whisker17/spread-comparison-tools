@@ -20,6 +20,7 @@ def test_load_ws_settings() -> None:
     assert ws.binance_spot_min_resync_interval_sec == 2.0
     assert ws.binance_spot_resync_weight == 50
     assert ws.binance_spot_resync_weight_budget_per_min == 1500
+    assert ws.default_transport_ping_interval_sec == 20.0
     assert ws.hyperliquid_app_ping_interval_sec == 20.0
     assert ws.hyperliquid_transport_ping is False
 
