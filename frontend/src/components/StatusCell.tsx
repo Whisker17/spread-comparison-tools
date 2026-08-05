@@ -62,7 +62,7 @@ export function StatusCell({
     >
       {decision.showsMetric ? (
         <span className="font-medium">{decision.label}</span>
-      ) : decision.kind === "dash" ? (
+      ) : decision.kind === "dash" || decision.kind === "not_sampled" ? (
         <span className="text-zinc-400">—</span>
       ) : null}
 
@@ -70,6 +70,13 @@ export function StatusCell({
         <Badge variant={decision.badgeVariant ?? "warning"}>
           {decision.badge}
         </Badge>
+      )}
+      {decision.kind === "not_sampled" && decision.badge && (
+        <Badge variant={decision.badgeVariant ?? "muted"}>{decision.badge}</Badge>
+      )}
+      {/* dash + badge: startup-unavailable (not_initialized) keeps muted chip */}
+      {decision.kind === "dash" && decision.badge && (
+        <Badge variant={decision.badgeVariant ?? "muted"}>{decision.badge}</Badge>
       )}
       {(decision.kind === "error" || decision.kind === "rate_limited") && (
         <div className="flex flex-col items-center gap-0.5">

@@ -3,7 +3,7 @@
  *
  * Status values on Quote.status:
  *   ok | no_quote | insufficient_liquidity | unsupported_asset | error |
- *   rate_limited | excessive_impact
+ *   rate_limited | excessive_impact | not_sampled
  *
  * Orthogonal flags (not status enum values):
  *   fee_breakdown.gas_unknown → "cost incomplete"; excluded from best-venue ranking
@@ -36,6 +36,7 @@ export type CellRenderKind =
   | "error"
   | "rate_limited" // WHI-844: distinguishable from timeout/error
   | "excessive_impact" // WHI-845: number still shown, never best / heat
+  | "not_sampled" // WHI-865: pull poller did not sample this key (not a failure)
   | "cost_incomplete"; // gas_unknown (may still show spread_bps)
 
 /** Badge color variant owned by the status SSOT (StatusCell must not re-derive). */
@@ -121,19 +122,12 @@ export function decideCellRender(
         showsMetric: false,
       };
     case "error": {
-      // WHI-864: unsampled poller tiers are structural (not a transient
-      // failure) — mute badge, no retry hint.
-      if (
-        quote.error_code === "not_yet_sampled" ||
-        quote.error_code === "not_initialized"
-      ) {
+      // WHI-840: venue never finished startup — structural, not retryable.
+      if (quote.error_code === "not_initialized") {
         return {
           kind: "dash",
           label: "—",
-          badge:
-            quote.error_code === "not_yet_sampled"
-              ? "not sampled"
-              : "unavailable",
+          badge: "unavailable",
           badgeVariant: "muted",
           midStale,
           midTimestamp,
@@ -157,6 +151,20 @@ export function decideCellRender(
         showsMetric: false,
       };
     }
+    case "not_sampled":
+      // WHI-865: deliberate sparse matrix / pre-first-sweep — not a failure.
+      return {
+        kind: "not_sampled",
+        label: "—",
+        badge: "not sampled",
+        badgeVariant: "muted",
+        midStale,
+        midTimestamp,
+        quoteStale,
+        ageSec,
+        eligibleForBest: false,
+        showsMetric: false,
+      };
     case "rate_limited":
       return {
         kind: "rate_limited",
@@ -317,6 +325,13 @@ export const STATUS_LEGEND: ReadonlyArray<{
     title: "error",
     description: "Adapter/transport failure — badge with retry hint.",
     exampleKind: "error",
+  },
+  {
+    id: "not_sampled",
+    title: "not_sampled",
+    description:
+      'Pull poller did not sample this size (sparse matrix or pre-first sweep, WHI-865) — muted "not sampled", distinct from error. Never best-venue eligible; not an error-rate signal.',
+    exampleKind: "not_sampled",
   },
   {
     id: "rate_limited",

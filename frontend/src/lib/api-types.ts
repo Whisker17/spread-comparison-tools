@@ -11,8 +11,35 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Health */
+        /**
+         * Health
+         * @description Process liveness — always 200 while serving (including degraded).
+         */
         get: operations["health_health_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/health/data": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Health Data
+         * @description Data-freshness probe: 200 when engine data is ok, else 503.
+         *
+         *     Distinguishes "process up" from "serving only stale rows" (WHI-819).
+         *     External uptime monitors should hit this endpoint in addition to
+         *     ``GET /health``.
+         */
+        get: operations["health_data_health_data_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -152,6 +179,33 @@ export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         /**
+         * AlertView
+         * @description One evaluated alert (open condition).
+         */
+        AlertView: {
+            /**
+             * Code
+             * @enum {string}
+             */
+            code: "ws_disconnected" | "book_stale" | "book_desync" | "book_resync_failed" | "books_unsynced" | "subscribe_failed" | "sweep_stale" | "mid_stale" | "rate_limited" | "data_stale";
+            /**
+             * Severity
+             * @enum {string}
+             */
+            severity: "warning" | "critical";
+            /**
+             * Target
+             * @description stream_id, group, source, or 'engine'
+             */
+            target: string;
+            /** Message */
+            message: string;
+            /** Value */
+            value?: number | null;
+            /** Threshold */
+            threshold?: number | null;
+        };
+        /**
          * AssetResponse
          * @description One row of ``GET /assets``.
          */
@@ -167,6 +221,36 @@ export interface components {
             representations: {
                 [key: string]: string;
             };
+        };
+        /**
+         * EngineHealthView
+         * @description Detail payload nested under ``GET /health`` (WHI-819).
+         */
+        EngineHealthView: {
+            /** Data Ok */
+            data_ok: boolean;
+            /** Data Failures */
+            data_failures?: string[];
+            /** Mid Age Sec */
+            mid_age_sec?: number | null;
+            /** Mid Probe Asset */
+            mid_probe_asset: string;
+            /** Uptime Sec */
+            uptime_sec: number;
+            /** In Startup Grace */
+            in_startup_grace: boolean;
+            /** Sweeps */
+            sweeps?: components["schemas"]["SweepHealthView"][];
+            /** Streams */
+            streams?: components["schemas"]["StreamHealthView"][];
+            /** Rate Limits */
+            rate_limits?: {
+                [key: string]: number;
+            };
+            /** Alerts */
+            alerts?: components["schemas"]["AlertView"][];
+            /** Evaluated At */
+            evaluated_at?: string | null;
         };
         /**
          * FeeBreakdown
@@ -273,7 +357,12 @@ export interface components {
         };
         /**
          * HealthResponse
-         * @description Liveness payload for ``GET /health`` (WHI-840: degradation without flap).
+         * @description Liveness payload for ``GET /health`` (WHI-840 / WHI-819).
+         *
+         *     Always HTTP 200 while the process is serving — including when degraded or
+         *     when engine data is stale. Load balancers must not kill a process that is
+         *     still serving the majority of venues. Use ``GET /health/data`` for the
+         *     data-freshness probe that fails on stale-only serving.
          */
         HealthResponse: {
             /**
@@ -301,6 +390,8 @@ export interface components {
              * @description Enabled venue slugs that failed or have not completed startup.
              */
             unavailable_venues: string[];
+            /** @description Real-time engine signals (streams, sweeps, mid, alerts). */
+            engine?: components["schemas"]["EngineHealthView"] | null;
         };
         /**
          * Quote
@@ -367,7 +458,7 @@ export interface components {
              * Status
              * @enum {string}
              */
-            status: "ok" | "no_quote" | "insufficient_liquidity" | "unsupported_asset" | "error" | "rate_limited" | "excessive_impact";
+            status: "ok" | "no_quote" | "insufficient_liquidity" | "unsupported_asset" | "error" | "rate_limited" | "excessive_impact" | "not_sampled";
             /** Qty Base */
             qty_base?: string | null;
             /** Qty Method */
@@ -557,7 +648,7 @@ export interface components {
              */
             timestamp: string;
             /** Status */
-            status: ("ok" | "no_quote" | "insufficient_liquidity" | "unsupported_asset" | "error" | "rate_limited" | "excessive_impact") | "not_supported";
+            status: ("ok" | "no_quote" | "insufficient_liquidity" | "unsupported_asset" | "error" | "rate_limited" | "excessive_impact" | "not_sampled") | "not_supported";
             /**
              * Best
              * @default false
@@ -605,6 +696,98 @@ export interface components {
             /** Round Trip Total Cost Bps */
             round_trip_total_cost_bps?: string | null;
             top_of_book?: components["schemas"]["TopOfBook"] | null;
+        };
+        /**
+         * StreamHealthView
+         * @description Per-stream (multiplexed WS) health for ``GET /health``.
+         */
+        StreamHealthView: {
+            /** Stream Id */
+            stream_id: string;
+            /** Connected */
+            connected: boolean;
+            /** Disconnected Age Sec */
+            disconnected_age_sec?: number | null;
+            /** Connected Age Sec */
+            connected_age_sec?: number | null;
+            /**
+             * Books Total
+             * @default 0
+             */
+            books_total: number;
+            /**
+             * Books Expected
+             * @default 0
+             */
+            books_expected: number;
+            /**
+             * Books Healthy
+             * @default 0
+             */
+            books_healthy: number;
+            /**
+             * Books Resyncing
+             * @default 0
+             */
+            books_resyncing: number;
+            /**
+             * Books Disconnected
+             * @default 0
+             */
+            books_disconnected: number;
+            /**
+             * Peak Healthy Since Connect
+             * @default 0
+             */
+            peak_healthy_since_connect: number;
+            /** Max Book Age Sec */
+            max_book_age_sec?: number | null;
+            /**
+             * Resync Ok Window
+             * @default 0
+             */
+            resync_ok_window: number;
+            /**
+             * Resync Fail Window
+             * @default 0
+             */
+            resync_fail_window: number;
+            /** Stream Error */
+            stream_error?: string | null;
+            /**
+             * Healthy
+             * @default false
+             */
+            healthy: boolean;
+        };
+        /**
+         * SweepHealthView
+         * @description Per poller-group last-completed-sweep age.
+         */
+        SweepHealthView: {
+            /** Group */
+            group: string;
+            /** Interval Sec */
+            interval_sec: number;
+            /** Age Sec */
+            age_sec?: number | null;
+            /** Last Completed At */
+            last_completed_at?: string | null;
+            /**
+             * Sweep Count
+             * @default 0
+             */
+            sweep_count: number;
+            /**
+             * Skip Count
+             * @default 0
+             */
+            skip_count: number;
+            /**
+             * Stale
+             * @default false
+             */
+            stale: boolean;
         };
         /**
          * TopOfBook
@@ -709,6 +892,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HealthResponse"];
+                };
+            };
+        };
+    };
+    health_data_health_data_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EngineHealthView"];
                 };
             };
         };

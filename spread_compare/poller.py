@@ -31,6 +31,9 @@ from spread_compare.aggregator import (
     quote_with_timeout,
     resolve_mid_with_budget,
 )
+from spread_compare.aggregator import (
+    not_sampled_quote as build_not_sampled_quote,
+)
 from spread_compare.mids import MidResolutionError, MidService
 from spread_compare.models import (
     PRICED_QUOTE_STATUSES,
@@ -594,7 +597,7 @@ class PullQuotePoller:
             return
         await asyncio.sleep(seconds)
 
-def not_yet_sampled_quote(
+def not_sampled_quote(
     *,
     mid: ReferenceMid,
     venue: str,
@@ -603,18 +606,24 @@ def not_yet_sampled_quote(
     notional_usd: Decimal,
     instrument_type: InstrumentType,
 ) -> Quote:
-    """Row for a poller venue that has not produced a sample yet."""
-    return error_quote(
+    """Row for a poller venue key with no store entry (WHI-865).
+
+    Covers both "tier not in the group's sample matrix" and "sweep has not
+    landed yet this process lifetime". Always ``status=not_sampled`` — never
+    ``error`` (that means we tried and failed).
+    """
+    return build_not_sampled_quote(
         mid=mid,
         venue=venue,
         asset=asset,
         side=side,
         notional_usd=notional_usd,
         instrument_type=instrument_type,
-        error_code="not_yet_sampled",
-        error_message=f"{venue}: pull poller has not sampled this key yet",
-        timestamp=datetime.now(tz=UTC),
     )
+
+
+# Back-compat alias (WHI-864 name); prefer :func:`not_sampled_quote`.
+not_yet_sampled_quote = not_sampled_quote
 
 
 def pair_from_store(
@@ -671,7 +680,7 @@ def pair_from_store(
                     instrument_type=itype,
                 )
             else:
-                q = not_yet_sampled_quote(
+                q = not_sampled_quote(
                     mid=mid,
                     venue=venue,
                     asset=asset_key,
@@ -716,7 +725,7 @@ def pair_from_store(
             if q.snapshot_id == pair_snap and q.mid == pair_mid_value:
                 return q
             # Placeholder / foreign-snapshot legs: only rewrite when they
-            # carry no priced bps (error / not_yet_sampled). Priced foreign
+            # carry no priced bps (error / not_sampled). Priced foreign
             # legs are dropped so we never mix two mids under one id.
             if q.status in PRICED_QUOTE_STATUSES and q.snapshot_id != pair_snap:
                 return None
@@ -738,7 +747,7 @@ def pair_from_store(
             mid_source=pair_mid_source,
             timestamp=pair_mid_ts,
         )
-        # Re-fill a missing leg with a truthful error (not not_yet_sampled —
+        # Re-fill a missing leg with a truthful error (not not_sampled —
         # the key was sampled, but under a different sweep mid).
         if "buy" in sides and buy is None:
             buy = error_quote(

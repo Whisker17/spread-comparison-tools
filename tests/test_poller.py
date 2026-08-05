@@ -13,6 +13,7 @@ import pytest
 import spread_compare.adapters  # noqa: F401 — register mock
 from spread_compare.adapters.base import BaseAdapter
 from spread_compare.adapters.registry import _REGISTRY
+from spread_compare.adapters.registry import get as registry_get
 from spread_compare.aggregator import QuoteAggregator
 from spread_compare.models import (
     FeeBreakdown,
@@ -24,10 +25,13 @@ from spread_compare.models import (
     TopOfBook,
     VenueClass,
 )
+from spread_compare.monitor import _count_fresh_store_quotes
 from spread_compare.poller import (
     PullQuotePoller,
     group_for_venue,
     is_poller_class,
+    not_sampled_quote,
+    pair_from_store,
     stamp_stored_quote,
 )
 from spread_compare.quote_store import QuoteStore, QuoteStoreKey
@@ -127,13 +131,14 @@ def test_load_poller_settings_defaults() -> None:
     s = load_poller_settings()
     assert s.enabled is True
     assert set(s.poller_served_classes) == {"amm_dex", "prop_amm"}
-    # WHI-864: Jupiter sparse tiers + interval derived from 1 RPS budget.
+    # WHI-864/865: Jupiter sparse tiers + interval derived from 1 RPS budget.
+    # Anchors $100 / $1k / $10k (small-to-mid band); $100k/$1M stay not_sampled.
     assert s.groups["jupiter"].interval_sec == 120.0
     assert s.groups["jupiter"].budget_share == 0.6
     assert s.groups["jupiter"].notionals_usd == [
         Decimal("100"),
         Decimal("1000"),
-        Decimal("1000000"),
+        Decimal("10000"),
     ]
     # Free groups keep the full §4.1 matrix.
     assert s.groups["kyber"].notionals_usd == [
@@ -887,3 +892,131 @@ def test_failed_refresh_preserves_observed_mono_for_age() -> None:
         entry.quote, age_sec=age, max_quote_age_for_best_sec=30.0
     )
     assert stamped.quote_stale is True
+
+
+@pytest.mark.asyncio
+async def test_unsampled_tier_is_not_sampled_not_error() -> None:
+    """Sparse Jupiter matrix: missing store keys are not_sampled (WHI-865).
+
+    Pins the acceptance criteria: GET /quotes path for an unsampled notional
+    must not surface status=error (which means "we tried and failed"), must
+    stay out of §5.2 best, and must not look like a transport failure.
+    """
+    store = QuoteStore(clock=lambda: 100.0)
+    settings = _poller_settings(
+        jupiter=PollerGroupSettings(
+            interval_sec=120.0,
+            # Deliberately omit $100k — the unsampled mid/large band.
+            notionals_usd=[Decimal("100"), Decimal("1000"), Decimal("10000")],
+            budget_share=0.6,
+            max_quote_age_for_best_sec=150.0,
+            max_stale_sec=240.0,
+        )
+    )
+    # Sampled tier has a real quote in the store.
+    store.put(
+        QuoteStoreKey(
+            venue="humidifi",
+            asset="BTC",
+            instrument_type="prop_amm",
+            notional_usd=Decimal("10000"),
+            side="buy",
+        ),
+        _ok_quote(side="buy", notional=Decimal("10000"), spread=Decimal("3")),
+        group="jupiter",
+        success=True,
+        observed_at=_TS,
+    )
+    store.put(
+        QuoteStoreKey(
+            venue="humidifi",
+            asset="BTC",
+            instrument_type="prop_amm",
+            notional_usd=Decimal("10000"),
+            side="sell",
+        ),
+        _ok_quote(side="sell", notional=Decimal("10000"), spread=Decimal("3")),
+        group="jupiter",
+        success=True,
+        observed_at=_TS,
+    )
+
+    adapter = registry_get("humidifi")
+    unsampled = pair_from_store(
+        store,
+        mid=_MID,
+        venue="humidifi",
+        asset="BTC",
+        instrument_type="prop_amm",
+        notional_usd=Decimal("100000"),
+        sides=("buy", "sell"),
+        poller_settings=settings,
+        stale_threshold_sec=150.0,
+        adapter=adapter,
+        clock=lambda: 100.0,
+    )
+    assert unsampled.buy is not None
+    assert unsampled.buy.status == "not_sampled"
+    assert unsampled.buy.error_code == "not_sampled"
+    assert unsampled.buy.status != "error"
+    assert unsampled.buy.spread_bps is None
+    assert unsampled.buy.total_cost_bps is None
+    assert unsampled.sell is not None
+    assert unsampled.sell.status == "not_sampled"
+
+    # §5.2 best is status=ok only — not_sampled is never eligible.
+    assert unsampled.buy.status != "ok"
+
+    # Monitor fresh-quote probe only counts PRICED statuses; not_sampled
+    # must not masquerade as a usable quote (and is not an error either).
+    fresh = _count_fresh_store_quotes(
+        store, asset="BTC", max_age_sec=300.0, now=100.0
+    )
+    assert fresh == 2  # only the $10k buy+sell priced rows
+
+    # Direct constructor pin (same path the store miss uses).
+    direct = not_sampled_quote(
+        mid=_MID,
+        venue="humidifi",
+        asset="BTC",
+        side="buy",
+        notional_usd=Decimal("100000"),
+        instrument_type="prop_amm",
+    )
+    assert direct.status == "not_sampled"
+    assert direct.error_code == "not_sampled"
+
+    # Aggregator surface: unsampled notional on a poller-served venue.
+    agg = QuoteAggregator(
+        FixedMid(_MID),
+        aggregator_settings=AggregatorSettings(
+            venue_timeout_sec=2.0,
+            venue_timeout_by_class={},
+            response_cache_ttl_sec=0,
+        ),
+        mid_settings=TEST_MID_SETTINGS,
+        poller_settings=settings,
+        quote_store=store,
+        clock=lambda: 100.0,
+    )
+    pkg = await agg.collect(
+        "BTC",
+        Decimal("100000"),
+        venues=["humidifi"],
+        use_cache=False,
+    )
+    assert len(pkg.pairs) == 1
+    row = pkg.pairs[0]
+    assert row.buy is not None
+    assert row.buy.status == "not_sampled"
+    assert row.buy.error_code == "not_sampled"
+    # Sampled tier still serves real numbers.
+    pkg_ok = await agg.collect(
+        "BTC",
+        Decimal("10000"),
+        venues=["humidifi"],
+        use_cache=False,
+    )
+    assert pkg_ok.pairs[0].buy is not None
+    assert pkg_ok.pairs[0].buy.status == "ok"
+    assert pkg_ok.pairs[0].buy.spread_bps == Decimal("3")

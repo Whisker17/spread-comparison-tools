@@ -415,6 +415,7 @@ QuoteStatus =
   | "error"
   | "rate_limited"             # WHI-844：限流等待会超过本 call 剩余 budget（非 timeout）
   | "excessive_impact"         # WHI-845：价格冲击超过 config 阈值；数字仍展示，不参与 best/heat
+  | "not_sampled"              # WHI-865：pull poller 故意不采该 (notional, side) 或本进程尚未产出样本；非失败
 ```
 
 （`TopOfBook` 不复用该枚举——orderbook 适配器用返回值 `None` 表示「本 venue 无 TOB 概念」，见 §6.3 / §7。）
@@ -554,6 +555,7 @@ SizeQuotePair {
 | 超时 / 上游失败 | `error` | 200 + 该 venue 错误；不整包失败 |
 | 限流等待会超过本 call 剩余 budget（本地 limiter 或上游 429） | `rate_limited` | 200 + 该 venue 错误；**不得**与 `timeout` 混淆；不参与 §5.2 best（WHI-844） |
 | 价格冲击超过 config 阈值（池深度被吃穿等） | `excessive_impact` | 200；**保留** effective/spread/total 数字可读；不参与 §5.2 best；排除出 heat 范围（WHI-845） |
+| pull poller 未采样该 (notional, side)（稀疏矩阵或进程内尚未 sweep） | `not_sampled` | 200；**不得**写成 `error`；不参与 §5.2 best；**不计入** per-venue error-rate / WHI-819 失败信号（WHI-865） |
 | mid 不可用 | — | 整包 503/422 |
 
 #### 6.6.1 Venue minimums at the $100 tier (WHI-838)
@@ -716,3 +718,4 @@ bps API 保留 4 位小数；展示可再圆整到 2 位。
 | 2026-08-04 | **WHI-844**：§6.1 / §6.6 增 `rate_limited`（限流等待会超过本 call 剩余 budget，fail-fast，与 `timeout` 区分）；§5.2 best 规则不变（仅 `status=ok` 且 `total_cost_bps` 非 null） |
 | 2026-08-04 | **WHI-845**：§6.1 / §6.6 增 `excessive_impact`；§6.2 增 `price_impact_bps` 与 priced-status 不变量（`ok`/`excessive_impact` 保留数字；阈值 `config/impact.yaml` unvalidated）；§5.2 best 仍仅 `status=ok` 且 `total_cost_bps` 非 null；heat 排除非 ok |
 | 2026-08-05 | **WHI-846**：§3.1 明确 `snapshot_id` = source-group 采样 pass（非 HTTP 响应）；§6.2 不变量 3 改为「同 snapshot_id ⇒ 同 mid」；增不变量 7 `quote_stale`/`age_sec` 与 best 年龄门闩（`config/poller.yaml` unvalidated）。store 行禁止读时重算 bps |
+| 2026-08-05 | **WHI-865**：§6.1 / §6.6 增 `not_sampled`（pull poller 稀疏矩阵未采 / 本进程尚未采样；非 transport 失败）。§5.2 best 仍仅 `status=ok` 且 `total_cost_bps` 非 null；不计入 error-rate / WHI-819 失败信号。Jupiter 采样档改 `$100/$1k/$10k`（见 `config/poller.yaml` 算术注释） |
