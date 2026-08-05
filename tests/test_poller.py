@@ -729,6 +729,62 @@ async def test_concurrent_sweep_is_skipped_not_overlapped() -> None:
 
 
 @pytest.mark.asyncio
+async def test_group_loop_overrun_skips_missed_ticks() -> None:
+    """A slow sweep past interval_sec counts overrun skips, not back-to-back."""
+    mono = {"t": 0.0}
+    settings = _poller_settings(
+        jupiter=PollerGroupSettings(
+            interval_sec=10.0,
+            notionals_usd=[Decimal("10000")],
+            budget_share=0.6,
+            max_quote_age_for_best_sec=30.0,
+            max_stale_sec=90.0,
+        )
+    )
+    holder: dict[str, PullQuotePoller] = {}
+    cycles = {"n": 0}
+
+    async def controlled_sleep(seconds: float) -> None:
+        # Stop on the first post-sweep wait (after overrun accounting).
+        cycles["n"] += 1
+        if cycles["n"] >= 1 and holder["p"].sweep_skips.get("jupiter", 0) > 0:
+            holder["p"]._stop.set()
+            return
+        mono["t"] += max(0.0, seconds)
+
+    poller = PullQuotePoller(
+        FixedMid(_MID),
+        store=QuoteStore(),
+        settings=settings,
+        aggregator_settings=AggregatorSettings(
+            venue_timeout_sec=2.0,
+            venue_timeout_by_class={},
+            response_cache_ttl_sec=0,
+        ),
+        clock=lambda: mono["t"],
+        sleep=controlled_sleep,
+    )
+    holder["p"] = poller
+
+    async def slow_body(group: str, cfg: PollerGroupSettings) -> str:
+        # Sweep wall time 25s against interval 10s → two missed ticks.
+        mono["t"] += 25.0
+        poller._mark_sweep_complete(group)  # noqa: SLF001 — mirror real body
+        return "snap-slow"
+
+    poller._run_sweep_body = slow_body  # type: ignore[method-assign]
+
+    await asyncio.wait_for(
+        poller._group_loop("jupiter", settings.groups["jupiter"]),  # noqa: SLF001
+        timeout=2.0,
+    )
+
+    assert poller.sweep_counts.get("jupiter", 0) >= 1
+    # 25s elapsed vs 10s interval → at least two overrun skips (not zero).
+    assert poller.sweep_skips.get("jupiter", 0) >= 2
+
+
+@pytest.mark.asyncio
 async def test_freshest_leg_wins_pair_identity() -> None:
     """When buy is stale-kept and sell is fresh, serve the fresh sell (WHI-846)."""
     store = QuoteStore(clock=lambda: 100.0)

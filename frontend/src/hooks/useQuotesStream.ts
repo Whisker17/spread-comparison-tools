@@ -181,6 +181,8 @@ export function QuotesStreamProvider({
       active.onopen = () => {
         lastMsgAt = Date.now();
         attempt = 0;
+        // Subscribe is owned by the filter-change effect (fires when socket
+        // becomes ready) so we never double-send on open (WHI-864).
         setSocket({
           ready: true,
           send: (payload: string) => {
@@ -189,10 +191,6 @@ export function QuotesStreamProvider({
             }
           },
         });
-        // Initial subscribe from ref so connect deps stay stable.
-        if (active.readyState === WebSocket.OPEN) {
-          active.send(subscribePayloadRef.current);
-        }
         livenessTimer = setInterval(() => {
           const silent = Date.now() - lastMsgAt;
           const timeout = livenessMsRef.current || livenessTimeoutMs;
