@@ -384,8 +384,11 @@ class WsFeedManager:
 
         async def on_open() -> None:
             self._registry.mark_connection(stream_id, open=True)
+            # block=True: wait for weight slots so first snapshots always land
+            # (non-blocking storm throttle would leave books with no last_update_id
+            # stuck RESYNCING forever — on_diff won't re-request without a snapshot).
             for sym in symbols:
-                await self._resync_binance_spot(sym)
+                await self._resync_binance_spot(sym, block=True)
 
         async def on_message(payload: dict[str, Any] | list[Any] | str) -> None:
             if not isinstance(payload, dict):
@@ -399,7 +402,7 @@ class WsFeedManager:
                 return
             result = sync.on_diff(data)
             if result.needs_resync:
-                await self._resync_binance_spot(sym)
+                await self._resync_binance_spot(sym, block=False)
 
         self._spawn_socket(
             url,
@@ -411,27 +414,35 @@ class WsFeedManager:
             symbols=symbols,
         )
 
-    async def _resync_binance_spot(self, symbol: str) -> None:
+    async def _resync_binance_spot(self, symbol: str, *, block: bool = False) -> None:
         sync = self._spot_syncs.get(symbol)
         if sync is None:
             return
         now = time.monotonic()
         min_iv = self._settings.binance_spot_min_resync_interval_sec
         last = self._binance_spot_last_resync_mono.get(symbol, 0.0)
-        if now - last < min_iv or self._binance_spot_weight_limiter.expected_wait_s() > 0:
-            # Stay RESYNCING / unservable rather than hammering depth?limit=1000.
+        if now - last < min_iv:
             if sync.book.health is not BookHealth.RESYNCING:
                 sync.book.set_health(BookHealth.RESYNCING, error="binance spot resync throttled")
-            logger.info("binance spot resync throttled %s", symbol)
+            logger.info("binance spot resync interval-throttled %s", symbol)
+            return
+        if not block and self._binance_spot_weight_limiter.expected_wait_s() > 0:
+            # Storm path: stay RESYNCING / unservable rather than hammer depth.
+            if sync.book.health is not BookHealth.RESYNCING:
+                sync.book.set_health(BookHealth.RESYNCING, error="binance spot resync throttled")
+            logger.info("binance spot resync weight-throttled %s", symbol)
             return
         try:
-            await self._binance_spot_weight_limiter.acquire(max_wait_s=0)
+            # block=True waits for a weight slot (startup snapshots); else fail-fast.
+            await self._binance_spot_weight_limiter.acquire(
+                max_wait_s=None if block else 0.0
+            )
         except RateLimitWaitExceeded:
             if sync.book.health is not BookHealth.RESYNCING:
                 sync.book.set_health(BookHealth.RESYNCING, error="binance spot resync throttled")
             logger.info("binance spot resync weight-budget throttled %s", symbol)
             return
-        self._binance_spot_last_resync_mono[symbol] = now
+        self._binance_spot_last_resync_mono[symbol] = time.monotonic()
         sync.book.set_health(BookHealth.RESYNCING)
         try:
             resp = await self._http().get(
@@ -732,6 +743,8 @@ class WsFeedManager:
         async def on_message(payload: dict[str, Any] | list[Any] | str) -> None:
             if not isinstance(payload, dict):
                 return
+            # Age out lost resubscribes even when the book is quiet (no new gaps).
+            self._expire_stale_lighter_resyncs(time.monotonic())
             if payload.get("error") or str(payload.get("type") or "") == "error":
                 err = payload.get("error") or payload.get("message") or payload
                 self._set_stream_error(stream_id, f"lighter error: {err}")
@@ -816,13 +829,11 @@ class WsFeedManager:
         """
         now = time.monotonic()
         self._expire_stale_lighter_resyncs(now)
-        last = self._lighter_last_resync_mono.get(market_id, 0.0)
-        min_iv = self._settings.lighter_min_resync_interval_sec
-        if now - last < min_iv:
-            logger.info("lighter resync throttled market=%s", market_id)
+        # Already waiting on a prior resubscribe — do not re-arm the timeout clock
+        # or re-send (that would make the 15s snapshot timeout unreachable).
+        if market_id in self._lighter_resync_pending_mono:
+            logger.info("lighter resync already pending market=%s", market_id)
             return
-        self._lighter_last_resync_mono[market_id] = now
-        sync.book.set_health(BookHealth.RESYNCING)
         sock = self._stream_socks.get("lighter")
         if sock is None or not sock.is_connected:
             self.note_resync("lighter", ok=False)
@@ -831,7 +842,15 @@ class WsFeedManager:
             )
             logger.warning("lighter resync aborted market=%s: socket not connected", market_id)
             return
+        last = self._lighter_last_resync_mono.get(market_id, 0.0)
+        min_iv = self._settings.lighter_min_resync_interval_sec
+        if now - last < min_iv:
+            logger.info("lighter resync throttled market=%s", market_id)
+            return
+        self._lighter_last_resync_mono[market_id] = now
+        sync.book.set_health(BookHealth.RESYNCING)
         try:
+            # Stamp once; subsequent gaps while pending leave this timestamp alone.
             self._lighter_resync_pending_mono[market_id] = now
             await sock.send_json(
                 {"type": "subscribe", "channel": f"order_book/{market_id}"}

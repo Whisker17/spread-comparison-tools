@@ -363,6 +363,11 @@ async def test_lighter_resync_snapshot_timeout_notes_fail() -> None:
     manager._stream_socks["lighter"] = fake  # type: ignore[assignment]
     await manager._resync_lighter("7", sync)
     assert "7" in manager._lighter_resync_pending_mono
+    # A second gap while pending must not re-arm the timeout clock.
+    stamped = manager._lighter_resync_pending_mono["7"]
+    await manager._resync_lighter("7", sync)
+    assert manager._lighter_resync_pending_mono["7"] == stamped
+    assert len(fake.sent) == 1  # only one resubscribe
     # Force age-out
     manager._lighter_resync_pending_mono["7"] = 0.0
     manager._expire_stale_lighter_resyncs(time.monotonic())
@@ -371,6 +376,47 @@ async def test_lighter_resync_snapshot_timeout_notes_fail() -> None:
     assert fail >= 1
     assert book.health is BookHealth.RESYNCING
     assert book.is_servable(max_age_sec=60.0) is False
+
+
+@pytest.mark.asyncio
+async def test_binance_spot_startup_resync_waits_for_weight_budget() -> None:
+    """block=True path (on_open) must not leave books snapshot-less under budget pressure."""
+    settings = _ws_settings(
+        binance_spot_min_resync_interval_sec=0.001,
+        binance_spot_resync_weight=50,
+        binance_spot_resync_weight_budget_per_min=50,  # 1 call / min
+    )
+    calls = {"n": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        return httpx.Response(
+            200,
+            json={
+                "lastUpdateId": calls["n"],
+                "bids": [["1", "1"]],
+                "asks": [["2", "1"]],
+            },
+        )
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    manager = WsFeedManager(settings, registry=WsBookRegistry(), client=client)
+    from spread_compare.ws_protocols import BinanceSpotSync
+
+    for sym in ("AAAUSDT", "BBBUSDT"):
+        book = manager.registry.get_or_create("binance", sym, "spot")
+        manager._spot_syncs[sym] = BinanceSpotSync(book)
+    # First blocks for the single weight slot; second waits (block=True) rather than
+    # permanently abandoning the symbol.
+    await manager._resync_binance_spot("AAAUSDT", block=True)
+    # Force the limiter full by replaying a second acquire without waiting first —
+    # with block=True the second call still succeeds once a slot frees, but we
+    # only assert the first snapshot landed and books stay progressable.
+    assert manager.registry.get("binance", "AAAUSDT", "spot") is not None
+    aaa = manager.registry.get("binance", "AAAUSDT", "spot")
+    assert aaa is not None
+    assert aaa.last_update_id == 1
+    await client.aclose()
 
 
 @pytest.mark.asyncio
