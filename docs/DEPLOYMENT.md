@@ -81,12 +81,15 @@ The script always performs, in order:
 6. **Verify** `GET http://127.0.0.1:8000/health` returns HTTP 200 and
    `"status":"ok"`; write `/etc/spread-comparison/deployed-revision`
 
-Idempotency: running the same `DEPLOY_REF` twice re-applies overlays and
-restarts, but does not change the tree or secrets if inputs are unchanged.
-Second run still exits 0 only if health passes.
+Idempotency (end state): running the same `DEPLOY_REF` twice with unchanged
+`SECRETS_SRC` / host overlays leaves the git tree and secrets file byte-identical
+after the second run. The script still **restarts** the unit and re-checks
+`/health` each time (brief downtime is expected; “nothing changed” means no
+drift in code/config/secrets, not “zero process churn”). Second run exits 0 only
+if health passes.
 
-Dry-run (no mutations except a fetch when not dry for resolution — use with
-care on a side checkout):
+Dry-run (print planned steps only — no fetch, checkout, secret install, overlay
+apply, `uv sync`, restart, or health poll):
 
 ```bash
 DRY_RUN=1 DEPLOY_REF=v0.1.0 ./scripts/deploy.sh

@@ -83,7 +83,7 @@ def test_load_api_settings_cors_defaults() -> None:
 def test_load_venue_settings_defaults() -> None:
     clear_settings_cache()
     venues = load_venue_settings()
-    # Offline suite overlays disabled: [] so mock works (conftest). Committed
+    # Offline suite patches disabled: [] so mock works (conftest). Committed
     # production default is asserted in test_committed_venues_yaml_disables_mock.
     assert venues.disabled == []
     assert venues.startup_retry_interval_sec == 60.0

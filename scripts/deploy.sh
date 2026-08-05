@@ -18,9 +18,11 @@
 #   SECRETS_SRC          if set, install this file to ENV_FILE (mode 0600, root-owned)
 #   SKIP_SECRETS_SYNC    set to 1 to refuse secret install even if SECRETS_SRC is set
 #   SKIP_RESTART         set to 1 to skip systemctl restart (debug only)
-#   DRY_RUN              set to 1 to print steps without mutating (git fetch still runs)
+#   DRY_RUN              set to 1 to print planned steps only (no fetch, checkout,
+#                        secret install, overlay apply, uv sync, restart, or health poll)
 #
 # Exit non-zero on any failure; /health must report HTTP 200 + JSON status ok.
+# Prefer running as root so secrets land root-owned 0600 (required when SECRETS_SRC is set).
 set -euo pipefail
 
 log() { printf 'deploy: %s\n' "$*"; }
@@ -98,16 +100,12 @@ if [[ -n "${SECRETS_SRC}" && "${SKIP_SECRETS_SYNC}" != "1" ]]; then
   [[ -f "${SECRETS_SRC}" ]] || die "SECRETS_SRC not a file: ${SECRETS_SRC}"
   log "installing secrets from ${SECRETS_SRC} -> ${ENV_FILE}"
   if [[ "${DRY_RUN}" == "1" ]]; then
-    log "DRY_RUN: install -m 0600 ${SECRETS_SRC} ${ENV_FILE}"
+    log "DRY_RUN: install -m 0600 -o root -g root ${SECRETS_SRC} ${ENV_FILE}"
   else
+    [[ "$(id -u)" -eq 0 ]] || die \
+      "SECRETS_SRC install requires root so ${ENV_FILE} is root-owned 0600 (re-run with sudo)"
     install -d -m 0750 "$(dirname "${ENV_FILE}")"
-    # Preserve root ownership when running as root; otherwise keep current owner.
-    if [[ "$(id -u)" -eq 0 ]]; then
-      install -m 0600 -o root -g root "${SECRETS_SRC}" "${ENV_FILE}"
-    else
-      install -m 0600 "${SECRETS_SRC}" "${ENV_FILE}"
-      log "warning: not root — could not chown root:root; fix ownership manually"
-    fi
+    install -m 0600 -o root -g root "${SECRETS_SRC}" "${ENV_FILE}"
   fi
 elif [[ -n "${SECRETS_SRC}" && "${SKIP_SECRETS_SYNC}" == "1" ]]; then
   log "SKIP_SECRETS_SYNC=1 — leaving ${ENV_FILE} unchanged"
@@ -115,18 +113,23 @@ else
   log "SECRETS_SRC unset — keeping existing ${ENV_FILE}"
 fi
 [[ -f "${ENV_FILE}" ]] || die "secrets file still missing after sync: ${ENV_FILE}"
-# Never print file contents. Only confirm presence + mode.
+# Never print file contents. Only confirm presence + mode (+ owner when root).
 if stat --version >/dev/null 2>&1; then
   env_mode="$(stat -c '%a' "${ENV_FILE}")"
+  env_owner="$(stat -c '%U:%G' "${ENV_FILE}")"
 else
   env_mode="$(stat -f '%OLp' "${ENV_FILE}")"
+  env_owner="$(stat -f '%Su:%Sg' "${ENV_FILE}")"
 fi
-log "secrets file present mode=${env_mode} path=${ENV_FILE}"
+log "secrets file present mode=${env_mode} owner=${env_owner} path=${ENV_FILE}"
 # Accept 600 / 0600 (GNU vs BSD stat).
 case "${env_mode}" in
   600|0600) ;;
   *) die "secrets file must be mode 0600 (got ${env_mode})" ;;
 esac
+if [[ "$(id -u)" -eq 0 && "${env_owner}" != "root:root" ]]; then
+  die "secrets file must be root:root when deploy runs as root (got ${env_owner})"
+fi
 
 # --- 3. Re-apply host config overlays -----------------------------------------
 log "step 3/6: re-apply host config from ${HOST_CONFIG_DIR}"
