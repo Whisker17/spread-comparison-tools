@@ -217,8 +217,10 @@ fire/resolve is logged at WARNING (`journalctl -u spread-comparison`).
 - **`degraded` / `unavailable_venues`** (WHI-840): adapter `startup()` failed or not
   yet retried. Process still serves other venues; **not** a deploy failure.
 - **`engine.streams[]`**: per multiplexed WS (`binance_spot`, `bybit_linear`, …) —
-  `connected`, `books_healthy` / `books_expected`, book counts by health, max age,
-  resync window counts, `stream_error`, `connected_age_sec`.
+  `connected`, `healthy` (operator-facing: not zero-book past grace / no blocking
+  subscribe error), `books_healthy` / `books_expected`, `peak_healthy_since_connect`,
+  book counts by health, max age, resync window counts, `stream_error`,
+  `connected_age_sec`.
 - **`engine.sweeps[]`**: per poller group — `age_sec` since last completed sweep,
   `stale` vs `interval_sec × sweep_stale_multiplier`.
 - **`engine.mid_age_sec`**: age of the probe asset mid (default BTC).

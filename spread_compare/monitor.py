@@ -285,12 +285,9 @@ def evaluate_alerts(
                     )
                 )
         else:
-            # Connected path: subscribe failure is immediate while books are still
-            # short; expected-vs-healthy lag waits for per-stream grace (WHI-856).
-            if stream.stream_error and (
-                stream.books_expected <= 0
-                or stream.books_healthy < stream.books_expected
-            ):
+            # Connected path: subscribe failure is immediate while the stream is
+            # still entirely unsynced; expected-vs-healthy lag waits for grace.
+            if _has_blocking_stream_error(stream):
                 alerts.append(
                     _OpenAlert(
                         code="subscribe_failed",
@@ -566,34 +563,61 @@ def _collect_streams(
     return views
 
 
+def _has_blocking_stream_error(stream: StreamHealthView) -> bool:
+    """Subscribe/stream error still matters only while the stream has zero books."""
+    return bool(stream.stream_error) and stream.books_healthy <= 0
+
+
+def _past_books_sync_grace(stream: StreamHealthView, cfg: MonitorSettings) -> bool:
+    grace = cfg.books_sync_grace_sec(stream.stream_id)
+    age = stream.connected_age_sec
+    return age is not None and age >= grace
+
+
 def _books_unsynced_alert(
     stream: StreamHealthView, cfg: MonitorSettings
 ) -> _OpenAlert | None:
-    """Alert when a connected stream is short of expected healthy books (WHI-856)."""
+    """Alert when a connected stream is short of expected healthy books (WHI-856).
+
+    *Critical* when entirely unsynced (``books_healthy == 0``) — the escaped
+    pre-deploy case. *Warning* for partial shortfall so thin markets on a large
+    subscribe set do not page as critical forever.
+    """
     if stream.books_expected <= 0:
         return None
     if stream.books_healthy >= stream.books_expected:
         return None
-    grace = cfg.books_sync_grace_sec(stream.stream_id)
-    age = stream.connected_age_sec
-    if age is None or age < grace:
+    if not _past_books_sync_grace(stream, cfg):
         return None
 
-    if stream.peak_healthy_since_connect <= 0:
-        kind = "never synced since connect"
-        detail = (
-            "usually a subscribe/protocol defect — check stream_error and "
-            "subscribe acks"
-        )
+    age = stream.connected_age_sec
+    assert age is not None  # guarded by _past_books_sync_grace
+    grace = cfg.books_sync_grace_sec(stream.stream_id)
+
+    if stream.books_healthy <= 0:
+        severity: AlertSeverity = "critical"
+        if stream.peak_healthy_since_connect <= 0:
+            kind = "never synced since connect"
+            detail = (
+                "usually a subscribe/protocol defect — check stream_error and "
+                "subscribe acks"
+            )
+        else:
+            kind = "was healthy, now degraded"
+            detail = (
+                f"peak healthy this session was {stream.peak_healthy_since_connect} "
+                "— usually upstream or network"
+            )
     else:
-        kind = "was healthy, now degraded"
+        severity = "warning"
+        kind = "partially synced"
         detail = (
-            f"peak healthy this session was {stream.peak_healthy_since_connect} "
-            "— usually upstream or network"
+            f"peak healthy this session was {stream.peak_healthy_since_connect}; "
+            "thin markets may never snapshot — not the zero-book failure mode"
         )
     return _OpenAlert(
         code="books_unsynced",
-        severity="critical",
+        severity=severity,
         target=stream.stream_id,
         message=(
             f"Stream {stream.stream_id!r} {kind}: "
@@ -606,21 +630,18 @@ def _books_unsynced_alert(
 
 
 def _stream_is_healthy(stream: StreamHealthView, cfg: MonitorSettings) -> bool:
-    """True when the stream is serving its expected books without open errors."""
+    """True when the stream is usable: connected, not zero-book, no blocking error."""
     if not stream.connected:
         return False
-    if stream.stream_error and (
-        stream.books_expected <= 0 or stream.books_healthy < stream.books_expected
-    ):
+    if _has_blocking_stream_error(stream):
         return False
     if stream.books_expected <= 0:
         return True
-    if stream.books_healthy >= stream.books_expected:
+    if stream.books_healthy > 0:
+        # Partial coverage is still serving; REST covers missing symbols.
         return True
-    grace = cfg.books_sync_grace_sec(stream.stream_id)
-    age = stream.connected_age_sec
-    # Inside grace a short book set is still "warming up".
-    return age is not None and age < grace
+    # Zero healthy — still warming up inside grace.
+    return not _past_books_sync_grace(stream, cfg)
 
 
 def _count_fresh_store_quotes(
@@ -695,12 +716,10 @@ def _data_probe_failures(
 def _subscribe_error_probe_failures(
     streams: Sequence[StreamHealthView],
 ) -> list[str]:
-    """Fail the data probe on latched subscribe errors while books are short."""
+    """Fail the data probe on latched subscribe errors while still at zero books."""
     failures: list[str] = []
     for stream in streams:
-        if not stream.stream_error:
-            continue
-        if stream.books_expected > 0 and stream.books_healthy >= stream.books_expected:
+        if not _has_blocking_stream_error(stream):
             continue
         failures.append(
             f"stream {stream.stream_id!r} subscribe/stream error: "
@@ -720,7 +739,7 @@ def _per_stream_book_probe_failures(
 
     Process-wide ``probe_min_healthy_books`` cannot distinguish 1/5 venues
     healthy from 5/5 — this asserts a minimum per connected stream after its
-    books-sync grace.
+    books-sync grace. Partial shortfall (healthy ≥ min) does not fail the probe.
     """
     failures: list[str] = []
     for stream in streams:
@@ -730,11 +749,10 @@ def _per_stream_book_probe_failures(
             # Disconnect is covered by ws_disconnected; do not double-count
             # the process-wide book floor with a per-stream zero here.
             continue
-        grace = cfg.books_sync_grace_sec(stream.stream_id)
-        age = stream.connected_age_sec
-        if age is None or age < grace:
+        if not _past_books_sync_grace(stream, cfg):
             continue
         if stream.books_healthy < min_healthy:
+            age = stream.connected_age_sec
             failures.append(
                 f"stream {stream.stream_id!r} healthy books "
                 f"{stream.books_healthy}/{stream.books_expected} "

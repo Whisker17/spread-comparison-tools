@@ -247,12 +247,16 @@ class WsFeedManager:
     def clear_stream_error_if_recovered(
         self, stream_id: str, *, books_healthy: int, books_expected: int
     ) -> None:
-        """Drop a latched subscribe/stream error once the book set is full (WHI-856).
+        """Drop a latched subscribe/stream error once any book is healthy (WHI-856).
 
         Mid-session errors (e.g. Lighter gap resubscribe) must not page forever
-        after the stream has fully recovered.
+        after the stream has recovered. Full-set equality is not required — thin
+        markets may never snapshot, and a single HEALTHY book proves the
+        subscribe path works again.
         """
-        if books_expected <= 0 or books_healthy < books_expected:
+        if books_healthy <= 0:
+            return
+        if books_expected <= 0:
             return
         self._clear_stream_error(stream_id)
 

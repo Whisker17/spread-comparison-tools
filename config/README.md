@@ -61,11 +61,14 @@ Checked-in files:
   in-memory books (zero REST). Unvalidated pending DESIGN.md §2; override with
   `ws.local.yaml`. Pair with `mid.yaml` → `max_age_for_ws_quote_sec` for the
   tighter mid gate.
-- `monitor.yaml` — real-time engine monitoring (WHI-819): per-class staleness
-  thresholds (WS disconnect / book age / resync, sweep multiplier, mid age,
-  sustained 429s), data-probe asset, eval interval, startup grace, alert
-  cooldown. Webhook URL is a secret (`ALERT_WEBHOOK_URL`), not YAML.
-  Unvalidated pending DESIGN.md §2; override with `monitor.local.yaml`.
+- `monitor.yaml` — real-time engine monitoring (WHI-819 / WHI-856): per-class
+  staleness thresholds (WS disconnect / book age / resync, sweep multiplier, mid
+  age, sustained 429s), books-sync grace (`ws_books_sync_grace_sec` + optional
+  per-stream map), data-probe asset + process-wide and per-stream book floors
+  (`probe_min_healthy_books` / `probe_min_healthy_books_per_stream`), eval
+  interval, startup grace, alert cooldown. Webhook URL is a secret
+  (`ALERT_WEBHOOK_URL`), not YAML. Unvalidated pending DESIGN.md §2; override
+  with `monitor.local.yaml`.
 - `venues.yaml` — per-host venue disable list + startup-retry backoff (WHI-840).
   Committed default disables `mock` (fixture adapter; WHI-849). Disabled slugs are
   omitted from `GET /venues` and never started; unknown slugs fail fast at load.

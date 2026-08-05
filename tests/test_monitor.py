@@ -74,6 +74,37 @@ def test_health_includes_engine_and_stays_200_when_degraded() -> None:
         assert isinstance(engine["alerts"], list)
 
 
+def test_health_stays_200_while_books_unsynced_alert_open() -> None:
+    """AC: GET /health is 200 even when engine.alerts includes books_unsynced."""
+    from spread_compare.api.app import create_app
+    from spread_compare.monitor import _OpenAlert
+
+    app = create_app()
+    with TestClient(app) as client:
+        mon = getattr(app.state, "engine_monitor", None)
+        if mon is not None:
+            snap = mon.snapshot(force=True)
+            snap.alerts = [
+                _OpenAlert(
+                    code="books_unsynced",
+                    severity="critical",
+                    target="bybit_spot",
+                    message="never synced since connect: 0/13",
+                    value=0.0,
+                    threshold=13.0,
+                )
+            ]
+            snap.data_ok = False
+            snap.data_failures = ["stream 'bybit_spot' healthy books 0/13 < min 1"]
+            mon.last_snapshot = snap
+        response = client.get("/health")
+        assert response.status_code == 200
+        body = response.json()
+        assert body["status"] == "ok"
+        codes = {a["code"] for a in body["engine"]["alerts"]}
+        assert "books_unsynced" in codes
+
+
 def test_ws_disconnected_raises_alert() -> None:
     """AC: killing one venue's WebSocket raises ws_disconnected within SLO."""
     cfg = _monitor_settings(
@@ -668,6 +699,7 @@ def test_connected_zero_books_past_grace_raises_books_unsynced() -> None:
     )
     bybit = next(s for s in snap.streams if s.stream_id == "bybit_spot")
     assert bybit.connected is True
+    assert bybit.healthy is False
     assert bybit.books_expected == 13
     assert bybit.books_healthy == 0
     assert bybit.connected_age_sec == pytest.approx(90.0)
@@ -681,6 +713,51 @@ def test_connected_zero_books_past_grace_raises_books_unsynced() -> None:
     assert alert.severity == "critical"
     assert "never synced since connect" in alert.message
     assert "0/13" in alert.message
+
+
+def test_partial_books_shortfall_is_warning_not_critical() -> None:
+    """Thin markets on a large set must not critical-page as zero-book failure."""
+    cfg = _monitor_settings(
+        startup_grace_sec=0,
+        ws_books_sync_grace_sec=10.0,
+        probe_min_fresh_store_quotes=0,
+        probe_min_healthy_books=0,
+        probe_min_healthy_books_per_stream=0,
+    )
+    reg = WsBookRegistry()
+    book = reg.put_fixture_book(
+        "apex",
+        "BTCUSDT",
+        "perp",
+        [(Decimal("100"), Decimal("1"))],
+        [(Decimal("101"), Decimal("1"))],
+    )
+    book.set_health(BookHealth.HEALTHY)
+    manager = WsFeedManager(registry=reg)
+    manager._symbols["apex"] = [f"S{i}USDT" for i in range(10)]  # noqa: SLF001
+    manager._sockets.append(_FakeConnectedSock("apex"))  # type: ignore[arg-type]  # noqa: SLF001
+    manager.mark_stream_connected("apex", connected=True)
+    manager._stream_connected_since["apex"] = 0.0  # noqa: SLF001
+    manager._stream_peak_healthy["apex"] = 1  # noqa: SLF001
+    now = 50.0
+    snap = collect_engine_snapshot(
+        settings=cfg,
+        ws_manager=manager,
+        registry=reg,
+        rate_limits=RollingEventCounter(clock=lambda: now),
+        started_mono=0.0,
+        clock=lambda: now,
+        ws_settings=load_ws_settings_enabled(True),
+        poller_settings=load_poller_settings_enabled(False),
+    )
+    apex = next(s for s in snap.streams if s.stream_id == "apex")
+    assert apex.books_healthy == 1
+    assert apex.books_expected == 10
+    assert apex.healthy is True  # partial coverage still serves
+    alerts = evaluate_alerts(snap, cfg)
+    partial = next(a for a in alerts if a.code == "books_unsynced")
+    assert partial.severity == "warning"
+    assert "partially synced" in partial.message
 
 
 def test_books_unsynced_distinguishes_degraded_from_never_synced() -> None:
