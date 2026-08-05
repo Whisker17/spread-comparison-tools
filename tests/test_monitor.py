@@ -504,3 +504,76 @@ def test_ws_manager_resync_counts_window() -> None:
     ok, fail = manager.resync_counts("lighter", window_sec=60.0)
     assert ok == 3
     assert fail == 1
+
+
+def test_cold_fail_stream_marks_disconnected_age() -> None:
+    """A stream that never connects still ages toward ws_disconnected (WHI-819)."""
+    manager = WsFeedManager()
+    # Simulate _spawn_socket start path without opening a real socket.
+    manager.mark_stream_connected("apex", connected=False)
+    age = manager.stream_disconnected_age_sec("apex")
+    assert age is not None
+    assert age >= 0.0
+    assert "apex" in manager.known_stream_ids()
+
+
+def test_record_rate_limit_sources_hit_process_counter() -> None:
+    """Adapter wiring: record_rate_limit increments the process counter."""
+    from spread_compare.upstream_events import (
+        default_rate_limit_counter,
+        record_rate_limit,
+        reset_rate_limit_counter,
+    )
+
+    reset_rate_limit_counter()
+    record_rate_limit("jupiter")
+    record_rate_limit("kyber")
+    record_rate_limit("rpc")
+    counter = default_rate_limit_counter()
+    assert counter.count("jupiter", window_sec=60.0) == 1
+    assert counter.count("kyber", window_sec=60.0) == 1
+    assert counter.count("rpc", window_sec=60.0) == 1
+
+
+def test_mid_age_is_probe_asset_only() -> None:
+    """Missing probe mid is not masked by a fresher mid for another asset."""
+    from spread_compare.settings import load_mid_settings
+
+    cfg = _monitor_settings(
+        startup_grace_sec=0,
+        probe_asset="BTC",
+        mid_max_age_sec=5.0,
+        probe_min_fresh_store_quotes=0,
+        probe_min_healthy_books=0,
+    )
+    mid = MidService(load_mid_settings())
+    mid.seed_cache(
+        "SOL",
+        mid=Decimal("100"),
+        mid_source="binance_usdm_index",
+        timestamp=datetime.now(tz=UTC),
+    )
+    snap = collect_engine_snapshot(
+        settings=cfg,
+        mid_service=mid,
+        registry=WsBookRegistry(),
+        rate_limits=RollingEventCounter(clock=lambda: 10.0),
+        started_mono=0.0,
+        clock=lambda: 10.0,
+        ws_settings=load_ws_settings_enabled(False),
+        poller_settings=load_poller_settings_enabled(False),
+    )
+    assert snap.mid_age_sec is None
+    assert any(a.code == "mid_stale" for a in snap.alerts)
+
+
+def load_ws_settings_enabled(enabled: bool) -> Any:
+    from spread_compare.settings import load_ws_settings
+
+    return load_ws_settings().model_copy(update={"enabled": enabled})
+
+
+def load_poller_settings_enabled(enabled: bool) -> Any:
+    from spread_compare.settings import load_poller_settings
+
+    return load_poller_settings().model_copy(update={"enabled": enabled})

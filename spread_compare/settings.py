@@ -395,6 +395,7 @@ class MonitorSettings(BaseModel):
     eval_interval_sec: float = Field(gt=0)
     startup_grace_sec: float = Field(ge=0)
     alert_cooldown_sec: float = Field(ge=0)
+    webhook_timeout_sec: float = Field(gt=0)
     # Orderbook / WS class.
     ws_max_book_age_sec: float = Field(gt=0)
     ws_disconnected_alert_sec: float = Field(gt=0)

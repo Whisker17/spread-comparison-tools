@@ -248,26 +248,21 @@ def create_app() -> FastAPI:
         """
         monitor = getattr(request.app.state, "engine_monitor", None)
         if not isinstance(monitor, EngineMonitor):
+            view = EngineHealthView(
+                data_ok=False,
+                data_failures=["engine monitor not initialized"],
+                mid_age_sec=None,
+                mid_probe_asset="",
+                uptime_sec=0.0,
+                in_startup_grace=False,
+            )
             return JSONResponse(
-                status_code=503,
-                content={
-                    "data_ok": False,
-                    "data_failures": ["engine monitor not initialized"],
-                    "mid_age_sec": None,
-                    "mid_probe_asset": "",
-                    "uptime_sec": 0.0,
-                    "in_startup_grace": False,
-                    "sweeps": [],
-                    "streams": [],
-                    "rate_limits": {},
-                    "alerts": [],
-                },
+                status_code=503, content=view.model_dump(mode="json")
             )
         snap = monitor.snapshot()
         body = snap.to_view().model_dump(mode="json")
-        if snap.data_ok:
-            return JSONResponse(status_code=200, content=body)
-        return JSONResponse(status_code=503, content=body)
+        status = 200 if snap.data_ok else 503
+        return JSONResponse(status_code=status, content=body)
 
     app.include_router(quotes_router)
     app.include_router(simulate_router)

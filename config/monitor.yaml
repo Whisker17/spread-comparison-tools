@@ -18,6 +18,9 @@ startup_grace_sec: 90.0
 # Minimum seconds between re-sends of the same open alert code+target.
 alert_cooldown_sec: 300.0
 
+# HTTP timeout for ALERT_WEBHOOK_URL delivery.
+webhook_timeout_sec: 10.0
+
 # --- WebSocket / orderbook class (cex + perp_dex, WHI-847) -----------------
 # A book older than this (while the stream claims connected) is stale.
 ws_max_book_age_sec: 15.0

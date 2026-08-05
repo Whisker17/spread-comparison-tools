@@ -241,10 +241,7 @@ class PullQuotePoller:
         work = self._plan_work(group)
         if not work:
             logger.debug("poller group %s: no work items", group)
-            now_mono = self._clock()
-            self.sweep_counts[group] = self.sweep_counts.get(group, 0) + 1
-            self.last_sweep_completed_mono[group] = now_mono
-            self.last_sweep_completed_at[group] = self._wall()
+            self._mark_sweep_complete(group)
             return snapshot_id
 
         # One mid per asset for this snapshot (pairing invariant).
@@ -286,10 +283,7 @@ class PullQuotePoller:
                 await self._sample_one(item, mid=mid, group=group, cfg=cfg)
             next_at = max(next_at + delay, self._clock()) if delay > 0 else self._clock()
 
-        now_mono = self._clock()
-        self.sweep_counts[group] = self.sweep_counts.get(group, 0) + 1
-        self.last_sweep_completed_mono[group] = now_mono
-        self.last_sweep_completed_at[group] = self._wall()
+        self._mark_sweep_complete(group)
         logger.info(
             "poller group %s sweep done snapshot_id=%s items=%s",
             group,
@@ -297,6 +291,13 @@ class PullQuotePoller:
             len(work),
         )
         return snapshot_id
+
+    def _mark_sweep_complete(self, group: str) -> None:
+        """Record diagnostics used by WHI-819 sweep-stale alerts."""
+        now_mono = self._clock()
+        self.sweep_counts[group] = self.sweep_counts.get(group, 0) + 1
+        self.last_sweep_completed_mono[group] = now_mono
+        self.last_sweep_completed_at[group] = self._wall()
 
     def _plan_work(self, group: str) -> list[_WorkItem]:
         """Enumerate (venue, asset, tier, side) for venues in this group."""

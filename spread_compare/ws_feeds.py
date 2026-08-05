@@ -138,6 +138,12 @@ class WsFeedManager:
     def stream_ids(self) -> list[str]:
         return [s.stream_id for s in self._sockets]
 
+    def known_stream_ids(self) -> list[str]:
+        """Configured sockets plus any stream that has a disconnect timestamp."""
+        ids = {s.stream_id for s in self._sockets}
+        ids.update(self._stream_disconnected_since)
+        return sorted(ids)
+
     def stream_connected(self, stream_id: str) -> bool:
         for sock in self._sockets:
             if sock.stream_id == stream_id:
@@ -261,6 +267,9 @@ class WsFeedManager:
             if on_open is not None:
                 await on_open()
 
+        # Start in the disconnected bucket so a stream that never connects still
+        # ages toward ws_disconnected (WHI-819 — cold-fail must page).
+        self.mark_stream_connected(stream_id, connected=False)
         sock = ReconnectingWebSocket(
             url,
             stream_id=stream_id,

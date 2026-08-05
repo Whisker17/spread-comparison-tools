@@ -193,11 +193,11 @@ def collect_engine_snapshot(
     store = quote_store if quote_store is not None else default_quote_store()
     rl = rate_limits if rate_limits is not None else default_rate_limit_counter()
 
+    # Probe-asset only — do not fall back to another asset's fresher mid
+    # (that would mask a missing BTC mid with a fresh SOL entry).
     mid_age: float | None = None
     if mid_service is not None:
         mid_age = mid_service.cache_age_sec(cfg.probe_asset)
-        if mid_age is None:
-            mid_age = mid_service.freshest_cache_age_sec()
 
     sweeps = _collect_sweeps(poller=poller, poller_settings=pcfg, cfg=cfg, now=now)
     streams = _collect_streams(
@@ -328,8 +328,12 @@ def evaluate_alerts(
                         target=sweep.group,
                         message=(
                             f"Poller sweep group {sweep.group!r} last completed "
-                            f"{sweep.age_sec if sweep.age_sec is not None else 'never'} "
-                            f"(interval {sweep.interval_sec}s × "
+                            + (
+                                "never"
+                                if sweep.age_sec is None
+                                else f"{sweep.age_sec:.1f}s ago"
+                            )
+                            + f" (interval {sweep.interval_sec}s × "
                             f"{cfg.sweep_stale_multiplier})"
                         ),
                         value=sweep.age_sec,
@@ -445,8 +449,7 @@ def _collect_streams(
 
     stream_ids: set[str] = set(by_stream)
     if ws_manager is not None:
-        stream_ids.update(ws_manager.stream_ids())
-        stream_ids.update(ws_manager._stream_disconnected_since.keys())  # noqa: SLF001
+        stream_ids.update(ws_manager.known_stream_ids())
 
     views: list[StreamHealthView] = []
     for sid in sorted(stream_ids):
@@ -457,10 +460,6 @@ def _collect_streams(
         if ws_manager is not None:
             connected = ws_manager.stream_connected(sid)
             disc_age = ws_manager.stream_disconnected_age_sec(sid, now=now)
-            if not connected and disc_age is None:
-                # Known but never opened — treat as disconnected since boot signal
-                # is absent; leave age None so threshold does not fire until marked.
-                pass
             resync_ok, resync_fail = ws_manager.resync_counts(
                 sid, window_sec=cfg.ws_resync_window_sec, now=now
             )
@@ -594,12 +593,17 @@ class WebhookAlerter:
         # key → last fired mono
         self._last_sent: dict[str, float] = {}
         self._open_keys: set[str] = set()
-        # Test/diagnostics: payloads that would have been sent.
-        self.sent_payloads: list[dict[str, Any]] = []
+        # Last-cycle payloads only (tests assert delivery shape; not a log).
+        self.last_cycle_payloads: list[dict[str, Any]] = []
 
     @property
     def configured(self) -> bool:
         return bool(self._url)
+
+    @property
+    def sent_payloads(self) -> list[dict[str, Any]]:
+        """Alias for tests that read the last cycle's attempted deliveries."""
+        return self.last_cycle_payloads
 
     async def aclose(self) -> None:
         if self._owns_client and self._client is not None:
@@ -608,7 +612,9 @@ class WebhookAlerter:
 
     def _http(self) -> httpx.AsyncClient:
         if self._client is None:
-            self._client = httpx.AsyncClient(timeout=10.0)
+            self._client = httpx.AsyncClient(
+                timeout=self._settings.webhook_timeout_sec
+            )
         return self._client
 
     async def process(self, alerts: Sequence[_OpenAlert]) -> list[dict[str, Any]]:
@@ -617,16 +623,13 @@ class WebhookAlerter:
         current = {a.key: a for a in alerts}
         current_keys = set(current)
         payloads: list[dict[str, Any]] = []
+        self.last_cycle_payloads = []
 
         # Newly open or cooled-down re-fire.
         for key, alert in current.items():
             last = self._last_sent.get(key)
             if last is not None and (now - last) < self._settings.alert_cooldown_sec:
                 continue
-            if key in self._open_keys and last is not None:
-                # Still open and inside cooldown already handled; only re-fire
-                # after cooldown elapses (last check above).
-                pass
             payload = self._build_payload(alert, status="firing")
             payloads.append(payload)
             await self._deliver(payload)
@@ -669,7 +672,7 @@ class WebhookAlerter:
         }
 
     async def _deliver(self, payload: dict[str, Any]) -> None:
-        self.sent_payloads.append(payload)
+        self.last_cycle_payloads.append(payload)
         if not self._url:
             logger.warning(
                 "alert %s (no ALERT_WEBHOOK_URL): %s",
