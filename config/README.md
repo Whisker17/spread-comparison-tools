@@ -45,11 +45,13 @@ Checked-in files:
 - `orderbook_cache.yaml` — short-TTL orderbook snapshot reuse (WHI-843). Depth is
   part of the cache key so a shallow $100 book is never walked for $1M. Unvalidated
   pending DESIGN.md §2; override with `orderbook_cache.local.yaml`.
-- `poller.yaml` — pull-only background poller (WHI-846): served venue classes,
-  per-upstream sweep groups (interval, budget_share / max_rps, max ages).
-  AMM DEX + prop AMM quotes are written to an in-memory store; `GET /quotes`
-  reads them (zero per-request upstream). Unvalidated pending DESIGN.md §2;
-  override with `poller.local.yaml`.
+- `poller.yaml` — pull-only background poller (WHI-846 / WHI-864): served venue
+  classes and per-upstream sweep groups. Each group owns `notionals_usd` (sampled
+  tiers), `interval_sec`, `budget_share` / `max_rps`, and max ages — Jupiter stays
+  sparse (3 tiers × both sides); Kyber/RPC keep the full §4.1 matrix. Sweeps never
+  overlap within a group (`skip_count` on `/health`). AMM DEX + prop AMM quotes are
+  written to an in-memory store; `GET /quotes` reads them (zero per-request
+  upstream). Unvalidated pending DESIGN.md §2; override with `poller.local.yaml`.
 - `stream.yaml` — browser WebSocket push stream (WHI-848): coalesce interval,
   heartbeat / client liveness, max clients, subscription breadth caps, outbound
   queue depth. Origin allowlist reuses `api.yaml` `cors_origins`. Unvalidated

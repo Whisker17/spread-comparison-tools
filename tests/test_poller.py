@@ -132,7 +132,7 @@ def test_load_poller_settings_defaults() -> None:
     assert s.groups["jupiter"].budget_share == 0.6
     assert s.groups["jupiter"].notionals_usd == [
         Decimal("100"),
-        Decimal("10000"),
+        Decimal("1000"),
         Decimal("1000000"),
     ]
     # Free groups keep the full §4.1 matrix.

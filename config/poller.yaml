@@ -30,25 +30,32 @@ groups:
     # | 2 tiers × 2 sides           | 36            | 36 s         |
     # | 5 tiers × buy only          | 45            | 45 s         |
     #
-    # Anchors $100 / $10k / $1M cover small·mid·large without intermediate
-    # tiers. Keyed sustained budget is 1 RPS (config/jupiter.yaml); poller
-    # budget_share 0.6 → 0.6 RPS → 54/0.6 ≈ 90 s start-spacing.
-    # interval_sec = 120s = ~1.33× that (headroom for RTT, 429 backoff, and
-    # /simulate competing for the remaining 0.4 RPS).
+    # Anchors $100 / $1k / $1M — includes the product default ($1k) so the
+    # dashboard's default size is pre-warmed for Solana props; mid-tier $10k
+    # and $100k are not sampled (UI still offers them for CEX/perp/AMM; prop
+    # rows at those sizes stay not_yet_sampled).
+    #
+    # Keyed (production: JUPITER_API_KEY set): sustained 1 RPS, budget_share
+    # 0.6 → 0.6 RPS → 54/0.6 ≈ 90 s start-spacing. interval_sec = 120s ≈
+    # 1.33× that (RTT + 429 backoff + /simulate's remaining 0.4 RPS).
+    # Keyless worst case is 0.5 RPS × 0.6 = 0.3 RPS → ~180 s; without a key
+    # expect overrun skips and quote_stale until a key is configured — do
+    # not size the keyed path for that case.
     notionals_usd:
       - 100
-      - 10000
+      - 1000
       - 1000000
     interval_sec: 120.0
     budget_share: 0.6
     # 1.25× interval so a just-finished row stays §5.2 best until the next
-    # sample lands under normal pacing.
+    # sample lands under normal (keyed) pacing.
     max_quote_age_for_best_sec: 150.0
     max_stale_sec: 240.0
   kyber:
     # Unpublished limit (WHI-797 §7.2); pace conservatively — production saw
     # KyberSwap 429 backoff loops under per-request fan-out.
-    # Full §4.1 matrix is affordable at 2 RPS (~100 calls → ~50 s).
+    # Full §4.1 matrix ≈100 calls at 2 RPS → ~50 s start-spacing;
+    # interval_sec = 60s = 1.2× headroom.
     notionals_usd:
       - 100
       - 1000
@@ -61,14 +68,15 @@ groups:
     max_stale_sec: 180.0
   rpc:
     # On-chain quoter eth_call budget is shared per RPC endpoint (WHI-842).
-    # Full matrix at 5 RPS → ~20 s start-spacing for ~100 calls.
+    # Full matrix ≈100 calls at 5 RPS → ~20 s start-spacing;
+    # interval_sec = 30s = 1.5× headroom (retries / Multicall variance).
     notionals_usd:
       - 100
       - 1000
       - 10000
       - 100000
       - 1000000
-    interval_sec: 20.0
+    interval_sec: 30.0
     max_rps: 5.0
     max_quote_age_for_best_sec: 60.0
     max_stale_sec: 120.0

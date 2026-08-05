@@ -234,11 +234,9 @@ class PullQuotePoller:
                     raise
             if self._stop.is_set():
                 break
-            if self._sweep_in_progress.get(group, False):
-                self._mark_sweep_skipped(group, reason="in_flight")
-                next_due = self._clock() + cfg.interval_sec
-                continue
             try:
+                # run_sweep skips (returns None) when already in flight —
+                # that is the sole overlap guard (WHI-864).
                 await self.run_sweep(group)
             except asyncio.CancelledError:
                 raise
@@ -357,12 +355,9 @@ class PullQuotePoller:
             self.sweep_skips[group],
         )
 
-    def _plan_work(
-        self, group: str, cfg: PollerGroupSettings | None = None
-    ) -> list[_WorkItem]:
+    def _plan_work(self, group: str, cfg: PollerGroupSettings) -> list[_WorkItem]:
         """Enumerate (venue, asset, tier, side) for venues in this group."""
-        group_cfg = cfg if cfg is not None else self._settings.groups[group]
-        notionals = list(group_cfg.notionals_usd)
+        notionals = list(cfg.notionals_usd)
         items: list[_WorkItem] = []
         for slug in list_venues():
             try:
