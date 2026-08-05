@@ -101,6 +101,7 @@ class SimulateRow:
     error_code: str | None = None
     error_message: str | None = None
     mid_stale: bool = False
+    quote_stale: bool = False  # WHI-846: aged past max_quote_age_for_best_sec
 
 
 @dataclass(frozen=True, slots=True)
@@ -243,6 +244,7 @@ def _row_from_quote(quote: Quote, *, side: Side, best: bool = False) -> Simulate
         error_code=quote.error_code,
         error_message=quote.error_message,
         mid_stale=quote.mid_stale,
+        quote_stale=quote.quote_stale,
     )
 
 
@@ -286,7 +288,13 @@ def rank_and_flag_best(rows: list[SimulateRow]) -> list[SimulateRow]:
     ordered = sorted(rows, key=sort_key)
     best_idx: int | None = None
     for i, row in enumerate(ordered):
-        if row.status == "ok" and row.total_cost_bps is not None:
+        # WHI-846: quote_stale rows stay visible but never crown (same as
+        # excessive_impact / gas_unknown). Simulate is live so stale is rare.
+        if (
+            row.status == "ok"
+            and row.total_cost_bps is not None
+            and not row.quote_stale
+        ):
             best_idx = i
             break
 

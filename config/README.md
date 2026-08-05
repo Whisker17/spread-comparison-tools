@@ -27,7 +27,8 @@ loaded into a typed, validated model at startup.
 Loaders:
 - `spread_compare/settings.py` — `load_mid_settings`, `load_aggregator_settings`,
   `load_jupiter_settings`, `load_api_settings`, `load_venue_settings`,
-  `load_rpc_settings`, `load_impact_settings`, `load_orderbook_cache_settings`
+  `load_rpc_settings`, `load_impact_settings`, `load_orderbook_cache_settings`,
+  `load_poller_settings`
 - `spread_compare/fees.py` — `get_fee_catalog` / `get_fee_schedule` (one YAML per venue)
 
 Checked-in files:
@@ -43,6 +44,11 @@ Checked-in files:
 - `orderbook_cache.yaml` — short-TTL orderbook snapshot reuse (WHI-843). Depth is
   part of the cache key so a shallow $100 book is never walked for $1M. Unvalidated
   pending DESIGN.md §2; override with `orderbook_cache.local.yaml`.
+- `poller.yaml` — pull-only background poller (WHI-846): served venue classes,
+  per-upstream sweep groups (interval, budget_share / max_rps, max ages).
+  AMM DEX + prop AMM quotes are written to an in-memory store; `GET /quotes`
+  reads them (zero per-request upstream). Unvalidated pending DESIGN.md §2;
+  override with `poller.local.yaml`.
 - `venues.yaml` — per-host venue disable list + startup-retry backoff (WHI-840).
   Committed default disables `mock` (fixture adapter; WHI-849). Disabled slugs are
   omitted from `GET /venues` and never started; unknown slugs fail fast at load.

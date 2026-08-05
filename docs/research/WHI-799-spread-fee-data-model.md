@@ -84,6 +84,8 @@ Venue **显示名**用 Tessera；**slug 带链维度**：`tessera_solana` / `tes
 2. 对该 `snapshot_id` 下每个 `asset` **只解析一次** `ReferenceMid`。
 3. 所有 venue 的 `Quote.mid` / `Quote.mid_source` / `Quote.snapshot_id` / `Quote.mid_timestamp` 填同一套值。
 
+**WHI-846 补充（pull-only 后台 sweep）**：`snapshot_id` 标识的是 **某一个 source group 的一次采样 pass**（例如一次 Jupiter 类 sweep、一次 orderbook 实时 fan-out），**不是**一次 HTTP 响应。`GET /quotes` 响应可以混入不同 `snapshot_id` 的行（实时 orderbook 行 vs 上一轮 pull sweep 行）。在任意 `(asset, snapshot_id)` 上，上述「只解析一次 mid、全 venue 同 mid」规则仍然严格成立。对 store 中的 pull 报价：**禁止**在读时用更新的 mid 重算 `spread_bps` / `total_cost_bps`（pairing invariant）——数字与观测时刻的 mid 绑定。
+
 ### 3.2 选取优先级（Crypto blue chips：BTC / ETH / SOL）
 
 | 优先级 | `mid_source` 枚举值 | 定义与可调用端点 | 何时用 |
@@ -465,10 +467,11 @@ Quote {
    （两条合取，不是析取。）  
    另：`status=excessive_impact` 时 `price_impact_bps` 必须非 null。
 2. 若 `status` **不是** priced（即不是 `ok` / `excessive_impact`）：则 `effective_price`、`spread_bps`、`total_cost_bps`、`qty_base`、以及 `fee_breakdown.explicit_fee_bps` 均为 null。
-3. `snapshot_id` / `mid` / `mid_source` / `mid_timestamp` 在同快照同资产上全 venue 一致。
+3. **同 `snapshot_id` ⇒ 同 mid**（`mid` / `mid_source` / `mid_timestamp` 在同一 `snapshot_id` 的同一 `asset` 上全 venue 一致）。**不再**要求「同一次 HTTP 响应 ⇒ 同一 `snapshot_id`」——WHI-846 起，一个 `GET /quotes` 响应可混合多个 source group 的 `snapshot_id`（见 §3.1）。
 4. bps 公式 **仅** §4.5 / §5.2。
 5. `mid_stale` 与 `status` 独立：`mid_stale=true` 仍可 `status=ok`。
 6. **WHI-845 价格冲击护栏**（AMM / prop-AMM 报价路径；CEX/perp 盘口不在此护栏范围）：当 adapter 测得 `price_impact_bps` 且超过 `config/impact.yaml` 的 `max_price_impact_bps`（**unvalidated** pending DESIGN.md §2）时，`status` 置为 `excessive_impact`。**不得**静默丢行——数字保留可读，但不参与 §5.2 best，也不进入 dashboard 分列 heat 范围。Jupiter 用 `priceImpactPct`（单位分数）× 10_000；Kyber / on-chain quoter 无独立字段时用 **adverse** mid 相对 spread（`max(spread_bps, 0)`，有利偏差不触发）。`price_impact_bps` 为诊断字段，非 priced status 下通常为 null（不强制与 mid_stale 同级的正交语义）。
+7. **WHI-846 观测年龄门闩**：store-backed 行带 `age_sec` 与正交标志 `quote_stale`。当年龄超过该 source group 的 `max_quote_age_for_best_sec`（`config/poller.yaml`，**unvalidated**；默认 2× sweep interval）时 `quote_stale=true`——数字仍可读，**不**参与 §5.2 best（与 `excessive_impact` 同模式）。live fan-out 行 `quote_stale=false`、`age_sec` 可 null。
 
 ### 6.3 `TopOfBook`
 
@@ -712,3 +715,4 @@ bps API 保留 4 位小数；展示可再圆整到 2 位。
 | 2026-08-04 | **WHI-838**：§4.1 增 `$100` 为第五档 → `[100, 1_000, 10_000, 100_000, 1_000_000]`；collector 改为五档都采；注明零售档 gas_bps 放大与 dashboard 按列 heat。公式与 `QuoteStatus` 词汇无变化 |
 | 2026-08-04 | **WHI-844**：§6.1 / §6.6 增 `rate_limited`（限流等待会超过本 call 剩余 budget，fail-fast，与 `timeout` 区分）；§5.2 best 规则不变（仅 `status=ok` 且 `total_cost_bps` 非 null） |
 | 2026-08-04 | **WHI-845**：§6.1 / §6.6 增 `excessive_impact`；§6.2 增 `price_impact_bps` 与 priced-status 不变量（`ok`/`excessive_impact` 保留数字；阈值 `config/impact.yaml` unvalidated）；§5.2 best 仍仅 `status=ok` 且 `total_cost_bps` 非 null；heat 排除非 ok |
+| 2026-08-05 | **WHI-846**：§3.1 明确 `snapshot_id` = source-group 采样 pass（非 HTTP 响应）；§6.2 不变量 3 改为「同 snapshot_id ⇒ 同 mid」；增不变量 7 `quote_stale`/`age_sec` 与 best 年龄门闩（`config/poller.yaml` unvalidated）。store 行禁止读时重算 bps |

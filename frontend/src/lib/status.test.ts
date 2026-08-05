@@ -19,6 +19,7 @@ function q(partial: Partial<Quote> & Pick<Quote, "status">): Quote {
     mid_source: "binance_usdm_index",
     mid_timestamp: "2026-08-03T12:00:00Z",
     mid_stale: false,
+    quote_stale: false,
     timestamp: "2026-08-03T12:00:00Z",
     fee_breakdown: {
       embedded_in_price: false,
@@ -155,6 +156,29 @@ describe("decideCellRender", () => {
 });
 
 describe("isEligibleForBest", () => {
+  it("excludes quote_stale even when status=ok (WHI-846)", () => {
+    expect(
+      isEligibleForBest(
+        q({
+          status: "ok",
+          total_cost_bps: "1",
+          quote_stale: true,
+          effective_price: "100",
+          spread_bps: "1",
+          qty_base: "1",
+          fee_breakdown: {
+            embedded_in_price: false,
+            platform_fee_bps: "0",
+            gas_unknown: false,
+            trading_fee_bps: "1",
+            explicit_fee_bps: "1",
+            gas_bps: "0",
+          },
+        }),
+      ),
+    ).toBe(false);
+  });
+
   it("requires status=ok and non-null total_cost_bps", () => {
     expect(
       isEligibleForBest(

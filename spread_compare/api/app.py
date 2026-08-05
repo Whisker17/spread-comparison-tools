@@ -28,12 +28,15 @@ from spread_compare.api.simulate import build_simulate_rate_guard
 from spread_compare.api.simulate import router as simulate_router
 from spread_compare.fees import get_fee_catalog
 from spread_compare.mids import MidService
+from spread_compare.poller import PullQuotePoller
+from spread_compare.quote_store import default_quote_store
 from spread_compare.settings import (
     load_aggregator_settings,
     load_api_settings,
     load_impact_settings,
     load_mid_settings,
     load_orderbook_cache_settings,
+    load_poller_settings,
     load_venue_settings,
 )
 from spread_compare.simulator import TradeSimulator
@@ -71,25 +74,37 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     agg_settings = load_aggregator_settings()
     api_settings = load_api_settings()
     venue_settings = load_venue_settings()
+    poller_settings = load_poller_settings()
     load_impact_settings()
     load_orderbook_cache_settings()
     get_fee_catalog()
     set_disabled_venues(venue_settings.disabled)
 
+    quote_store = default_quote_store()
     mid_service = MidService(mid_settings)
     aggregator = QuoteAggregator(
         mid_service,
         aggregator_settings=agg_settings,
         mid_settings=mid_settings,
+        poller_settings=poller_settings,
+        quote_store=quote_store,
     )
     simulator = TradeSimulator(
         mid_service,
         aggregator_settings=agg_settings,
         mid_settings=mid_settings,
     )
+    poller = PullQuotePoller(
+        mid_service,
+        store=quote_store,
+        settings=poller_settings,
+        aggregator_settings=agg_settings,
+    )
     app.state.mid_service = mid_service
     app.state.aggregator = aggregator
     app.state.simulator = simulator
+    app.state.quote_store = quote_store
+    app.state.poller = poller
     app.state.simulate_rate_guard = build_simulate_rate_guard(api_settings)
 
     retry_stop = asyncio.Event()
@@ -113,8 +128,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                     ),
                     name="adapter-startup-retry",
                 )
+        # Start after adapter startup so supported_assets / clients are warm
+        # (WHI-846). A failed venue simply yields not_initialized store rows.
+        await poller.start()
         yield
     finally:
+        await poller.stop()
         retry_stop.set()
         if retry_task is not None:
             retry_task.cancel()
