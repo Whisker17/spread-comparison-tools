@@ -986,7 +986,7 @@ async def test_unsampled_tier_is_not_sampled_not_error() -> None:
     assert warmup.buy.error_message is not None
     assert "has not produced a sample" in warmup.buy.error_message
 
-    # Direct constructor pin.
+    # Direct constructor pin (caller owns message, same as rate_limited_quote).
     direct = not_sampled_quote(
         mid=_MID,
         venue="humidifi",
@@ -994,6 +994,10 @@ async def test_unsampled_tier_is_not_sampled_not_error() -> None:
         side="buy",
         notional_usd=Decimal("100000"),
         instrument_type="prop_amm",
+        error_message=(
+            "humidifi: notional 100000 is outside this group's "
+            "sample matrix (group=jupiter)"
+        ),
     )
     assert direct.status == "not_sampled"
     assert direct.error_code == "not_sampled"

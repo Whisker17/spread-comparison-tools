@@ -240,13 +240,16 @@ def not_sampled_quote(
     side: Side,
     notional_usd: Decimal,
     instrument_type: InstrumentType,
-    error_message: str | None = None,
+    error_message: str,
 ) -> Quote:
     """``status=not_sampled`` row for a pull-poller key with no store entry (WHI-865).
 
     Distinct from ``error``: the poller either omits this notional from its
     sample matrix, or has not produced a sample yet this process lifetime.
     Never §5.2 best-eligible; must not count as a transport failure.
+
+    Caller owns ``error_message`` (same shape as :func:`rate_limited_quote`);
+    poller matrix vs warmup wording lives in ``poller._not_sampled_message``.
     """
     return error_quote(
         mid=mid,
@@ -256,11 +259,7 @@ def not_sampled_quote(
         notional_usd=notional_usd,
         instrument_type=instrument_type,
         error_code="not_sampled",
-        error_message=error_message
-        or (
-            f"{venue}: pull poller has no sample for this key "
-            f"(notional={notional_usd}, side={side})"
-        ),
+        error_message=error_message,
         status="not_sampled",
     )
 

@@ -156,7 +156,7 @@ export const STATUS_FIXTURES: FixtureCase[] = [
       qty_base: null,
       error_code: "not_sampled",
       error_message:
-        "humidifi: pull poller does not sample this key (notional=100000, side=buy)",
+        "humidifi: notional 100000 is outside this group's sample matrix (group=jupiter)",
     },
   },
   {
