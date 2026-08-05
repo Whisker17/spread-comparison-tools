@@ -30,4 +30,8 @@ jobs:
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm test
+      # WHI-857: production builds reject unset/loopback NEXT_PUBLIC_API_URL.
+      # CI uses a placeholder public origin (not a real deploy target).
       - run: pnpm build
+        env:
+          NEXT_PUBLIC_API_URL: https://api.example.com

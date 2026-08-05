@@ -21,7 +21,7 @@ uv run python main.py
 # terminal 2 — frontend
 cd frontend
 pnpm install
-cp .env.example .env.local   # optional; defaults to http://localhost:8000
+cp .env.example .env.local   # optional for pnpm dev only — remove/override before pnpm build
 pnpm dev
 ```
 
@@ -35,11 +35,36 @@ UI primitives under `src/components/ui/` follow the shadcn/new-york stack
 (Radix + CVA + `cn`). `components.json` is checked in so section agents can run
 `pnpm dlx shadcn@latest add <component>` without re-initializing.
 
-Env:
+### Env / build-time API URL (WHI-857)
 
-| Variable | Default | Meaning |
+| Variable | Dev default | Meaning |
 | --- | --- | --- |
-| `NEXT_PUBLIC_API_URL` | `http://localhost:8000` | Backend origin (no trailing slash) |
+| `NEXT_PUBLIC_API_URL` | `http://localhost:8000` | Backend origin (no trailing slash). **Baked into the client at build time.** |
+
+- **`pnpm dev`**: unset is fine — the client defaults to `http://localhost:8000`. Optional `.env.local` overrides (e.g. an SSH tunnel to the VPS).
+- **`.env.local` is development-only.** Next loads it for builds too, so a leftover loopback value will fail `pnpm build` on purpose.
+- **`pnpm build` / production**: `NEXT_PUBLIC_API_URL` **must** be set to a **non-loopback** absolute origin. Unset, empty, `localhost`, `127.0.0.1`, and `[::1]` fail the build with a message naming the variable. The `/stream` WebSocket URL is derived from the same value under the same rule.
+
+Correct production example:
+
+```bash
+# shell env wins over .env.local for this invocation
+NEXT_PUBLIC_API_URL=https://api.example.com pnpm build
+```
+
+Wrong (build fails):
+
+```bash
+pnpm build                                          # unset → error
+NEXT_PUBLIC_API_URL=http://127.0.0.1:8100 pnpm build  # loopback → error
+```
+
+Same-origin serving (frontend + API behind one host, relative base URLs) would
+remove this class of bug entirely and is strictly safer than any guard — the
+client currently requires an **absolute** origin, so that deploy shape is not
+supported yet. Until it is, set the public origin explicitly at build time.
+`next start` does not re-check the var (it was already baked); only `pnpm build`
+fails closed.
 
 The backend enables CORS for local frontend origins (`localhost:3000` / `127.0.0.1:3000`).
 

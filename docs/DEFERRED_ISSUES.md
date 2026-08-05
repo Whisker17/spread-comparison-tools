@@ -32,6 +32,13 @@ defines none: `docs/GIT_WORKFLOW.md` § High-risk paths), **Medium**
 
 ## Open
 
+- **Frontend requires an absolute API origin (no same-origin relative base)** (Medium, WHI-857).
+  `frontend/src/lib/apiBaseUrl.ts::resolveApiBaseUrl` only accepts absolute
+  `http(s)` origins so production builds cannot bake loopback. Same-origin
+  serving (empty/relative base, FE+API one host) would remove the class of bug
+  entirely but needs client URL construction changes plus a deploy shape.
+  Fix: support relative base when the product is served behind one host.
+
 - **Non-adapter lazy `httpx.AsyncClient` sites still raise raw `ImportError`** (Low, WHI-858).
   `spread_compare/mids.py::MidService._http`,
   `spread_compare/ws_mid.py::FastMidPoller._http`,

@@ -403,8 +403,8 @@ export function AssetSpreadBlock({
         <div className="rounded-md border border-rose-300 bg-rose-50 px-3 py-2 text-sm text-rose-800 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-200">
           <p className="font-medium">Failed to load {asset} quotes</p>
           <p className="mt-0.5 text-xs opacity-90">
-            {errorMessage ?? "Unknown error"}. Is the backend running on{" "}
-            <code>NEXT_PUBLIC_API_URL</code> (default http://localhost:8000)?
+            {errorMessage ?? "Unknown error"}. Is the backend running at{" "}
+            <code>NEXT_PUBLIC_API_URL</code> (dev default http://localhost:8000)?
           </p>
           <Button
             type="button"
