@@ -145,6 +145,7 @@ mode is not `0600`.
 | Config (CORS / simulate) | Effective values come from committed `config/api.yaml` (no surprise `api.local.yaml` unless you put one in the host inventory on purpose) |
 | Mock disabled | `curl -sS http://127.0.0.1:8000/venues` must **not** list `mock` |
 | Secrets | Changing only code does **not** change env; pass `SECRETS_SRC` when secrets must move with the deploy |
+| WebSocket stream (WHI-848) | Dashboard uses `WS /stream` (not periodic `GET /quotes`). If a reverse proxy sits in front, forward `Upgrade` + `Connection` and set the idle read timeout **above** `config/stream.yaml` `heartbeat_interval_sec` (15s) so heartbeats keep the connection alive. Origin must be on `cors_origins`. |
 
 ### Effective config from a clean checkout
 

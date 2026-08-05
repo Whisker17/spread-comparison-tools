@@ -511,6 +511,42 @@ async def test_hub_max_clients_and_max_assets() -> None:
 
 
 @pytest.mark.asyncio
+async def test_hub_max_venues_is_union_across_filters() -> None:
+    """max_venues_per_client counts the union, not per-filter lists."""
+    from spread_compare.stream import StreamLimitError
+
+    aggregator = AsyncMock()
+    hub = QuoteStreamHub(
+        aggregator,
+        _stream_settings(max_venues_per_client=2, max_assets_per_client=10),
+        cors_origins=["http://localhost:3000"],
+    )
+    client = await hub.register()
+    with pytest.raises(StreamLimitError, match="max venues"):
+        hub.subscribe(
+            client,
+            StreamSubscribe.model_validate(
+                {
+                    "type": "subscribe",
+                    "filters": [
+                        {
+                            "assets": ["BTC"],
+                            "notionals": ["1000"],
+                            "venues": ["a", "b"],
+                        },
+                        {
+                            "assets": ["ETH"],
+                            "notionals": ["1000"],
+                            "venues": ["c"],
+                        },
+                    ],
+                }
+            ),
+        )
+    await hub.unregister(client.client_id)
+
+
+@pytest.mark.asyncio
 async def test_hub_queue_overflow_forces_resnapshot() -> None:
     aggregator = AsyncMock()
     aggregator.collect = AsyncMock(return_value=_package())

@@ -15,6 +15,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -80,8 +81,12 @@ export function QuotesStreamProvider({
   const [lastError, setLastError] = useState<string | null>(null);
   // Socket handle is state so senders re-bind without reading refs during render.
   const [socket, setSocket] = useState<SocketHandle | null>(null);
-  // Server-driven via hello frame; falls back to DEFAULT until hello arrives.
-  const [livenessMs, setLivenessMs] = useState(livenessTimeoutMs);
+  // Server-driven via hello; ref so updates do not re-run the connect effect.
+  const livenessMsRef = useRef(livenessTimeoutMs);
+  const byAssetRef = useRef(byAsset);
+  useEffect(() => {
+    byAssetRef.current = byAsset;
+  }, [byAsset]);
 
   const subscribePayload = useMemo(
     () => JSON.stringify(buildSubscribeMessage(filters)),
@@ -177,8 +182,7 @@ export function QuotesStreamProvider({
         }
         livenessTimer = setInterval(() => {
           const silent = Date.now() - lastMsgAt;
-          // Prefer server hello timeout (state updated async); prop is fallback.
-          const timeout = livenessMs > 0 ? livenessMs : livenessTimeoutMs;
+          const timeout = livenessMsRef.current || livenessTimeoutMs;
           if (silent > timeout) {
             setStatus("reconnecting");
             try {
@@ -210,22 +214,22 @@ export function QuotesStreamProvider({
             const sec = (parsed as { client_liveness_timeout_sec?: number })
               .client_liveness_timeout_sec;
             if (typeof sec === "number" && sec > 0) {
-              setLivenessMs(sec * 1000);
+              livenessMsRef.current = sec * 1000;
             }
             return;
           }
         }
-        setByAsset((prev) => {
-          const { next, kind, error } = applyServerMessage(prev, parsed);
-          if (error) setLastError(`${error.code}: ${error.message}`);
-          if (kind === "snapshot" || kind === "delta") {
-            setStatus("live");
-          }
-          if (kind === "heartbeat") {
-            setStatus((s) => (s === "connecting" ? "connecting" : "live"));
-          }
-          return next;
-        });
+        const applied = applyServerMessage(byAssetRef.current, parsed);
+        byAssetRef.current = applied.next;
+        setByAsset(applied.next);
+        if (applied.error) {
+          setLastError(`${applied.error.code}: ${applied.error.message}`);
+        }
+        if (applied.kind === "snapshot" || applied.kind === "delta") {
+          setStatus("live");
+        } else if (applied.kind === "heartbeat") {
+          setStatus((s) => (s === "connecting" ? "connecting" : "live"));
+        }
       };
 
       active.onerror = () => {
@@ -258,7 +262,7 @@ export function QuotesStreamProvider({
         }
       }
     };
-  }, [enabled, url, subscribePayload, livenessTimeoutMs, livenessMs, reconnectBaseMs]);
+  }, [enabled, url, subscribePayload, livenessTimeoutMs, reconnectBaseMs]);
 
   const matrixFor = useCallback(
     (asset: string): QuotesMatrixData | undefined =>

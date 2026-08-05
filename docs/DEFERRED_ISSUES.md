@@ -32,6 +32,20 @@ defines none: `docs/GIT_WORKFLOW.md` § High-risk paths), **Medium**
 
 ## Open
 
+- **Orderbook stream freshness still gated by response-cache TTL** (Medium, WHI-848).
+  `QuoteStreamHub.publish_once` → `aggregator.collect(use_cache=True)` reuses the
+  35s live package cache (WHI-844). Store-backed (poller) rows re-stamp age on
+  every tick; CEX/perp deltas only change when the cache misses until WHI-847
+  writes books into memory. Fix: WHI-847 WS ingest, or hub-side `use_cache=False`
+  with a shared background collector.
+
+- **Stream delta fingerprint excludes `age_sec` alone** (Low, WHI-848).
+  `pair_fingerprint` drops `age_sec` so poller rows do not re-send every coalesce
+  tick. `quote_stale` still pushes; FE shows age from `timestamp` /
+  `StatusCell.ageFromTimestamp` when `age_sec` is not re-stamped. Acceptable
+  mixed-age contract; revisit if product wants second-granularity age on every
+  cell without other field changes.
+
 - **Live blue-chips poll under five tiers not re-measured in a clean network** (Medium, WHI-838).
   Agent-env load runs hit SOCKS-proxy latency (Binance/mid timeouts) so the AC
   "no `error_code=timeout` rows" could not be validated live. Capacity prior:

@@ -257,16 +257,22 @@ class StreamClient:
     need_snapshot: set[str] = field(default_factory=set)
     closed: bool = False
 
-    def enqueue(self, message: dict[str, Any]) -> None:
+    def enqueue(
+        self, message: dict[str, Any], *, important: bool = True
+    ) -> None:
         """Push a frame; drop the oldest if the queue is full (backpressure).
 
-        A dropped frame can skip a delta that later frames assume was applied.
-        Force a full resnapshot on the next tick so the client never stays
-        partially desynchronised under ``live``.
+        Important frames (snapshot/delta): a drop can skip a delta that later
+        frames assume was applied, so force a full resnapshot on the next tick.
+
+        Heartbeats are not important — drop silently without invalidating
+        delta state when the client is already behind.
         """
         if self.closed:
             return
         if self.outbound.full():
+            if not important:
+                return
             try:
                 self.outbound.get_nowait()
             except asyncio.QueueEmpty:
@@ -282,6 +288,8 @@ class StreamClient:
         try:
             self.outbound.put_nowait(message)
         except asyncio.QueueFull:
+            if not important:
+                return
             self.need_snapshot = set(self.filters)
             self.last_pairs.clear()
             self.last_mid_json.clear()
@@ -592,6 +600,8 @@ class QuoteStreamHub:
                 clients = list(self._clients.values())
             ts = time.time()
             for client in clients:
-                client.enqueue({"type": "heartbeat", "ts": ts})
+                client.enqueue(
+                    {"type": "heartbeat", "ts": ts}, important=False
+                )
 
 
