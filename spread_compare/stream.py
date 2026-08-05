@@ -19,24 +19,12 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+# Literal used by StreamSubscribe / StreamResnapshot / StreamPing / StreamPong.
 from spread_compare.aggregator import QuoteAggregator, QuotesPackage
 from spread_compare.models import InstrumentType, Side, SizeQuotePair
 from spread_compare.settings import StreamSettings
 
 logger = logging.getLogger(__name__)
-
-# Wire message types (client ↔ server).
-MsgType = Literal[
-    "subscribe",
-    "resnapshot",
-    "ping",
-    "pong",
-    "snapshot",
-    "delta",
-    "heartbeat",
-    "error",
-]
-
 
 class StreamFilterSpec(BaseModel):
     """One asset-set filter (section boards may send several on one socket)."""
@@ -190,9 +178,19 @@ def pair_identity_key(pair: SizeQuotePair) -> str:
 
 
 def pair_fingerprint(pair: SizeQuotePair) -> str:
-    """Content hash for change detection (includes age/stale stamps)."""
-    # model_dump_json is deterministic for our pydantic models (extra=forbid).
-    return pair.model_dump_json()
+    """Content hash for change detection.
+
+    ``age_sec`` is excluded: it advances every serve and would force a full
+    re-send of every store row on every coalesce tick. ``quote_stale`` stays
+    in the dump so the best-eligibility flip still pushes. FE shows age from
+    ``timestamp`` / last stamped ``age_sec`` (WHI-848).
+    """
+    dump = pair.model_dump(mode="json")
+    for leg_name in ("buy", "sell"):
+        leg = dump.get(leg_name)
+        if isinstance(leg, dict):
+            leg.pop("age_sec", None)
+    return str(dump)
 
 
 def diff_pairs(
@@ -261,7 +259,12 @@ class StreamClient:
     closed: bool = False
 
     def enqueue(self, message: dict[str, Any]) -> None:
-        """Push a frame; drop the oldest if the queue is full (backpressure)."""
+        """Push a frame; drop the oldest if the queue is full (backpressure).
+
+        A dropped frame can skip a delta that later frames assume was applied.
+        Force a full resnapshot on the next tick so the client never stays
+        partially desynchronised under ``live``.
+        """
         if self.closed:
             return
         if self.outbound.full():
@@ -269,16 +272,22 @@ class StreamClient:
                 self.outbound.get_nowait()
             except asyncio.QueueEmpty:
                 pass
+            self.need_snapshot = set(self.filters)
+            self.last_pairs.clear()
+            self.last_mid_json.clear()
             logger.warning(
-                "stream client %s queue full; dropping oldest frame",
+                "stream client %s queue full; dropping oldest frame + "
+                "forcing resnapshot",
                 self.client_id,
             )
         try:
             self.outbound.put_nowait(message)
         except asyncio.QueueFull:
-            # Race after drop; skip this frame rather than block the hub tick.
+            self.need_snapshot = set(self.filters)
+            self.last_pairs.clear()
+            self.last_mid_json.clear()
             logger.warning(
-                "stream client %s still full after drop; skipping frame",
+                "stream client %s still full after drop; forcing resnapshot",
                 self.client_id,
             )
 
@@ -291,7 +300,7 @@ class QuoteStreamHub:
         aggregator: QuoteAggregator,
         settings: StreamSettings,
         *,
-        cors_origins: SequenceStr | None = None,
+        cors_origins: Iterable[str] | None = None,
         clock: Callable[[], float] | None = None,
     ) -> None:
         self._aggregator = aggregator
@@ -345,8 +354,15 @@ class QuoteStreamHub:
             clients = list(self._clients.values())
             self._clients.clear()
         for client in clients:
+            # Enqueue while still open so the shutdown frame can leave the queue.
+            try:
+                if not client.outbound.full():
+                    client.outbound.put_nowait(
+                        {"type": "error", "code": "shutdown", "message": "hub stop"}
+                    )
+            except asyncio.QueueFull:
+                pass
             client.closed = True
-            client.enqueue({"type": "error", "code": "shutdown", "message": "hub stop"})
 
     async def register(self) -> StreamClient:
         """Accept a new client or raise when at capacity."""
@@ -421,14 +437,29 @@ class QuoteStreamHub:
             if asset in client.filters:
                 client.need_snapshot.add(asset)
 
-    async def publish_once(self) -> None:
-        """One coalesce tick (public for tests)."""
+    async def publish_once(
+        self, *, only_client: StreamClient | None = None
+    ) -> None:
+        """One coalesce tick (public for tests).
+
+        When ``only_client`` is set (subscribe / resnapshot path), only that
+        client's filters are collected — avoids amplifying other viewers' work
+        on a new connection.
+        """
         async with self._lock:
-            clients = [c for c in self._clients.values() if not c.closed]
+            if only_client is not None:
+                clients = (
+                    [only_client]
+                    if not only_client.closed
+                    and only_client.client_id in self._clients
+                    else []
+                )
+            else:
+                clients = [c for c in self._clients.values() if not c.closed]
         if not clients:
             return
 
-        # Unique filter keys → one collect each.
+        # Unique filter keys → one collect each (shared across clients).
         key_to_filter: dict[str, StreamFilter] = {}
         for client in clients:
             for filt in client.filters.values():
@@ -502,13 +533,6 @@ class QuoteStreamHub:
                 "notionals": [str(n) for n in package.notionals],
             }
         )
-        # Merge last state.
-        merged = dict(prev)
-        for key in removed:
-            merged.pop(key, None)
-        for pair in package.pairs:
-            merged[pair_identity_key(pair)] = pair
-        # Prefer current package map for fidelity of unchanged rows' identity.
         client.last_pairs[asset] = {
             pair_identity_key(p): p for p in package.pairs
         }
@@ -542,5 +566,3 @@ class QuoteStreamHub:
                 client.enqueue({"type": "heartbeat", "ts": ts})
 
 
-# Typing helper alias (avoid importing Sequence from collections at top for str).
-SequenceStr = Iterable[str]

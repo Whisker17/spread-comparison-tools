@@ -10,8 +10,10 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from pydantic import ValidationError
 from starlette.websockets import WebSocketState
 
+# Any retained for outbound queue typing only.
 from spread_compare.stream import (
     QuoteStreamHub,
+    StreamClient,
     StreamLimitError,
     StreamPing,
     StreamPong,
@@ -89,7 +91,7 @@ async def stream_quotes(websocket: WebSocket) -> None:
 
 async def _handle_client_message(
     hub: QuoteStreamHub,
-    client: Any,
+    client: StreamClient,
     websocket: WebSocket,
     raw: object,
 ) -> None:
@@ -103,12 +105,12 @@ async def _handle_client_message(
         if msg_type == "subscribe":
             sub = StreamSubscribe.model_validate(raw)
             hub.subscribe(client, sub)
-            # Immediate first frame(s) so connect latency is not a full coalesce window.
-            await hub.publish_once()
+            # Immediate first frame(s) for this client only (not all peers).
+            await hub.publish_once(only_client=client)
         elif msg_type == "resnapshot":
             resnap = StreamResnapshot.model_validate(raw)
             hub.request_resnapshot(client, resnap.assets)
-            await hub.publish_once()
+            await hub.publish_once(only_client=client)
         elif msg_type == "ping":
             StreamPing.model_validate(raw)
             await websocket.send_json({"type": "pong"})

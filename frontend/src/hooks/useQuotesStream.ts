@@ -81,10 +81,6 @@ export function QuotesStreamProvider({
   // Socket handle is state so senders re-bind without reading refs during render.
   const [socket, setSocket] = useState<SocketHandle | null>(null);
 
-  const filtersKey = useMemo(
-    () => JSON.stringify(buildSubscribeMessage(filters)),
-    [filters],
-  );
   const subscribePayload = useMemo(
     () => JSON.stringify(buildSubscribeMessage(filters)),
     [filters],
@@ -252,14 +248,7 @@ export function QuotesStreamProvider({
         }
       }
     };
-  }, [
-    enabled,
-    url,
-    filtersKey,
-    subscribePayload,
-    livenessTimeoutMs,
-    reconnectBaseMs,
-  ]);
+  }, [enabled, url, subscribePayload, livenessTimeoutMs, reconnectBaseMs]);
 
   const matrixFor = useCallback(
     (asset: string): QuotesMatrixData | undefined =>

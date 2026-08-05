@@ -140,16 +140,21 @@ def test_origin_allowed_matches_cors_list() -> None:
     assert origin_allowed("", origins) is False
 
 
-def test_diff_pairs_detects_age_and_stale_change() -> None:
+def test_diff_pairs_ignores_age_sec_only_but_sees_stale() -> None:
+    """age_sec advances every serve — must not force a delta alone (WHI-848)."""
     a = _ok_pair(age_sec=1.0, quote_stale=False)
-    b = _ok_pair(age_sec=40.0, quote_stale=True)
+    aged = _ok_pair(age_sec=40.0, quote_stale=False)
     prev = {pair_identity_key(a): a}
-    changed, removed = diff_pairs(prev, [b])
+    changed, removed = diff_pairs(prev, [aged])
     assert removed == []
-    assert len(changed) == 1
-    assert changed[0].buy is not None
-    assert changed[0].buy.quote_stale is True
-    assert pair_fingerprint(a) != pair_fingerprint(b)
+    assert changed == []
+    # quote_stale flip still pushes.
+    stale = _ok_pair(age_sec=40.0, quote_stale=True)
+    changed2, _ = diff_pairs(prev, [stale])
+    assert len(changed2) == 1
+    assert changed2[0].buy is not None
+    assert changed2[0].buy.quote_stale is True
+    assert pair_fingerprint(a) != pair_fingerprint(stale)
 
 
 def test_package_to_wire_carries_row_snapshot_and_age() -> None:
@@ -457,3 +462,74 @@ def test_stream_settings_load() -> None:
     assert s.heartbeat_interval_sec == 15.0
     assert s.client_liveness_timeout_sec == 45.0
     assert s.max_clients >= 1
+
+
+@pytest.mark.asyncio
+async def test_hub_max_clients_and_max_assets() -> None:
+    aggregator = AsyncMock()
+    aggregator.collect = AsyncMock(return_value=_package())
+    hub = QuoteStreamHub(
+        aggregator,
+        _stream_settings(max_clients=2, max_assets_per_client=1),
+        cors_origins=["http://localhost:3000"],
+    )
+    c1 = await hub.register()
+    c2 = await hub.register()
+    from spread_compare.stream import StreamLimitError
+
+    with pytest.raises(StreamLimitError, match="max concurrent"):
+        await hub.register()
+
+    with pytest.raises(StreamLimitError, match="max assets"):
+        hub.subscribe(
+            c1,
+            StreamSubscribe.model_validate(
+                {
+                    "type": "subscribe",
+                    "assets": ["BTC", "ETH"],
+                    "notionals": ["1000"],
+                }
+            ),
+        )
+    hub.subscribe(
+        c1,
+        StreamSubscribe.model_validate(
+            {
+                "type": "subscribe",
+                "assets": ["BTC"],
+                "notionals": ["1000"],
+            }
+        ),
+    )
+    await hub.unregister(c1.client_id)
+    await hub.unregister(c2.client_id)
+
+
+@pytest.mark.asyncio
+async def test_hub_queue_overflow_forces_resnapshot() -> None:
+    aggregator = AsyncMock()
+    aggregator.collect = AsyncMock(return_value=_package())
+    hub = QuoteStreamHub(
+        aggregator,
+        _stream_settings(max_queue_depth=1),
+        cors_origins=["http://localhost:3000"],
+    )
+    client = await hub.register()
+    hub.subscribe(
+        client,
+        StreamSubscribe.model_validate(
+            {
+                "type": "subscribe",
+                "assets": ["BTC"],
+                "notionals": ["1000"],
+            }
+        ),
+    )
+    await hub.publish_once()
+    # Fill queue so next enqueue drops.
+    while not client.outbound.full():
+        client.outbound.put_nowait({"type": "heartbeat", "ts": 0})
+    client.enqueue({"type": "delta", "asset": "BTC", "pairs": []})
+    assert "BTC" in client.need_snapshot
+    assert client.last_pairs == {}
+    await hub.unregister(client.client_id)

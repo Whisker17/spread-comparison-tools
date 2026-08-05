@@ -106,15 +106,23 @@ export function StatusCell({
       {decision.kind === "value" && decision.badge && (
         <Badge variant={decision.badgeVariant ?? "muted"}>{decision.badge}</Badge>
       )}
-      {decision.ageSec != null && decision.ageSec !== undefined && (
-        <span
-          className="text-[10px] tabular-nums text-zinc-500"
-          data-testid="quote-age"
-          title={`Observation age ${Math.round(decision.ageSec)}s`}
-        >
-          {formatAgeSec(decision.ageSec)}
-        </span>
-      )}
+      {(() => {
+        // Prefer server-stamped age_sec; else derive from quote.timestamp so
+        // store rows still show age when the stream omits age-only deltas.
+        const age =
+          decision.ageSec ??
+          (quote?.timestamp ? ageFromTimestamp(quote.timestamp) : null);
+        if (age == null) return null;
+        return (
+          <span
+            className="text-[10px] tabular-nums text-zinc-500"
+            data-testid="quote-age"
+            title={`Observation age ${Math.round(age)}s`}
+          >
+            {formatAgeSec(age)}
+          </span>
+        );
+      })()}
 
       {decision.midStale && (
         <span
@@ -144,6 +152,12 @@ function formatAgeSec(ageSec: number): string {
   if (ageSec < 10) return `${ageSec.toFixed(1)}s`;
   if (ageSec < 60) return `${Math.round(ageSec)}s`;
   return `${Math.round(ageSec / 60)}m`;
+}
+
+function ageFromTimestamp(iso: string): number | null {
+  const ms = Date.parse(iso);
+  if (Number.isNaN(ms)) return null;
+  return Math.max(0, (Date.now() - ms) / 1000);
 }
 
 function buildTooltip(
