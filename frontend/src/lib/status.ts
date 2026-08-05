@@ -8,6 +8,7 @@
  * Orthogonal flags (not status enum values):
  *   fee_breakdown.gas_unknown → "cost incomplete"; excluded from best-venue ranking
  *   mid_stale → warning icon with mid timestamp
+ *   quote_stale → aged past max_quote_age_for_best_sec (WHI-846); shown, never best
  */
 
 import type { components } from "@/lib/api-types";
@@ -53,6 +54,10 @@ export type CellRenderDecision = {
   /** mid_stale warning (independent of status). */
   midStale: boolean;
   midTimestamp?: string;
+  /** quote_stale: observation aged past best-eligibility window (WHI-846). */
+  quoteStale: boolean;
+  /** Age in seconds when the API stamped it (store-backed rows). */
+  ageSec?: number | null;
   /** Eligible for best-venue highlighting (WHI-799 §5.2). */
   eligibleForBest: boolean;
   /** True when the primary label is a numeric metric (value / cost_incomplete / excessive_impact). */
@@ -77,13 +82,16 @@ export function decideCellRender(
       kind: "dash",
       label: "—",
       midStale: false,
+      quoteStale: false,
       eligibleForBest: false,
       showsMetric: false,
     };
   }
 
   const midStale = Boolean(quote.mid_stale);
+  const quoteStale = Boolean(quote.quote_stale);
   const midTimestamp = quote.mid_timestamp;
+  const ageSec = quote.age_sec;
   const gasUnknown = Boolean(quote.fee_breakdown?.gas_unknown);
 
   switch (quote.status) {
@@ -94,6 +102,8 @@ export function decideCellRender(
         label: "—",
         midStale,
         midTimestamp,
+        quoteStale,
+        ageSec,
         eligibleForBest: false,
         showsMetric: false,
       };
@@ -105,6 +115,8 @@ export function decideCellRender(
         badgeVariant: "warning",
         midStale,
         midTimestamp,
+        quoteStale,
+        ageSec,
         eligibleForBest: false,
         showsMetric: false,
       };
@@ -117,6 +129,8 @@ export function decideCellRender(
         hint: "Retry refresh",
         midStale,
         midTimestamp,
+        quoteStale,
+        ageSec,
         eligibleForBest: false,
         showsMetric: false,
       };
@@ -129,6 +143,8 @@ export function decideCellRender(
         hint: "Retry later",
         midStale,
         midTimestamp,
+        quoteStale,
+        ageSec,
         eligibleForBest: false,
         showsMetric: false,
       };
@@ -142,6 +158,8 @@ export function decideCellRender(
         badgeVariant: "warning",
         midStale,
         midTimestamp,
+        quoteStale,
+        ageSec,
         eligibleForBest: false,
         showsMetric: true,
       };
@@ -160,16 +178,35 @@ export function decideCellRender(
             badgeVariant: "muted",
             midStale,
             midTimestamp,
+            quoteStale,
+            ageSec,
             eligibleForBest: false,
             showsMetric: true,
           };
         }
+      }
+      // Stale ok rows keep the number but badge "stale" (WHI-846).
+      if (quoteStale) {
+        return {
+          kind: "value",
+          label: options.formattedMetric ?? "—",
+          badge: "stale",
+          badgeVariant: "muted",
+          midStale,
+          midTimestamp,
+          quoteStale: true,
+          ageSec,
+          eligibleForBest: false,
+          showsMetric: true,
+        };
       }
       return {
         kind: "value",
         label: options.formattedMetric ?? "—",
         midStale,
         midTimestamp,
+        quoteStale: false,
+        ageSec,
         eligibleForBest: isEligibleForBest(quote),
         showsMetric: true,
       };
@@ -182,6 +219,8 @@ export function decideCellRender(
         badge: "unknown status",
         midStale,
         midTimestamp,
+        quoteStale,
+        ageSec,
         eligibleForBest: false,
         showsMetric: false,
       };
@@ -193,10 +232,12 @@ export function decideCellRender(
  * WHI-799 §5.2: only status=ok AND total_cost_bps is not null participate in
  * "best venue" ranking. gas_unknown forces total_cost_bps null.
  * ``excessive_impact`` is never eligible (WHI-845).
+ * ``quote_stale`` is never eligible (WHI-846 age gate).
  */
 export function isEligibleForBest(quote: Quote | null | undefined): boolean {
   if (!quote) return false;
   if (quote.status !== "ok") return false;
+  if (quote.quote_stale) return false;
   if (quote.fee_breakdown?.gas_unknown) return false;
   if (quote.total_cost_bps === null || quote.total_cost_bps === undefined) {
     return false;

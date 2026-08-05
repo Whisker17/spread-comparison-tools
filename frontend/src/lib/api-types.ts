@@ -344,6 +344,13 @@ export interface components {
              * @default false
              */
             mid_stale: boolean;
+            /**
+             * Quote Stale
+             * @default false
+             */
+            quote_stale: boolean;
+            /** Age Sec */
+            age_sec?: number | null;
             /** Effective Price */
             effective_price?: string | null;
             /** Spread Bps */
@@ -565,6 +572,11 @@ export interface components {
              * @default false
              */
             mid_stale: boolean;
+            /**
+             * Quote Stale
+             * @default false
+             */
+            quote_stale: boolean;
         };
         /**
          * SizeQuotePair

@@ -44,7 +44,14 @@ from spread_compare.models import (
     TopOfBook,
     VenueClass,
 )
-from spread_compare.settings import AggregatorSettings, MidSettings, load_aggregator_settings
+from spread_compare.quote_store import QuoteStore, default_quote_store
+from spread_compare.settings import (
+    AggregatorSettings,
+    MidSettings,
+    PollerSettings,
+    load_aggregator_settings,
+    load_poller_settings,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -95,7 +102,9 @@ class QuotesPackage:
 
     ``notionals`` is the full requested tier set (len ≥ 1). ``notional_usd`` is
     the sole tier when len==1, else the first (sorted) tier — kept for single-
-    notional response back-compat. All pairs share ``snapshot_id`` / ``mid``.
+    notional response back-compat. Live (orderbook) pairs share package
+    ``snapshot_id`` / ``mid``; store-backed pull pairs (WHI-846) may carry a
+    different per-row ``snapshot_id`` from their sweep.
     """
 
     snapshot_id: str
@@ -412,6 +421,8 @@ class QuoteAggregator:
         *,
         aggregator_settings: AggregatorSettings | None = None,
         mid_settings: MidSettings | None = None,
+        poller_settings: PollerSettings | None = None,
+        quote_store: QuoteStore | None = None,
         clock: Callable[[], float] | None = None,
     ) -> None:
         self._mids = mid_service
@@ -421,6 +432,12 @@ class QuoteAggregator:
             else load_aggregator_settings()
         )
         self._mid_settings = mid_settings if mid_settings is not None else mid_service.settings
+        self._poller = (
+            poller_settings if poller_settings is not None else load_poller_settings()
+        )
+        self._quote_store = (
+            quote_store if quote_store is not None else default_quote_store()
+        )
         self._clock = clock or time.monotonic
         self._cache: dict[str, _CacheEntry] = {}
         # Single-flight: concurrent collect() for the same cache key share one fan-out.
@@ -432,12 +449,33 @@ class QuoteAggregator:
     def mid_service(self) -> MidService:
         return self._mids
 
+    @property
+    def quote_store(self) -> QuoteStore:
+        return self._quote_store
+
     def clear_cache(self) -> None:
         """Drop cached packages. In-flight single-flight work is left alone
         (still fills the cache on completion); call sites that need a hard
         reset should also wait for outstanding collects to finish.
         """
         self._cache.clear()
+
+    def _partition_venues(
+        self, venue_slugs: Sequence[str]
+    ) -> tuple[list[str], list[str]]:
+        """Split into (live_slugs, store_slugs) by poller_served_classes (WHI-846)."""
+        # Lazy import: poller imports aggregator helpers at module level.
+        from spread_compare.poller import is_poller_class
+
+        live: list[str] = []
+        store: list[str] = []
+        for slug in venue_slugs:
+            adapter = registry_get(slug)
+            if is_poller_class(adapter.venue_class, self._poller):
+                store.append(slug)
+            else:
+                live.append(slug)
+        return live, store
 
     async def collect(
         self,
@@ -453,8 +491,9 @@ class QuoteAggregator:
         """Aggregate quotes for one asset across one or more notional tiers.
 
         ``notional_usd`` may be a single Decimal (legacy) or a sequence of
-        §4.1 tiers. Multi-tier packages share one ``snapshot_id`` and mid
-        (WHI-843).
+        §4.1 tiers. Multi-tier live pairs share one ``snapshot_id`` and mid
+        (WHI-843). Poller-served classes (WHI-846) are read from the in-memory
+        store and may carry a different per-row ``snapshot_id`` (one per sweep).
 
         Raises:
             InvalidNotionalError: any notional not in §4.1 tiers, or empty list.
@@ -466,76 +505,152 @@ class QuoteAggregator:
         asset_key = asset.upper()
         venue_slugs = self._resolve_venues(venues)
         sides: tuple[Side, ...] = (side,) if side is not None else ("buy", "sell")
+        live_slugs, store_slugs = self._partition_venues(venue_slugs)
 
-        # Explicit snapshot_id (collector path) must never return a cached foreign id.
+        # Response cache only covers the live (orderbook) fan-out. Store rows
+        # are always re-read so age_sec / quote_stale stay current (WHI-846).
         cache_eligible = (
             use_cache
             and snapshot_id is None
             and self._agg.response_cache_ttl_sec > 0
+            and bool(live_slugs)
         )
         cache_key = self._cache_key(
-            asset_key, notionals, venue_slugs, sides, instrument_type
+            asset_key, notionals, live_slugs, sides, instrument_type
         )
-        if cache_eligible:
-            hit = self._lookup_cache(
-                cache_key,
-                asset_key=asset_key,
+
+        live_package: QuotesPackage | None = None
+        if live_slugs:
+            if cache_eligible:
+                hit = self._lookup_cache(
+                    cache_key,
+                    asset_key=asset_key,
+                    notionals=notionals,
+                    venue_slugs=live_slugs,
+                    sides=sides,
+                    instrument_type=instrument_type,
+                )
+                if hit is not None:
+                    live_package = hit
+                else:
+                    existing = self._inflight.get(cache_key)
+                    if existing is not None:
+                        live_package = await asyncio.shield(existing)
+                    else:
+                        loop = asyncio.get_running_loop()
+                        future: asyncio.Future[QuotesPackage] = loop.create_future()
+                        self._inflight[cache_key] = future
+
+                        async def _run() -> None:
+                            try:
+                                package = await self._collect_uncached(
+                                    asset_key=asset_key,
+                                    notionals=notionals,
+                                    venue_slugs=live_slugs,
+                                    sides=sides,
+                                    instrument_type=instrument_type,
+                                    snapshot_id=snapshot_id,
+                                )
+                                self._store_cache(
+                                    package, live_slugs, sides, instrument_type
+                                )
+                                if not future.done():
+                                    future.set_result(package)
+                            except Exception as exc:
+                                if not future.done():
+                                    future.set_exception(exc)
+                            except BaseException as exc:
+                                if not future.done():
+                                    future.set_exception(exc)
+                                raise
+                            finally:
+                                if self._inflight.get(cache_key) is future:
+                                    del self._inflight[cache_key]
+
+                        task = asyncio.create_task(_run())
+                        self._inflight_tasks.add(task)
+                        task.add_done_callback(self._inflight_tasks.discard)
+                        live_package = await asyncio.shield(future)
+            else:
+                live_package = await self._collect_uncached(
+                    asset_key=asset_key,
+                    notionals=notionals,
+                    venue_slugs=live_slugs,
+                    sides=sides,
+                    instrument_type=instrument_type,
+                    snapshot_id=snapshot_id,
+                )
+
+        # Package mid / snapshot: prefer live aggregation; else resolve once for
+        # store-only responses (metadata only — never re-prices store rows).
+        if live_package is not None:
+            snap = live_package.snapshot_id
+            mid = live_package.mid
+            pairs = list(live_package.pairs)
+        else:
+            snap = snapshot_id or str(uuid.uuid4())
+            mid = await resolve_mid_with_budget(
+                self._mids,
+                asset_key,
+                snapshot_id=snap,
+                venue_timeout_sec=self._agg.venue_timeout_sec,
+            )
+            pairs = []
+
+        if store_slugs:
+            store_pairs = self._pairs_from_store(
+                store_slugs,
+                asset=asset_key,
                 notionals=notionals,
-                venue_slugs=venue_slugs,
+                mid=mid,
                 sides=sides,
                 instrument_type=instrument_type,
             )
-            if hit is not None:
-                return hit
-            # Coalesce in-flight work for the same package key (WHI-844).
-            # Fan-out runs in a detached task so one client disconnect does not
-            # cancel the shared work for other waiters.
-            existing = self._inflight.get(cache_key)
-            if existing is not None:
-                return await asyncio.shield(existing)
+            pairs.extend(store_pairs)
 
-            loop = asyncio.get_running_loop()
-            future: asyncio.Future[QuotesPackage] = loop.create_future()
-            self._inflight[cache_key] = future
-
-            async def _run() -> None:
-                try:
-                    package = await self._collect_uncached(
-                        asset_key=asset_key,
-                        notionals=notionals,
-                        venue_slugs=venue_slugs,
-                        sides=sides,
-                        instrument_type=instrument_type,
-                        snapshot_id=snapshot_id,
-                    )
-                    self._store_cache(package, venue_slugs, sides, instrument_type)
-                    if not future.done():
-                        future.set_result(package)
-                except Exception as exc:
-                    if not future.done():
-                        future.set_exception(exc)
-                except BaseException as exc:
-                    # CancelledError etc.: still unblock waiters, then re-raise.
-                    if not future.done():
-                        future.set_exception(exc)
-                    raise
-                finally:
-                    if self._inflight.get(cache_key) is future:
-                        del self._inflight[cache_key]
-
-            task = asyncio.create_task(_run())
-            self._inflight_tasks.add(task)
-            task.add_done_callback(self._inflight_tasks.discard)
-            return await asyncio.shield(future)
-
-        return await self._collect_uncached(
-            asset_key=asset_key,
+        return QuotesPackage(
+            snapshot_id=snap,
+            asset=asset_key,
+            notional_usd=notionals[0],
+            mid=mid,
+            pairs=pairs,
             notionals=notionals,
-            venue_slugs=venue_slugs,
-            sides=sides,
-            instrument_type=instrument_type,
-            snapshot_id=snapshot_id,
         )
+
+    def _pairs_from_store(
+        self,
+        store_slugs: Sequence[str],
+        *,
+        asset: str,
+        notionals: tuple[Decimal, ...],
+        mid: ReferenceMid,
+        sides: Sequence[Side],
+        instrument_type: InstrumentType | None,
+    ) -> list[SizeQuotePair]:
+        """Read poller-served venues from the in-memory store (zero upstream)."""
+        from spread_compare.poller import pair_from_store
+
+        stale_threshold = self._mid_settings.stale_threshold_sec
+        pairs: list[SizeQuotePair] = []
+        for slug in store_slugs:
+            adapter = registry_get(slug)
+            for n in notionals:
+                pairs.append(
+                    pair_from_store(
+                        self._quote_store,
+                        mid=mid,
+                        venue=slug,
+                        asset=asset,
+                        instrument_type=instrument_type,
+                        notional_usd=n,
+                        sides=sides,
+                        poller_settings=self._poller,
+                        stale_threshold_sec=stale_threshold,
+                        adapter=adapter,
+                        clock=self._clock,
+                    )
+                )
+        return pairs
 
     @staticmethod
     def _normalize_notionals(

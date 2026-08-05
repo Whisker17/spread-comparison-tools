@@ -127,6 +127,74 @@ class OrderbookCacheSettings(BaseModel):
     ttl_sec: float = Field(ge=0)
 
 
+class PollerGroupSettings(BaseModel):
+    """One upstream budget group under ``config/poller.yaml`` groups (WHI-846)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    interval_sec: float = Field(gt=0)
+    # Cap average sweep RPS as a fraction of a known capacity (Jupiter keyed).
+    # Mutually optional with ``max_rps`` — at least one pacing bound applies via
+    # interval-derived rate when both are absent/None.
+    budget_share: float | None = Field(default=None, gt=0, le=1)
+    # Absolute RPS cap when upstream capacity is unpublished (Kyber / RPC).
+    max_rps: float | None = Field(default=None, gt=0)
+    # Age past which a store row is marked quote_stale and loses §5.2 best.
+    max_quote_age_for_best_sec: float = Field(gt=0)
+    # Age past which a failed refresh degrades the stored row to error.
+    max_stale_sec: float = Field(gt=0)
+
+    @model_validator(mode="after")
+    def _stale_not_below_best_age(self) -> PollerGroupSettings:
+        if self.max_stale_sec < self.max_quote_age_for_best_sec:
+            raise ValueError(
+                "max_stale_sec must be >= max_quote_age_for_best_sec "
+                f"(got stale={self.max_stale_sec}, best={self.max_quote_age_for_best_sec})"
+            )
+        return self
+
+
+class PollerSettings(BaseModel):
+    """``config/poller.yaml`` — pull-only background poller (WHI-846)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool
+    poller_served_classes: list[VenueClass] = Field(min_length=1)
+    notionals_usd: list[Decimal] = Field(min_length=1)
+    groups: dict[str, PollerGroupSettings]
+
+    @field_validator("poller_served_classes")
+    @classmethod
+    def _unique_classes(cls, value: list[VenueClass]) -> list[VenueClass]:
+        if len(set(value)) != len(value):
+            raise ValueError("poller_served_classes must not contain duplicates")
+        return value
+
+    @field_validator("notionals_usd")
+    @classmethod
+    def _positive_notionals(cls, value: list[Decimal]) -> list[Decimal]:
+        for n in value:
+            if n <= 0:
+                raise ValueError(f"notionals_usd entries must be > 0, got {n}")
+        return value
+
+    @field_validator("groups")
+    @classmethod
+    def _known_group_keys(
+        cls, value: dict[str, PollerGroupSettings]
+    ) -> dict[str, PollerGroupSettings]:
+        allowed = {"jupiter", "kyber", "rpc"}
+        unknown = sorted(k for k in value if k not in allowed)
+        if unknown:
+            raise ValueError(
+                f"unknown poller group key(s): {unknown}; allowed: {sorted(allowed)}"
+            )
+        if not value:
+            raise ValueError("groups must contain at least one sweep group")
+        return value
+
+
 # Known AMM adapter ``rpc_env`` names (must stay aligned with amm_*.py).
 _KNOWN_RPC_ENVS: frozenset[str] = frozenset(
     {"ETH_RPC_URL", "BASE_RPC_URL", "BSC_RPC_URL"}
@@ -336,6 +404,12 @@ def load_orderbook_cache_settings() -> OrderbookCacheSettings:
     return OrderbookCacheSettings.model_validate(_merge_local("orderbook_cache"))
 
 
+@lru_cache(maxsize=1)
+def load_poller_settings() -> PollerSettings:
+    """Parse pull-only poller settings once; fail fast on invalid config."""
+    return PollerSettings.model_validate(_merge_local("poller"))
+
+
 def clear_settings_cache() -> None:
     """Drop cached settings (tests that rewrite YAML)."""
     load_mid_settings.cache_clear()
@@ -346,3 +420,4 @@ def clear_settings_cache() -> None:
     load_rpc_settings.cache_clear()
     load_impact_settings.cache_clear()
     load_orderbook_cache_settings.cache_clear()
+    load_poller_settings.cache_clear()

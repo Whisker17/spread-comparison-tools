@@ -786,6 +786,22 @@
             "title": "Mid Stale",
             "default": false
           },
+          "quote_stale": {
+            "type": "boolean",
+            "title": "Quote Stale",
+            "default": false
+          },
+          "age_sec": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Age Sec"
+          },
           "effective_price": {
             "anyOf": [
               {
@@ -1391,6 +1407,11 @@
           "mid_stale": {
             "type": "boolean",
             "title": "Mid Stale",
+            "default": false
+          },
+          "quote_stale": {
+            "type": "boolean",
+            "title": "Quote Stale",
             "default": false
           }
         },

@@ -34,6 +34,7 @@ function row(
     error_code: null,
     error_message: null,
     mid_stale: false,
+    quote_stale: false,
     venue_symbol: null,
     ...partial,
   };

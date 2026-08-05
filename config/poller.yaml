@@ -1,0 +1,51 @@
+# Pull-only background poller (WHI-846).
+# Defaults are **unvalidated** pending docs/DESIGN.md §2 — engineering starting
+# points from VPS measurements 2026-08-05 (Jupiter 10 RPS keyed bucket; Kyber /
+# RPC 429s under per-request fan-out). Override with poller.local.yaml.
+
+# Master switch. When false, GET /quotes keeps the live fan-out for all classes.
+enabled: true
+
+# Venue classes served exclusively from the in-memory store on GET /quotes.
+# Orderbook classes (cex / perp_dex) stay on the live path until WHI-847.
+poller_served_classes:
+  - amm_dex
+  - prop_amm
+
+# Notional tiers swept every cycle (WHI-799 §4.1 full matrix so any size
+# selector is pre-warmed without an extra upstream call).
+notionals_usd:
+  - 100
+  - 1000
+  - 10000
+  - 100000
+  - 1000000
+
+# Per-upstream sweep groups. Membership is resolved at runtime from venue
+# slug / class (see spread_compare.poller.group_for_venue). Each group owns
+# its pacing so Jupiter, KyberSwap, and RPC budgets stay independent.
+#
+# interval_sec: target sweep period. budget_share of a known capacity (or
+# max_rps when capacity is unpublished) caps average call rate so /simulate
+# keeps headroom on shared limiters.
+groups:
+  jupiter:
+    # 3 Solana props × 3 assets × 5 tiers × 2 sides = 90 calls.
+    # 15 s → 6 RPS avg; keyed bucket is 10 RPS → 60% share leaves headroom.
+    interval_sec: 15.0
+    budget_share: 0.6
+    max_quote_age_for_best_sec: 30.0  # 2× interval; exclude from §5.2 best
+    max_stale_sec: 90.0               # past this → degrade to error/rate_limited
+  kyber:
+    # Unpublished limit (WHI-797 §7.2); pace conservatively — production saw
+    # KyberSwap 429 backoff loops under per-request fan-out.
+    interval_sec: 30.0
+    max_rps: 2.0
+    max_quote_age_for_best_sec: 60.0
+    max_stale_sec: 120.0
+  rpc:
+    # On-chain quoter eth_call budget is shared per RPC endpoint (WHI-842).
+    interval_sec: 20.0
+    max_rps: 5.0
+    max_quote_age_for_best_sec: 40.0
+    max_stale_sec: 100.0

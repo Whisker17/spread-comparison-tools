@@ -131,11 +131,14 @@ export function metricForPair(
       return parseDecimal(pair.round_trip_total_cost_bps);
     }
     if (pair.buy?.status !== "ok" || pair.sell?.status !== "ok") return null;
+    if (pair.buy.quote_stale || pair.sell.quote_stale) return null;
     return parseDecimal(pair.round_trip_spread_bps);
   }
 
   const quote = side === "buy" ? pair.buy : pair.sell;
   if (!quote || quote.status !== "ok") return null;
+  // WHI-846: stale store rows never rank as best (any metric).
+  if (quote.quote_stale) return null;
   if (metric === "total_cost_bps") {
     if (!isEligibleForBest(quote)) return null;
     return parseDecimal(quote.total_cost_bps);

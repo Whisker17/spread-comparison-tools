@@ -153,6 +153,13 @@ class Quote(BaseModel):
     mid_source: MidSource
     mid_timestamp: AwareDatetime
     mid_stale: bool = False
+    # WHI-846: observation aged past the poller group's max_quote_age_for_best_sec.
+    # Orthogonal to status — numbers stay visible (like excessive_impact) but the
+    # row is excluded from §5.2 best. Always False for live (non-store) rows.
+    quote_stale: bool = False
+    # Age in seconds at serve time (WHI-846). Null for live fan-out rows that
+    # are not store-backed; FE may still compute age from ``timestamp``.
+    age_sec: float | None = None
     effective_price: Decimal | None = None
     spread_bps: Decimal | None = None
 
