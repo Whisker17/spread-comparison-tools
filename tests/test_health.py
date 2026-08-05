@@ -10,13 +10,16 @@ def test_health_returns_200_with_adapter_count() -> None:
         response = client.get("/health")
         assert response.status_code == 200
         body = response.json()
-        assert set(body) == {
+        assert {
             "status",
             "adapters_initialized",
             "adapters_expected",
             "degraded",
             "unavailable_venues",
-        }
+        }.issubset(set(body))
+        # WHI-819: engine signals nested under /health (may be null only if
+        # snapshot construction fails — normally a populated object).
+        assert "engine" in body
         assert body["status"] == "ok"
         assert isinstance(body["adapters_initialized"], int)
         assert body["adapters_initialized"] >= 1

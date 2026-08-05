@@ -369,6 +369,15 @@ class MidService:
             _SourceResult(mid, mid_source, timestamp),
         )
 
+    def cache_age_sec(self, asset: str) -> float | None:
+        """Age of the cached mid for ``asset``, or None when uncached (WHI-819)."""
+        asset_key = asset.upper()
+        cached = self._cache.get(asset_key)
+        if cached is None:
+            return None
+        cached_at, _result = cached
+        return max(0.0, self._clock() - cached_at)
+
     async def _resolve_source(self, asset: str) -> _SourceResult:
         now = self._clock()
         cached = self._cache.get(asset)

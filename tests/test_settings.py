@@ -7,6 +7,7 @@ from spread_compare.settings import (
     load_api_settings,
     load_jupiter_settings,
     load_mid_settings,
+    load_monitor_settings,
     load_rpc_settings,
     load_venue_settings,
 )
@@ -78,6 +79,16 @@ def test_load_api_settings_cors_defaults() -> None:
     assert "http://localhost:3001" in api.cors_origins
     assert "http://localhost:3002" in api.cors_origins
     assert api.simulate_min_interval_sec == 2.0
+
+
+def test_load_monitor_settings_defaults() -> None:
+    clear_settings_cache()
+    mon = load_monitor_settings()
+    assert mon.enabled is True
+    assert mon.probe_asset == "BTC"
+    assert mon.sweep_stale_multiplier > 1
+    assert mon.ws_disconnected_alert_sec > 0
+    assert mon.rate_limit_count_threshold >= 1
 
 
 def test_load_venue_settings_defaults() -> None:

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import threading
 import time
 from collections.abc import Awaitable, Callable, Sequence
 from decimal import Decimal
@@ -74,6 +75,12 @@ class WsFeedManager:
         # market_id → symbol for Lighter
         self._lighter_markets: dict[str, str] = {}
         self._symbols: dict[str, list[str]] = {}
+        # WHI-819: rolling resync outcomes per stream_id (monotonic timestamps).
+        # Locked: asyncio tasks write; /health may read from the threadpool.
+        self._diag_lock = threading.Lock()
+        self._resync_ok_mono: dict[str, list[float]] = {}
+        self._resync_fail_mono: dict[str, list[float]] = {}
+        self._stream_disconnected_since: dict[str, float] = {}
 
     @property
     def registry(self) -> WsBookRegistry:
@@ -91,6 +98,63 @@ class WsFeedManager:
     def socket_count(self) -> int:
         """Configured sockets (one per stream), independent of asset count."""
         return len(self._sockets)
+
+    def note_resync(self, stream_id: str, *, ok: bool) -> None:
+        """Record a REST resync attempt for monitor book-desync alerts (WHI-819)."""
+        now = time.monotonic()
+        with self._diag_lock:
+            bucket = self._resync_ok_mono if ok else self._resync_fail_mono
+            bucket.setdefault(stream_id, []).append(now)
+
+    def resync_counts(
+        self, stream_id: str, *, window_sec: float, now: float | None = None
+    ) -> tuple[int, int]:
+        """Return ``(ok_count, fail_count)`` for ``stream_id`` inside ``window_sec``."""
+        ts = time.monotonic() if now is None else now
+        cutoff = ts - window_sec
+
+        def _count(raw: list[float]) -> int:
+            # Prune in place so counters stay bounded.
+            kept = [t for t in raw if t >= cutoff]
+            raw[:] = kept
+            return len(kept)
+
+        with self._diag_lock:
+            ok = _count(self._resync_ok_mono.setdefault(stream_id, []))
+            fail = _count(self._resync_fail_mono.setdefault(stream_id, []))
+            return ok, fail
+
+    def mark_stream_connected(self, stream_id: str, *, connected: bool) -> None:
+        """Track how long a stream has been disconnected (WHI-819)."""
+        with self._diag_lock:
+            if connected:
+                self._stream_disconnected_since.pop(stream_id, None)
+            else:
+                self._stream_disconnected_since.setdefault(stream_id, time.monotonic())
+
+    def stream_disconnected_age_sec(
+        self, stream_id: str, *, now: float | None = None
+    ) -> float | None:
+        with self._diag_lock:
+            since = self._stream_disconnected_since.get(stream_id)
+        if since is None:
+            return None
+        ts = time.monotonic() if now is None else now
+        return max(0.0, ts - since)
+
+    def known_stream_ids(self) -> list[str]:
+        """Configured sockets plus any stream that has a disconnect timestamp."""
+        with self._diag_lock:
+            disc = set(self._stream_disconnected_since)
+        ids = {s.stream_id for s in self._sockets}
+        ids.update(disc)
+        return sorted(ids)
+
+    def stream_connected(self, stream_id: str) -> bool:
+        for sock in self._sockets:
+            if sock.stream_id == stream_id:
+                return sock.is_connected
+        return self._registry.connection_count(stream_id) > 0
 
     def _http(self) -> httpx.AsyncClient:
         if self._client is None:
@@ -176,6 +240,7 @@ class WsFeedManager:
     ) -> None:
         """Mark connection closed and books disconnected so REST fallback engages."""
         self._registry.mark_connection(stream_id, open=False)
+        self.mark_stream_connected(stream_id, connected=False)
         for sym in symbols:
             book = self._registry.get(venue, sym, instrument_type)
             if book is not None and book.health is BookHealth.HEALTHY:
@@ -203,11 +268,19 @@ class WsFeedManager:
         async def on_close() -> None:
             self._on_stream_closed(stream_id, venue, instrument_type, syms)
 
+        async def wrapped_open() -> None:
+            self.mark_stream_connected(stream_id, connected=True)
+            if on_open is not None:
+                await on_open()
+
+        # Start in the disconnected bucket so a stream that never connects still
+        # ages toward ws_disconnected (WHI-819 — cold-fail must page).
+        self.mark_stream_connected(stream_id, connected=False)
         sock = ReconnectingWebSocket(
             url,
             stream_id=stream_id,
             on_message=on_message,
-            on_open=on_open,
+            on_open=wrapped_open,
             on_close=on_close,
             reconnect_min_sec=self._settings.reconnect_min_sec,
             reconnect_max_sec=self._settings.reconnect_max_sec,
@@ -280,8 +353,10 @@ class WsFeedManager:
             if sync.book.health is BookHealth.SYNCING and sync.book.last_update_id is not None:
                 # Snapshot applied; wait for first valid diff to mark HEALTHY.
                 sync.book.set_health(BookHealth.SYNCING)
+            self.note_resync("binance_spot", ok=True)
             logger.info("binance spot resync ok %s lastUpdateId=%s", symbol, data["lastUpdateId"])
         except Exception as exc:  # noqa: BLE001
+            self.note_resync("binance_spot", ok=False)
             sync.book.set_health(BookHealth.DISCONNECTED, error=str(exc))
             logger.warning("binance spot resync failed %s: %s", symbol, exc)
 
@@ -344,10 +419,12 @@ class WsFeedManager:
                 bids=data["bids"],
                 asks=data["asks"],
             )
+            self.note_resync("binance_futures", ok=True)
             logger.info(
                 "binance futures resync ok %s lastUpdateId=%s", symbol, data["lastUpdateId"]
             )
         except Exception as exc:  # noqa: BLE001
+            self.note_resync("binance_futures", ok=False)
             sync.book.set_health(BookHealth.DISCONNECTED, error=str(exc))
             logger.warning("binance futures resync failed %s: %s", symbol, exc)
 
@@ -427,8 +504,10 @@ class WsFeedManager:
                 "a": result.get("a") or [],
             }
             sync.on_message("snapshot", data)
+            self.note_resync(bybit_stream_id(category), ok=True)
             logger.info("bybit %s resync ok %s", category, symbol)
         except Exception as exc:  # noqa: BLE001
+            self.note_resync(bybit_stream_id(category), ok=False)
             sync.book.set_health(BookHealth.DISCONNECTED, error=str(exc))
             logger.warning("bybit %s resync failed %s: %s", category, symbol, exc)
 
@@ -581,8 +660,10 @@ class WsFeedManager:
             bids = _aggregate_lighter_orders(body.get("bids") or body.get("bid_orders") or [])
             asks = _aggregate_lighter_orders(body.get("asks") or body.get("ask_orders") or [])
             sync.on_snapshot(bids=bids, asks=asks, nonce=0)
+            self.note_resync("lighter", ok=True)
             logger.info("lighter resync ok market=%s", market_id)
         except Exception as exc:  # noqa: BLE001
+            self.note_resync("lighter", ok=False)
             sync.book.set_health(BookHealth.DISCONNECTED, error=str(exc))
             logger.warning("lighter resync failed market=%s: %s", market_id, exc)
 
@@ -666,10 +747,38 @@ class WsFeedManager:
                 asks=data.get("a") or data.get("asks") or [],
                 update_id=update_id,
             )
+            self.note_resync("apex", ok=True)
             logger.info("apex resync ok %s", symbol)
         except Exception as exc:  # noqa: BLE001
+            self.note_resync("apex", ok=False)
             sync.book.set_health(BookHealth.DISCONNECTED, error=str(exc))
             logger.warning("apex resync failed %s: %s", symbol, exc)
+
+
+def stream_id_for_book(venue: str, instrument_type: str) -> str:
+    """Map local-book venue/instrument to multiplex stream_id (WHI-819 monitor)."""
+    v = venue.lower()
+    it = instrument_type.lower()
+    if v == "binance" and it == "spot":
+        return "binance_spot"
+    if v == "binance" and it == "perp":
+        return "binance_futures"
+    if v == "bybit" and it == "spot":
+        return "bybit_spot"
+    if v == "bybit" and it == "perp":
+        return "bybit_linear"
+    if v == "hyperliquid":
+        return "hyperliquid"
+    if v == "lighter":
+        return "lighter"
+    if v == "apex":
+        return "apex"
+    return f"{v}_{it}"
+
+
+def bybit_stream_id(category: str) -> str:
+    """Bybit WS stream_id for spot vs linear category."""
+    return "bybit_spot" if category == "spot" else "bybit_linear"
 
 
 def _normalize_lighter_levels(raw: object) -> list[list[str]]:

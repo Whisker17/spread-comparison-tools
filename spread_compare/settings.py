@@ -386,6 +386,38 @@ class RpcSettings(BaseModel):
         return RpcChainBudget.model_validate(base)
 
 
+class MonitorSettings(BaseModel):
+    """``config/monitor.yaml`` — real-time engine health alerts (WHI-819)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool
+    eval_interval_sec: float = Field(gt=0)
+    startup_grace_sec: float = Field(ge=0)
+    alert_cooldown_sec: float = Field(ge=0)
+    webhook_timeout_sec: float = Field(gt=0)
+    # Orderbook / WS class.
+    ws_max_book_age_sec: float = Field(gt=0)
+    ws_disconnected_alert_sec: float = Field(gt=0)
+    ws_resync_window_sec: float = Field(gt=0)
+    ws_resync_count_threshold: int = Field(ge=1)
+    ws_failed_resync_threshold: int = Field(ge=1)
+    # Pull-only sweep class: age > interval * multiplier → sweep_stale.
+    sweep_stale_multiplier: float = Field(gt=1)
+    mid_max_age_sec: float = Field(gt=0)
+    rate_limit_window_sec: float = Field(gt=0)
+    rate_limit_count_threshold: int = Field(ge=1)
+    probe_asset: str = Field(min_length=1)
+    probe_max_quote_age_sec: float = Field(gt=0)
+    probe_min_fresh_store_quotes: int = Field(ge=0)
+    probe_min_healthy_books: int = Field(ge=0)
+
+    @field_validator("probe_asset")
+    @classmethod
+    def _upper_probe_asset(cls, value: str) -> str:
+        return value.strip().upper()
+
+
 class VenueSettings(BaseModel):
     """``config/venues.yaml`` — enable/disable + startup-retry (WHI-840)."""
 
@@ -519,6 +551,12 @@ def load_ws_settings() -> WsSettings:
     return WsSettings.model_validate(_merge_local("ws"))
 
 
+@lru_cache(maxsize=1)
+def load_monitor_settings() -> MonitorSettings:
+    """Parse real-time engine monitor settings once; fail fast on invalid config."""
+    return MonitorSettings.model_validate(_merge_local("monitor"))
+
+
 def clear_settings_cache() -> None:
     """Drop cached settings (tests that rewrite YAML)."""
     load_mid_settings.cache_clear()
@@ -532,3 +570,4 @@ def clear_settings_cache() -> None:
     load_poller_settings.cache_clear()
     load_stream_settings.cache_clear()
     load_ws_settings.cache_clear()
+    load_monitor_settings.cache_clear()

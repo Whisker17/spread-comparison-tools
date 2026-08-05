@@ -44,6 +44,7 @@ from spread_compare.models import (
 )
 from spread_compare.ratelimit import TokenBucketRateLimiter
 from spread_compare.settings import RpcChainBudget, load_rpc_settings
+from spread_compare.upstream_events import record_rate_limit
 
 logger = logging.getLogger(__name__)
 
@@ -536,6 +537,7 @@ class RpcClient:
                     revert=True,
                 )
             if _is_rpc_rate_limit_error(err):
+                record_rate_limit("rpc")
                 raise JsonRpcError(
                     f"{method} rate limited (rpc error) host={self._host}",
                     transport=True,
@@ -648,6 +650,7 @@ class RpcClient:
             _log_rate_limit_headers(response, host=self._host, method=method_label)
 
             if response.status_code == 429:
+                record_rate_limit("rpc")
                 wait = _retry_after_seconds(
                     response,
                     attempt,

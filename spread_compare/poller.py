@@ -160,9 +160,13 @@ class PullQuotePoller:
         self._stop = asyncio.Event()
         self._tasks: list[asyncio.Task[None]] = []
         self._started = False
-        # Diagnostics for tests / PR verification.
+        # Diagnostics for tests / PR verification / WHI-819 monitor.
         self.sweep_counts: dict[str, int] = {}
         self.upstream_calls: int = 0
+        # Monotonic timestamp of last completed sweep per group (None = never).
+        self.last_sweep_completed_mono: dict[str, float] = {}
+        # Wall clock of last completed sweep (for /health human display).
+        self.last_sweep_completed_at: dict[str, datetime] = {}
 
     @property
     def store(self) -> QuoteStore:
@@ -237,7 +241,7 @@ class PullQuotePoller:
         work = self._plan_work(group)
         if not work:
             logger.debug("poller group %s: no work items", group)
-            self.sweep_counts[group] = self.sweep_counts.get(group, 0) + 1
+            self._mark_sweep_complete(group)
             return snapshot_id
 
         # One mid per asset for this snapshot (pairing invariant).
@@ -279,7 +283,7 @@ class PullQuotePoller:
                 await self._sample_one(item, mid=mid, group=group, cfg=cfg)
             next_at = max(next_at + delay, self._clock()) if delay > 0 else self._clock()
 
-        self.sweep_counts[group] = self.sweep_counts.get(group, 0) + 1
+        self._mark_sweep_complete(group)
         logger.info(
             "poller group %s sweep done snapshot_id=%s items=%s",
             group,
@@ -287,6 +291,13 @@ class PullQuotePoller:
             len(work),
         )
         return snapshot_id
+
+    def _mark_sweep_complete(self, group: str) -> None:
+        """Record diagnostics used by WHI-819 sweep-stale alerts."""
+        now_mono = self._clock()
+        self.sweep_counts[group] = self.sweep_counts.get(group, 0) + 1
+        self.last_sweep_completed_mono[group] = now_mono
+        self.last_sweep_completed_at[group] = self._wall()
 
     def _plan_work(self, group: str) -> list[_WorkItem]:
         """Enumerate (venue, asset, tier, side) for venues in this group."""

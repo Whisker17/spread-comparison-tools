@@ -1,0 +1,59 @@
+# Real-time engine monitoring (WHI-819).
+# Defaults are **unvalidated** pending docs/DESIGN.md §2 — engineering starting
+# points only. A sweep-fed venue and a WS-fed venue have legitimately different
+# expectations; thresholds are per class / source, not global.
+# Override with monitor.local.yaml. Webhook URL is a secret (ALERT_WEBHOOK_URL).
+
+# Master switch for the background evaluator + webhook delivery.
+# When false, no background loop runs and GET /health may omit engine
+# until a forced snapshot (GET /health/data still collects when called).
+enabled: true
+
+# How often the background loop re-evaluates and (de)fires alerts.
+eval_interval_sec: 15.0
+
+# After boot, suppress data-probe failure and sweep-age alerts so cold start
+# does not page. Stream desync / rate-limit still evaluate immediately.
+startup_grace_sec: 90.0
+
+# Minimum seconds between re-sends of the same open alert code+target.
+alert_cooldown_sec: 300.0
+
+# HTTP timeout for ALERT_WEBHOOK_URL delivery.
+webhook_timeout_sec: 10.0
+
+# --- WebSocket / orderbook class (cex + perp_dex, WHI-847) -----------------
+# A book older than this (while the stream claims connected) is stale.
+ws_max_book_age_sec: 15.0
+# A stream disconnected longer than this raises ws_disconnected.
+ws_disconnected_alert_sec: 30.0
+# Distinct resync attempts for one stream inside the window → book_desync.
+ws_resync_window_sec: 60.0
+ws_resync_count_threshold: 5
+# Failed resyncs in the window → book_resync_failed (distinct from desync).
+ws_failed_resync_threshold: 2
+
+# --- Pull-only sweep class (amm_dex + prop_amm, WHI-846) -------------------
+# Alert when last completed sweep age exceeds interval_sec * this multiplier.
+# Per-group interval comes from config/poller.yaml (different for jupiter/kyber/rpc).
+sweep_stale_multiplier: 2.5
+
+# --- Mid path -------------------------------------------------------------
+# Alert when the freshest mid-cache entry for the probe asset is older than this
+# (or missing after grace). Aligns with mid.yaml cache / WS mid path.
+mid_max_age_sec: 30.0
+
+# --- Upstream rate limiting (Jupiter / Kyber / RPC) ------------------------
+rate_limit_window_sec: 60.0
+# Events inside the window that page (sustained, not a single blip).
+rate_limit_count_threshold: 10
+
+# --- Data probe (GET /health/data) ----------------------------------------
+# Asserts real priced quotes exist and are fresh — not just process liveness.
+probe_asset: BTC
+# Max age for a store-backed probe quote to count as fresh.
+probe_max_quote_age_sec: 120.0
+# Require at least this many ok-status store quotes for probe_asset.
+probe_min_fresh_store_quotes: 1
+# Require at least this many healthy, young WS books (any venue) when WS enabled.
+probe_min_healthy_books: 1

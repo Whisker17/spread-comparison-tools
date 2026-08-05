@@ -137,6 +137,11 @@ class WsBookRegistry:
         with self._lock:
             return len(self._books)
 
+    def list_books(self) -> list[LocalOrderBook]:
+        """Snapshot of all registered books (monitor / diagnostics)."""
+        with self._lock:
+            return list(self._books.values())
+
 
 _REGISTRY: WsBookRegistry | None = None
 _REGISTRY_LOCK = threading.Lock()

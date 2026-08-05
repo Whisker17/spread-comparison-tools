@@ -32,6 +32,25 @@ defines none: `docs/GIT_WORKFLOW.md` § High-risk paths), **Medium**
 
 ## Open
 
+- **`probe_min_healthy_books` is a process-level floor, not per-stream** (Low, WHI-819).
+  `monitor._data_probe_failures` sums healthy books across all streams. One
+  healthy Binance book satisfies the default floor of 1 even if every other
+  stream is dead — per-stream outages are meant to page via `ws_disconnected` /
+  `book_desync` instead. Fix if operators need "all critical streams healthy"
+  as a probe gate: per-stream or per-class min books in `config/monitor.yaml`.
+
+- **Sustained-429 alerts cover Jupiter / Kyber / RPC only** (Low, WHI-819).
+  `upstream_events.RATE_LIMIT_SOURCES` matches the poller-fed sources the issue
+  called out; CEX/perp REST resync 429s are not counted. Fix: record from
+  `_cex_common` / `_perp_common` with a `cex`/`perp` source key if those
+  backoffs return under the WS path.
+
+- **Webhook e2e is MockTransport + documented host procedure** (Low, WHI-819).
+  ADR 0003 § Verification records the real-receiver check as an operator step
+  (`ALERT_WEBHOOK_URL` → Discord/webhook.site + journal). Offline suite cannot
+  ship a live sink. Fix: optional `@pytest.mark.live` against a capture URL when
+  CI secrets allow.
+
 - **Stream hub still uses aggregator response cache for live packages** (Low, WHI-848).
   `QuoteStreamHub.publish_once` → `aggregator.collect(use_cache=True)`. WHI-847
   serves orderbooks from memory (zero REST when healthy), so cache hits are

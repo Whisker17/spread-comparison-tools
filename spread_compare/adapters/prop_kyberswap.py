@@ -43,6 +43,7 @@ from spread_compare.models import (
     VenueClass,
 )
 from spread_compare.ratelimit import AsyncRateLimiter
+from spread_compare.upstream_events import record_rate_limit
 
 logger = logging.getLogger(__name__)
 
@@ -261,6 +262,7 @@ class KyberSwapPropAdapter(BaseAdapter):
                 ) from exc
 
             if resp.status_code == 429:
+                record_rate_limit("kyber")
                 wait = min(2.0 * (2**attempt), 8.0)
                 logger.warning(
                     "%s KyberSwap 429 attempt=%s sleep=%.1fs",

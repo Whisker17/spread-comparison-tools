@@ -28,7 +28,8 @@ Loaders:
 - `spread_compare/settings.py` — `load_mid_settings`, `load_aggregator_settings`,
   `load_jupiter_settings`, `load_api_settings`, `load_venue_settings`,
   `load_rpc_settings`, `load_impact_settings`, `load_orderbook_cache_settings`,
-  `load_poller_settings`, `load_stream_settings`, `load_ws_settings`
+  `load_poller_settings`, `load_stream_settings`, `load_ws_settings`,
+  `load_monitor_settings`
 - `spread_compare/fees.py` — `get_fee_catalog` / `get_fee_schedule` (one YAML per venue)
 
 Checked-in files:
@@ -58,6 +59,11 @@ Checked-in files:
   flags. When healthy, CEX/perp quotes walk in-memory books (zero REST).
   Unvalidated pending DESIGN.md §2; override with `ws.local.yaml`.
   Pair with `mid.yaml` → `max_age_for_ws_quote_sec` for the tighter mid gate.
+- `monitor.yaml` — real-time engine monitoring (WHI-819): per-class staleness
+  thresholds (WS disconnect / book age / resync, sweep multiplier, mid age,
+  sustained 429s), data-probe asset, eval interval, startup grace, alert
+  cooldown. Webhook URL is a secret (`ALERT_WEBHOOK_URL`), not YAML.
+  Unvalidated pending DESIGN.md §2; override with `monitor.local.yaml`.
 - `venues.yaml` — per-host venue disable list + startup-retry backoff (WHI-840).
   Committed default disables `mock` (fixture adapter; WHI-849). Disabled slugs are
   omitted from `GET /venues` and never started; unknown slugs fail fast at load.
