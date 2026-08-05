@@ -203,7 +203,7 @@ fire/resolve is logged at WARNING (`journalctl -u spread-comparison`).
 | --- | --- | --- |
 | `ws_disconnected` | One multiplexed orderbook WS has been down longer than `ws_disconnected_alert_sec` | `curl -sS localhost:8000/health \| jq .engine.streams`; check venue status / geo blocks; journal for reconnect loops; REST fallback should still serve until books age out |
 | `books_unsynced` | Connected stream with `books_healthy < books_expected` past `ws_books_sync_grace_sec` (WHI-856). Message says *never synced since connect* vs *was healthy, now degraded* | `jq '.engine.streams[] \| {stream_id, connected, books_healthy, books_expected, stream_error}'`; never-synced → subscribe/protocol; degraded → upstream/network. REST fallback still serves |
-| `subscribe_failed` | Stream reported a subscribe/stream error (`stream_error` set) — immediate, no books-sync grace | Journal for that stream's ack failure; fix chunk size / topic format; books for failed symbols stay non-servable |
+| `subscribe_failed` | Stream reported a subscribe/stream error **and still has zero healthy books** — immediate (no books-sync grace). Cleared once any book becomes HEALTHY; residual shortfall is `books_unsynced` warning | Journal for that stream's ack failure; fix chunk size / topic format; books for failed symbols stay non-servable |
 | `book_stale` | Connected stream but max book age &gt; `ws_max_book_age_sec` | Confirm diffs are flowing; forced resync may be stuck — see `resync_*_window` on the stream |
 | `book_desync` | Too many REST resyncs in `ws_resync_window_sec` (sequence gaps) | Inspect that venue's protocol; rate-limit on REST resync path; temporary disable stream in `config/ws.yaml` if poisoning the matrix |
 | `book_resync_failed` | Repeated failed REST resync (distinct from desync count) | Auth / REST endpoint / network to that venue; books will stay non-servable → REST path or empty |
@@ -235,7 +235,7 @@ fire/resolve is logged at WARNING (`journalctl -u spread-comparison`).
 | --- | --- |
 | WS disconnect alert | 30s disconnected |
 | Books unsynced (connected, short of expected) | 60s after connect (`ws_books_sync_grace_sec`; optional per-stream map) |
-| Subscribe / stream error | Immediate (`subscribe_failed`) |
+| Subscribe / stream error at zero books | Immediate (`subscribe_failed`); clears when any book is healthy |
 | Per-stream data-probe floor | ≥1 healthy book per connected stream past grace |
 | Sweep stale | 2.5 × group `interval_sec` (e.g. Jupiter 15s → 37.5s) |
 | Book desync | ≥5 resyncs / 60s |

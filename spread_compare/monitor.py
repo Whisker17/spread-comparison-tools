@@ -532,34 +532,41 @@ def _collect_streams(
 
         if ws_manager is not None and connected:
             peak = ws_manager.note_healthy_books(sid, healthy)
-            # Auto-resolve latched subscribe errors once the full set is healthy
+            # Auto-resolve latched subscribe errors once any book is healthy
             # (Lighter mid-session resubscribe, one-shot HL error frames, …).
-            ws_manager.clear_stream_error_if_recovered(
-                sid, books_healthy=healthy, books_expected=expected
-            )
+            ws_manager.clear_stream_error_if_recovered(sid, books_healthy=healthy)
             stream_err = ws_manager.stream_error(sid)
         else:
             peak = healthy
 
-        view = StreamHealthView(
-            stream_id=sid,
+        is_healthy = _stream_is_healthy_values(
             connected=connected,
-            disconnected_age_sec=disc_age,
-            connected_age_sec=conn_age,
-            books_total=len(stream_books),
+            stream_error=stream_err,
             books_expected=expected,
             books_healthy=healthy,
-            books_resyncing=resyncing,
-            books_disconnected=disconnected,
-            peak_healthy_since_connect=peak,
-            max_book_age_sec=max_age,
-            resync_ok_window=resync_ok,
-            resync_fail_window=resync_fail,
-            stream_error=stream_err,
-            healthy=False,
+            connected_age_sec=conn_age,
+            cfg=cfg,
+            stream_id=sid,
         )
-        view.healthy = _stream_is_healthy(view, cfg)
-        views.append(view)
+        views.append(
+            StreamHealthView(
+                stream_id=sid,
+                connected=connected,
+                disconnected_age_sec=disc_age,
+                connected_age_sec=conn_age,
+                books_total=len(stream_books),
+                books_expected=expected,
+                books_healthy=healthy,
+                books_resyncing=resyncing,
+                books_disconnected=disconnected,
+                peak_healthy_since_connect=peak,
+                max_book_age_sec=max_age,
+                resync_ok_window=resync_ok,
+                resync_fail_window=resync_fail,
+                stream_error=stream_err,
+                healthy=is_healthy,
+            )
+        )
     return views
 
 
@@ -629,19 +636,29 @@ def _books_unsynced_alert(
     )
 
 
-def _stream_is_healthy(stream: StreamHealthView, cfg: MonitorSettings) -> bool:
+def _stream_is_healthy_values(
+    *,
+    connected: bool,
+    stream_error: str | None,
+    books_expected: int,
+    books_healthy: int,
+    connected_age_sec: float | None,
+    cfg: MonitorSettings,
+    stream_id: str,
+) -> bool:
     """True when the stream is usable: connected, not zero-book, no blocking error."""
-    if not stream.connected:
+    if not connected:
         return False
-    if _has_blocking_stream_error(stream):
+    if stream_error and books_healthy <= 0:
         return False
-    if stream.books_expected <= 0:
+    if books_expected <= 0:
         return True
-    if stream.books_healthy > 0:
+    if books_healthy > 0:
         # Partial coverage is still serving; REST covers missing symbols.
         return True
     # Zero healthy — still warming up inside grace.
-    return not _past_books_sync_grace(stream, cfg)
+    grace = cfg.books_sync_grace_sec(stream_id)
+    return connected_age_sec is not None and connected_age_sec < grace
 
 
 def _count_fresh_store_quotes(

@@ -135,7 +135,8 @@ class WsFeedManager:
 
     def stream_error(self, stream_id: str) -> str | None:
         """Last subscribe/stream error for ``stream_id``, if any."""
-        return self._stream_errors.get(stream_id)
+        with self._diag_lock:
+            return self._stream_errors.get(stream_id)
 
     def note_resync(self, stream_id: str, *, ok: bool) -> None:
         """Record a REST resync attempt for monitor book-desync alerts (WHI-819)."""
@@ -238,25 +239,23 @@ class WsFeedManager:
         return self._client
 
     def _set_stream_error(self, stream_id: str, message: str) -> None:
-        self._stream_errors[stream_id] = message
+        with self._diag_lock:
+            self._stream_errors[stream_id] = message
         logger.error("ws stream %s error: %s", stream_id, message)
 
     def _clear_stream_error(self, stream_id: str) -> None:
-        self._stream_errors.pop(stream_id, None)
+        with self._diag_lock:
+            self._stream_errors.pop(stream_id, None)
 
-    def clear_stream_error_if_recovered(
-        self, stream_id: str, *, books_healthy: int, books_expected: int
-    ) -> None:
+    def clear_stream_error_if_recovered(self, stream_id: str, *, books_healthy: int) -> None:
         """Drop a latched subscribe/stream error once any book is healthy (WHI-856).
 
         Mid-session errors (e.g. Lighter gap resubscribe) must not page forever
-        after the stream has recovered. Full-set equality is not required — thin
-        markets may never snapshot, and a single HEALTHY book proves the
-        subscribe path works again.
+        after the stream has recovered. A single HEALTHY book proves the
+        subscribe path works again; remaining shortfall is ``books_unsynced``
+        (warning), not a permanent ``subscribe_failed``.
         """
         if books_healthy <= 0:
-            return
-        if books_expected <= 0:
             return
         self._clear_stream_error(stream_id)
 

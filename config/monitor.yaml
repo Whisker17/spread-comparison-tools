@@ -68,6 +68,8 @@ probe_min_fresh_store_quotes: 1
 probe_min_healthy_books: 1
 # Per connected stream past its books-sync grace: require at least this many
 # HEALTHY books when books_expected > 0. 1 = "stream must not be entirely
-# unsynced". subscribe_failed / stream_error fails the probe immediately.
+# unsynced". A latched stream_error with zero healthy books also fails the
+# probe (independent of this knob); both are suppressed during
+# startup_grace_sec like other data-probe checks.
 # Unvalidated — engineering starting point (WHI-856).
 probe_min_healthy_books_per_stream: 1
