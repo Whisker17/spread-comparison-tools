@@ -249,7 +249,6 @@ class StreamClient:
     """One connected browser session."""
 
     client_id: str
-    settings: StreamSettings
     # Outbound frames; bounded — drop oldest on overflow.
     outbound: asyncio.Queue[dict[str, Any]]
     filters: dict[str, StreamFilter] = field(default_factory=dict)
@@ -309,6 +308,9 @@ class QuoteStreamHub:
         self._clock = clock or time.monotonic
         self._clients: dict[str, StreamClient] = {}
         self._lock = asyncio.Lock()
+        # Serialise full publish ticks so subscribe cannot interleave with the
+        # background coalesce and deliver packages out of order.
+        self._publish_lock = asyncio.Lock()
         self._tick_task: asyncio.Task[None] | None = None
         self._heartbeat_task: asyncio.Task[None] | None = None
         self._stop = asyncio.Event()
@@ -322,6 +324,15 @@ class QuoteStreamHub:
     @property
     def settings(self) -> StreamSettings:
         return self._settings
+
+    def hello_message(self) -> dict[str, Any]:
+        """First frame after accept — FE liveness mirrors server config."""
+        return {
+            "type": "hello",
+            "coalesce_interval_ms": self._settings.coalesce_interval_ms,
+            "heartbeat_interval_sec": self._settings.heartbeat_interval_sec,
+            "client_liveness_timeout_sec": self._settings.client_liveness_timeout_sec,
+        }
 
     def is_origin_allowed(self, origin: str | None) -> bool:
         return origin_allowed(origin, self._cors_origins)
@@ -375,7 +386,6 @@ class QuoteStreamHub:
                 )
             client = StreamClient(
                 client_id=str(uuid.uuid4()),
-                settings=self._settings,
                 outbound=asyncio.Queue(maxsize=self._settings.max_queue_depth),
             )
             self._clients[client.client_id] = client
@@ -391,18 +401,14 @@ class QuoteStreamHub:
         """Replace the client's asset filters with this subscription."""
         specs = msg.resolved_filters()
         new_filters: dict[str, StreamFilter] = {}
+        venues_union: set[str] = set()
         for spec in specs:
             assets = list(dict.fromkeys(spec.assets))
             venues_tuple: tuple[str, ...] | None = None
             if spec.venues is not None:
                 venues = list(dict.fromkeys(spec.venues))
-                if len(venues) > self._settings.max_venues_per_client:
-                    raise StreamLimitError(
-                        "max_venues",
-                        f"max venues per client is "
-                        f"{self._settings.max_venues_per_client}",
-                    )
                 venues_tuple = tuple(venues)
+                venues_union.update(venues)
             notionals = parse_notionals(spec.notionals)
             for asset in assets:
                 # Later specs win on duplicate assets (last-writer).
@@ -417,6 +423,11 @@ class QuoteStreamHub:
             raise StreamLimitError(
                 "max_assets",
                 f"max assets per client is {self._settings.max_assets_per_client}",
+            )
+        if len(venues_union) > self._settings.max_venues_per_client:
+            raise StreamLimitError(
+                "max_venues",
+                f"max venues per client is {self._settings.max_venues_per_client}",
             )
         if not new_filters:
             raise StreamLimitError("empty_subscribe", "subscribe resolved zero assets")
@@ -446,6 +457,12 @@ class QuoteStreamHub:
         client's filters are collected — avoids amplifying other viewers' work
         on a new connection.
         """
+        async with self._publish_lock:
+            await self._publish_once_unlocked(only_client=only_client)
+
+    async def _publish_once_unlocked(
+        self, *, only_client: StreamClient | None = None
+    ) -> None:
         async with self._lock:
             if only_client is not None:
                 clients = (
@@ -465,19 +482,31 @@ class QuoteStreamHub:
             for filt in client.filters.values():
                 key_to_filter.setdefault(filt.cache_key(), filt)
 
-        packages: dict[str, QuotesPackage] = {}
-        for key, filt in key_to_filter.items():
+        async def _collect_one(
+            key: str, filt: StreamFilter
+        ) -> tuple[str, QuotesPackage | None, BaseException | None]:
             self.collect_calls += 1
             try:
-                packages[key] = await self._aggregator.collect(
+                pkg = await self._aggregator.collect(
                     filt.asset,
                     list(filt.notionals),
                     venues=list(filt.venues) if filt.venues is not None else None,
                     side=filt.side,
                     instrument_type=filt.instrument_type,
                 )
-            except Exception as exc:  # noqa: BLE001 — degrade one filter, keep others
+                return key, pkg, None
+            except Exception as exc:  # noqa: BLE001 — degrade one filter
                 logger.exception("stream collect failed for %s: %s", key, exc)
+                return key, None, exc
+
+        results = await asyncio.gather(
+            *(_collect_one(k, f) for k, f in key_to_filter.items())
+        )
+        packages: dict[str, QuotesPackage] = {}
+        for key, pkg, exc in results:
+            if pkg is not None:
+                packages[key] = pkg
+            elif exc is not None:
                 for client in clients:
                     for asset, cf in client.filters.items():
                         if cf.cache_key() == key:

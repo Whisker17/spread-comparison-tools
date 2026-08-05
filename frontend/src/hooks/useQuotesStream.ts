@@ -80,6 +80,8 @@ export function QuotesStreamProvider({
   const [lastError, setLastError] = useState<string | null>(null);
   // Socket handle is state so senders re-bind without reading refs during render.
   const [socket, setSocket] = useState<SocketHandle | null>(null);
+  // Server-driven via hello frame; falls back to DEFAULT until hello arrives.
+  const [livenessMs, setLivenessMs] = useState(livenessTimeoutMs);
 
   const subscribePayload = useMemo(
     () => JSON.stringify(buildSubscribeMessage(filters)),
@@ -175,7 +177,9 @@ export function QuotesStreamProvider({
         }
         livenessTimer = setInterval(() => {
           const silent = Date.now() - lastMsgAt;
-          if (silent > livenessTimeoutMs) {
+          // Prefer server hello timeout (state updated async); prop is fallback.
+          const timeout = livenessMs > 0 ? livenessMs : livenessTimeoutMs;
+          if (silent > timeout) {
             setStatus("reconnecting");
             try {
               active.close();
@@ -194,16 +198,22 @@ export function QuotesStreamProvider({
         } catch {
           return;
         }
-        if (
-          typeof parsed === "object" &&
-          parsed !== null &&
-          "type" in parsed &&
-          (parsed as { type: string }).type === "ping"
-        ) {
-          if (active.readyState === WebSocket.OPEN) {
-            active.send(JSON.stringify({ type: "pong" }));
+        if (typeof parsed === "object" && parsed !== null && "type" in parsed) {
+          const t = (parsed as { type: string }).type;
+          if (t === "ping") {
+            if (active.readyState === WebSocket.OPEN) {
+              active.send(JSON.stringify({ type: "pong" }));
+            }
+            return;
           }
-          return;
+          if (t === "hello") {
+            const sec = (parsed as { client_liveness_timeout_sec?: number })
+              .client_liveness_timeout_sec;
+            if (typeof sec === "number" && sec > 0) {
+              setLivenessMs(sec * 1000);
+            }
+            return;
+          }
         }
         setByAsset((prev) => {
           const { next, kind, error } = applyServerMessage(prev, parsed);
@@ -248,7 +258,7 @@ export function QuotesStreamProvider({
         }
       }
     };
-  }, [enabled, url, subscribePayload, livenessTimeoutMs, reconnectBaseMs]);
+  }, [enabled, url, subscribePayload, livenessTimeoutMs, livenessMs, reconnectBaseMs]);
 
   const matrixFor = useCallback(
     (asset: string): QuotesMatrixData | undefined =>

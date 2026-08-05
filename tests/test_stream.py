@@ -383,6 +383,10 @@ def test_stream_subscribe_snapshot_and_rest_quotes_still_work() -> None:
             "/stream",
             headers={"Origin": "http://localhost:3000"},
         ) as ws:
+            hello = ws.receive_json()
+            assert hello["type"] == "hello"
+            assert hello["client_liveness_timeout_sec"] == 45.0
+            assert hello["coalesce_interval_ms"] == 400.0
             ws.send_json(
                 {
                     "type": "subscribe",
@@ -425,6 +429,7 @@ def test_stream_resnapshot_returns_full_snapshot() -> None:
             "/stream",
             headers={"Origin": "http://localhost:3000"},
         ) as ws:
+            assert ws.receive_json()["type"] == "hello"
             ws.send_json(
                 {
                     "type": "subscribe",

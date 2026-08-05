@@ -62,6 +62,8 @@ async def stream_quotes(websocket: WebSocket) -> None:
         client.client_id,
         origin,
     )
+    # Handshake config so FE liveness matches server YAML (not a second hardcode).
+    await websocket.send_json(hub.hello_message())
 
     sender = asyncio.create_task(
         _sender_loop(websocket, client.outbound),

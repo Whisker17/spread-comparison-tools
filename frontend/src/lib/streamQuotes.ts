@@ -52,7 +52,15 @@ export type AssetQuotesState = {
   rowSnapshotIds: string[];
 };
 
+export type StreamHello = {
+  type: "hello";
+  coalesce_interval_ms: number;
+  heartbeat_interval_sec: number;
+  client_liveness_timeout_sec: number;
+};
+
 export type StreamServerMessage =
+  | StreamHello
   | {
       type: "snapshot";
       asset: string;
@@ -186,6 +194,7 @@ export function applyServerMessage(
         kind: "error",
         error: { code: msg.code, message: msg.message },
       };
+    case "hello":
     case "heartbeat":
     case "pong":
     case "ping":
