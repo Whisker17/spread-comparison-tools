@@ -158,9 +158,25 @@ class BaseAdapter:
 
     @property
     def http(self) -> httpx.AsyncClient:
-        """Lazily create a shared async HTTP client."""
+        """Lazily create a shared async HTTP client.
+
+        Transport-related construction failures (notably a missing optional
+        SOCKS extra when ``ALL_PROXY`` is set) raise :class:`AdapterFetchError`
+        so WHI-840 can degrade this venue instead of treating ``ImportError``
+        as a fatal config/programmer error (WHI-858).
+        """
         if self._client is None:
-            self._client = httpx.AsyncClient(timeout=self._timeout)
+            try:
+                self._client = httpx.AsyncClient(timeout=self._timeout)
+            except ImportError as exc:
+                venue = getattr(self, "venue", type(self).__name__)
+                raise AdapterFetchError(
+                    f"{venue}: cannot construct HTTP client ({exc}). "
+                    "If you use a SOCKS proxy (ALL_PROXY/HTTPS_PROXY), install "
+                    "the optional transport: `uv sync` (project depends on "
+                    "httpx[socks]) or `pip install 'httpx[socks]'` / socksio; "
+                    "or unset the proxy env for this process."
+                ) from exc
         return self._client
 
     async def startup(self) -> None:

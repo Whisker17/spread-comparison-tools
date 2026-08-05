@@ -554,3 +554,132 @@ async def test_simulate_failed_venue_is_not_initialized(
     assert row.status == "error"
 
     await aclose_all()
+
+
+# --- WHI-858: missing optional HTTP transport extra must degrade, not refuse boot ---
+
+
+def test_http_client_import_error_becomes_adapter_fetch_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """SOCKS/missing-extra ImportError at client construction is transport, not config."""
+
+    def boom(**kwargs: object) -> object:
+        raise ImportError(
+            "Using SOCKS proxy, but the 'socksio' package is not installed. "
+            "Make sure to install httpx using `pip install httpx[socks]`."
+        )
+
+    monkeypatch.setattr("spread_compare.adapters.base.httpx.AsyncClient", boom)
+
+    class NamedAdapter(StubAdapter):
+        venue: str = "binance"
+
+    adapter = NamedAdapter()
+    with pytest.raises(AdapterFetchError) as exc_info:
+        _ = adapter.http
+
+    msg = str(exc_info.value)
+    assert "binance" in msg
+    assert "socksio" in msg.lower() or "socks" in msg.lower()
+    # Must chain the original ImportError for operators reading the traceback.
+    assert isinstance(exc_info.value.__cause__, ImportError)
+
+
+@pytest.mark.asyncio
+async def test_startup_all_degrades_on_http_client_import_error(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Adapter that builds its HTTP client at startup degrades; peer venues still boot."""
+
+    def boom(**kwargs: object) -> object:
+        raise ImportError(
+            "Using SOCKS proxy, but the 'socksio' package is not installed."
+        )
+
+    monkeypatch.setattr("spread_compare.adapters.base.httpx.AsyncClient", boom)
+
+    class NeedsHttp(StubAdapter):
+        venue: str = "lighter"
+
+        async def startup(self) -> None:
+            _ = self.http  # construction failure must become AdapterFetchError
+            self._started = True
+
+    class OkAdapter(StubAdapter):
+        venue: str = "binance"
+
+        async def startup(self) -> None:
+            self._started = True
+
+    monkeypatch.setitem(_REGISTRY, "lighter", NeedsHttp())
+    monkeypatch.setitem(_REGISTRY, "binance", OkAdapter())
+    _INITIALIZED.discard("lighter")
+    _INITIALIZED.discard("binance")
+
+    with caplog.at_level(logging.ERROR, logger="spread_compare.adapters.registry"):
+        report = await startup_all(slugs=["lighter", "binance"])
+
+    assert "lighter" in report.degraded
+    assert isinstance(report.degraded["lighter"], AdapterFetchError)
+    assert "binance" in report.succeeded
+    assert "lighter" not in _INITIALIZED
+    assert "binance" in _INITIALIZED
+    assert is_degraded()
+    assert "lighter" in unavailable_venues()
+    # Log line names the venue and the actionable cause (not only ExceptionGroup).
+    lighter_logs = [
+        r
+        for r in caplog.records
+        if "lighter" in r.getMessage() and "startup failed" in r.getMessage()
+    ]
+    assert lighter_logs
+    assert any(
+        "socksio" in r.getMessage().lower() or "socks" in r.getMessage().lower()
+        for r in lighter_logs
+    )
+
+    await aclose_all()
+
+
+def test_health_reports_degradation_on_http_client_import_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """GET /health lists the venue in unavailable_venues when HTTP client cannot construct."""
+
+    def boom(**kwargs: object) -> object:
+        raise ImportError(
+            "Using SOCKS proxy, but the 'socksio' package is not installed."
+        )
+
+    monkeypatch.setattr("spread_compare.adapters.base.httpx.AsyncClient", boom)
+
+    class NeedsHttp(StubAdapter):
+        venue: str = "lighter"
+
+        async def startup(self) -> None:
+            _ = self.http
+            self._started = True
+
+    monkeypatch.setitem(_REGISTRY, "lighter", NeedsHttp())
+    clear_settings_cache()
+    monkeypatch.setattr(
+        "spread_compare.api.app.load_venue_settings",
+        lambda: VenueSettings(
+            disabled=[],
+            startup_retry_interval_sec=0,
+            startup_retry_backoff_multiplier=2.0,
+            startup_retry_max_interval_sec=300.0,
+        ),
+    )
+
+    with TestClient(create_app()) as client:
+        health = client.get("/health")
+        assert health.status_code == 200
+        body = health.json()
+        assert body["status"] == "ok"
+        assert body["degraded"] is True
+        assert "lighter" in body["unavailable_venues"]
+
+    clear_settings_cache()

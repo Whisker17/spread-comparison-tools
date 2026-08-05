@@ -123,6 +123,10 @@ Stream books-sync alerts (WHI-856): per-stream `books_healthy`/`books_expected`,
 `books_unsynced` (critical at zero books: never-synced vs degraded; warning when
 partial) past `ws_books_sync_grace_sec`, `subscribe_failed` when `stream_error`
 and still zero healthy books, per-stream data-probe floor.
+HTTP client construction transport extras (WHI-858): missing optional SOCKS
+(`socksio` / `httpx[socks]`) at `BaseAdapter.http` raises `AdapterFetchError`
+(venue-named, degradable) instead of raw `ImportError` killing boot; dependency
+includes `httpx[socks]`.
 
 **Not implemented:** remaining venue adapters (WHI-805), collector.
 Do not assume a module exists until its issue lands.
@@ -138,7 +142,7 @@ not exist yet. Formula SSOT remains `docs/research/WHI-799-spread-fee-data-model
 stack: -->
 
 ```bash
-uv sync                                  # install deps (creates .venv)
+uv sync                                  # install deps (creates .venv; includes httpx[socks])
 uv run pytest                            # unit tests (offline; skips @pytest.mark.live)
 uv run pytest --live                     # include live tests (network + credentials)
 uv run pytest tests/test_smoke.py        # single test file
@@ -154,6 +158,20 @@ pnpm dev                                 # Next.js :3000 (NEXT_PUBLIC_API_URL)
 pnpm lint && pnpm typecheck && pnpm test
 pnpm gen:openapi && pnpm gen:api         # regenerate OpenAPI types
 ```
+
+Local SOCKS/HTTP proxy env (`ALL_PROXY` / `HTTPS_PROXY` / …): the project depends on
+`httpx[socks]`, so a SOCKS proxy does not require an extra install. Prefer direct
+upstream for lower latency when dogfooding venues (agent shells often set a system
+proxy):
+
+```bash
+env -u ALL_PROXY -u all_proxy -u HTTPS_PROXY -u https_proxy -u HTTP_PROXY -u http_proxy \
+  uv run python main.py
+```
+
+If a transport extra is still missing, WHI-858 classifies HTTP-client construction
+failure as a per-venue degradable transport error (not a process-killing config
+error); `GET /health` lists those venues under `unavailable_venues`.
 
 ## Runtime configuration
 
