@@ -54,11 +54,13 @@ Checked-in files:
   heartbeat / client liveness, max clients, subscription breadth caps, outbound
   queue depth. Origin allowlist reuses `api.yaml` `cors_origins`. Unvalidated
   pending DESIGN.md §2; override with `stream.local.yaml`.
-- `ws.yaml` — WebSocket orderbook ingest (WHI-847): enable flag, max book age,
-  reconnect backoff, Lighter resync floor, fast-mid poll interval, per-stream
-  flags. When healthy, CEX/perp quotes walk in-memory books (zero REST).
-  Unvalidated pending DESIGN.md §2; override with `ws.local.yaml`.
-  Pair with `mid.yaml` → `max_age_for_ws_quote_sec` for the tighter mid gate.
+- `ws.yaml` — WebSocket orderbook ingest (WHI-847 / WHI-855): enable flag, max
+  book age, reconnect backoff, Lighter resubscribe floor, fast-mid poll interval,
+  per-stream flags, per-venue subscribe chunk sizes, Binance spot resync weight
+  budget, Hyperliquid app-level heartbeat. When healthy, CEX/perp quotes walk
+  in-memory books (zero REST). Unvalidated pending DESIGN.md §2; override with
+  `ws.local.yaml`. Pair with `mid.yaml` → `max_age_for_ws_quote_sec` for the
+  tighter mid gate.
 - `monitor.yaml` — real-time engine monitoring (WHI-819): per-class staleness
   thresholds (WS disconnect / book age / resync, sweep multiplier, mid age,
   sustained 429s), data-probe asset, eval interval, startup grace, alert

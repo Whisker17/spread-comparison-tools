@@ -1,4 +1,4 @@
-# WebSocket orderbook ingest (WHI-847).
+# WebSocket orderbook ingest (WHI-847 / WHI-855).
 # Defaults are **unvalidated** pending docs/DESIGN.md §2 — engineering starting points only.
 # YAML is the sole source of these values (no silent Python Field defaults).
 
@@ -11,11 +11,34 @@ max_book_age_sec: 5.0
 reconnect_min_sec: 1.0
 reconnect_max_sec: 30.0
 
-# Lighter REST resync budget: min seconds between snapshot fetches (60 req/min Standard).
+# Lighter gap recovery: min seconds between channel resubscribes (WHI-855).
+# Resync is re-subscribe (server snapshot carries a real nonce) — not REST+fake nonce.
 lighter_min_resync_interval_sec: 2.0
+# If a resubscribe's snapshot never arrives, age out the pending and note_resync(fail).
+lighter_resync_snapshot_timeout_sec: 15.0
 
 # Fast mid path: poll Binance USDM premiumIndex at this interval (1 Hz verified).
 fast_mid_poll_interval_sec: 1.0
+
+# Subscribe batch sizes (args per op). Venue-specific — Bybit spot rejects >10;
+# ApeX multi-arg returns "handler not found" so chunk=1 (WHI-855 live probes).
+bybit_spot_subscribe_chunk: 10
+bybit_linear_subscribe_chunk: 20
+apex_subscribe_chunk: 1
+
+# Binance spot REST resync throttle (depth limit=1000 → weight 50; IP 6000/min).
+# Unthrottled storms risk 429/418 IP bans that also kill the REST fallback (WHI-855).
+binance_spot_min_resync_interval_sec: 2.0
+binance_spot_resync_weight: 50
+binance_spot_resync_weight_budget_per_min: 1500
+
+# Heartbeats. Default transport (WebSocket-layer) ping interval applies to
+# venues that answer it (Binance / Bybit / Lighter / ApeX). Hyperliquid ignores
+# transport pings → disable them and send application {"method":"ping"} instead.
+# ApeX *sends* {"op":"ping"} and expects {"op":"pong"} (handled in the feed).
+default_transport_ping_interval_sec: 20.0
+hyperliquid_app_ping_interval_sec: 20.0
+hyperliquid_transport_ping: false
 
 # Venue streams: enabled independently; disabled → REST-only for that stream.
 streams:

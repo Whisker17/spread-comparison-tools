@@ -1,7 +1,15 @@
-"""Venue WebSocket feed workers that maintain :class:`WsBookRegistry` (WHI-847).
+"""Venue WebSocket feed workers that maintain :class:`WsBookRegistry` (WHI-847 / WHI-855).
 
 Each stream opens **one** connection and multiplexes symbol subscriptions.
 Connect failure degrades that stream only (REST fallback remains available).
+
+WHI-855 repairs:
+- Chunked subscribe (Bybit spot ≤10 args; ApeX chunk=1)
+- Subscribe-ack failures surface as stream errors (not silent zero-book streams)
+- Hyperliquid application-level ping + disabled transport ping
+- ApeX answers server ``{"op":"ping"}`` with ``{"op":"pong"}``
+- Lighter gap recovery via channel resubscribe (never REST + synthetic nonce=0)
+- Binance spot REST resync throttled per symbol + weight budget
 """
 
 from __future__ import annotations
@@ -11,13 +19,14 @@ import logging
 import threading
 import time
 from collections.abc import Awaitable, Callable, Sequence
-from decimal import Decimal
+from types import EllipsisType
 from typing import Any
 from urllib.parse import urlencode
 
 import httpx
 
 from spread_compare.local_book import BookHealth
+from spread_compare.ratelimit import RateLimitWaitExceeded, RollingWindowRateLimiter
 from spread_compare.settings import WsSettings, load_ws_settings
 from spread_compare.ws_connection import ReconnectingWebSocket
 from spread_compare.ws_protocols import (
@@ -42,9 +51,17 @@ _BYBIT_LINEAR_WS = "wss://stream.bybit.com/v5/public/linear"
 _BYBIT_REST = "https://api.bybit.com"
 _HL_WS = "wss://api.hyperliquid.xyz/ws"
 _LIGHTER_WS = "wss://mainnet.zklighter.elliot.ai/stream"
-_LIGHTER_REST = "https://mainnet.zklighter.elliot.ai"
 _APEX_WS_BASE = "wss://quote.omni.apex.exchange/realtime_public"
 _APEX_REST = "https://omni.apex.exchange"
+
+
+def chunked[T](items: Sequence[T], size: int) -> list[list[T]]:
+    """Split ``items`` into contiguous chunks of at most ``size`` (size ≥ 1)."""
+    if size < 1:
+        raise ValueError(f"chunk size must be >= 1, got {size}")
+    if not items:
+        return []
+    return [list(items[i : i + size]) for i in range(0, len(items), size)]
 
 
 class WsFeedManager:
@@ -63,6 +80,7 @@ class WsFeedManager:
         self._client = client
         self._owns_client = client is None
         self._sockets: list[ReconnectingWebSocket] = []
+        self._stream_socks: dict[str, ReconnectingWebSocket] = {}
         self._tasks: list[asyncio.Task[None]] = []
         self._started = False
         self._spot_syncs: dict[str, BinanceSpotSync] = {}
@@ -72,9 +90,21 @@ class WsFeedManager:
         self._lighter_syncs: dict[str, LighterSync] = {}
         self._apex_syncs: dict[str, ApexSync] = {}
         self._lighter_last_resync_mono: dict[str, float] = {}
+        # market_id → mono when resubscribe was sent (pending server snapshot)
+        self._lighter_resync_pending_mono: dict[str, float] = {}
+        self._binance_spot_last_resync_mono: dict[str, float] = {}
+        # Weight budget for depth?limit=1000 (shared ratelimit.py SSOT — WHI-855).
+        weight = self._settings.binance_spot_resync_weight
+        budget = self._settings.binance_spot_resync_weight_budget_per_min
+        max_calls = max(1, budget // weight)
+        self._binance_spot_weight_limiter = RollingWindowRateLimiter(
+            max_requests=max_calls, window_s=60.0
+        )
         # market_id → symbol for Lighter
         self._lighter_markets: dict[str, str] = {}
         self._symbols: dict[str, list[str]] = {}
+        # stream_id → last subscribe / stream error (WHI-855 surface failures)
+        self._stream_errors: dict[str, str] = {}
         # WHI-819: rolling resync outcomes per stream_id (monotonic timestamps).
         # Locked: asyncio tasks write; /health may read from the threadpool.
         self._diag_lock = threading.Lock()
@@ -98,6 +128,10 @@ class WsFeedManager:
     def socket_count(self) -> int:
         """Configured sockets (one per stream), independent of asset count."""
         return len(self._sockets)
+
+    def stream_error(self, stream_id: str) -> str | None:
+        """Last subscribe/stream error for ``stream_id``, if any."""
+        return self._stream_errors.get(stream_id)
 
     def note_resync(self, stream_id: str, *, ok: bool) -> None:
         """Record a REST resync attempt for monitor book-desync alerts (WHI-819)."""
@@ -161,6 +195,37 @@ class WsFeedManager:
             self._client = httpx.AsyncClient(timeout=10.0)
         return self._client
 
+    def _set_stream_error(self, stream_id: str, message: str) -> None:
+        self._stream_errors[stream_id] = message
+        logger.error("ws stream %s error: %s", stream_id, message)
+
+    def _clear_stream_error(self, stream_id: str) -> None:
+        self._stream_errors.pop(stream_id, None)
+
+    def _fail_subscribe_books(
+        self,
+        stream_id: str,
+        *,
+        venue: str,
+        instrument_type: str,
+        symbols: Sequence[str],
+        message: str,
+    ) -> None:
+        """Surface a subscribe failure without wiping already-HEALTHY books.
+
+        Venue acks do not echo which topics failed, so we cannot map an ack to a
+        specific chunk. Mark every non-HEALTHY book DISCONNECTED and keep the
+        error on the stream; already-synced books keep serving.
+        """
+        self._set_stream_error(stream_id, message)
+        for sym in symbols:
+            book = self._registry.get(venue, sym, instrument_type)
+            if book is None:
+                continue
+            if book.health is BookHealth.HEALTHY:
+                continue
+            book.set_health(BookHealth.DISCONNECTED, error=message)
+
     async def start(
         self,
         *,
@@ -218,6 +283,7 @@ class WsFeedManager:
             await sock.stop()
             self._registry.mark_connection(sock.stream_id, open=False)
         self._sockets.clear()
+        self._stream_socks.clear()
         for task in self._tasks:
             task.cancel()
             try:
@@ -229,7 +295,6 @@ class WsFeedManager:
             await self._client.aclose()
             self._client = None
         self._started = False
-
 
     def _on_stream_closed(
         self,
@@ -261,9 +326,18 @@ class WsFeedManager:
         instrument_type: str,
         symbols: Sequence[str],
         sock_holder: list[ReconnectingWebSocket] | None = None,
+        # Ellipsis = use config default; explicit None disables transport pings (HL).
+        ping_interval: float | None | EllipsisType = ...,
+        app_ping_interval_sec: float | None = None,
+        app_ping_payload: dict[str, Any] | None = None,
     ) -> ReconnectingWebSocket:
         """Build one multiplexed socket; on drop → REST fallback for those books."""
         syms = list(symbols)
+        transport_ping: float | None
+        if ping_interval is ...:
+            transport_ping = self._settings.default_transport_ping_interval_sec
+        else:
+            transport_ping = ping_interval
 
         async def on_close() -> None:
             self._on_stream_closed(stream_id, venue, instrument_type, syms)
@@ -284,10 +358,14 @@ class WsFeedManager:
             on_close=on_close,
             reconnect_min_sec=self._settings.reconnect_min_sec,
             reconnect_max_sec=self._settings.reconnect_max_sec,
+            ping_interval=transport_ping,
+            app_ping_interval_sec=app_ping_interval_sec,
+            app_ping_payload=app_ping_payload,
         )
         if sock_holder is not None:
             sock_holder.append(sock)
         self._sockets.append(sock)
+        self._stream_socks[stream_id] = sock
         sock.start()
         return sock
 
@@ -306,8 +384,11 @@ class WsFeedManager:
 
         async def on_open() -> None:
             self._registry.mark_connection(stream_id, open=True)
+            # block=True: wait for weight slots so first snapshots always land
+            # (non-blocking storm throttle would leave books with no last_update_id
+            # stuck RESYNCING forever — on_diff won't re-request without a snapshot).
             for sym in symbols:
-                await self._resync_binance_spot(sym)
+                await self._resync_binance_spot(sym, block=True)
 
         async def on_message(payload: dict[str, Any] | list[Any] | str) -> None:
             if not isinstance(payload, dict):
@@ -321,7 +402,7 @@ class WsFeedManager:
                 return
             result = sync.on_diff(data)
             if result.needs_resync:
-                await self._resync_binance_spot(sym)
+                await self._resync_binance_spot(sym, block=False)
 
         self._spawn_socket(
             url,
@@ -333,10 +414,35 @@ class WsFeedManager:
             symbols=symbols,
         )
 
-    async def _resync_binance_spot(self, symbol: str) -> None:
+    async def _resync_binance_spot(self, symbol: str, *, block: bool = False) -> None:
         sync = self._spot_syncs.get(symbol)
         if sync is None:
             return
+        now = time.monotonic()
+        min_iv = self._settings.binance_spot_min_resync_interval_sec
+        last = self._binance_spot_last_resync_mono.get(symbol, 0.0)
+        if now - last < min_iv:
+            if sync.book.health is not BookHealth.RESYNCING:
+                sync.book.set_health(BookHealth.RESYNCING, error="binance spot resync throttled")
+            logger.info("binance spot resync interval-throttled %s", symbol)
+            return
+        if not block and self._binance_spot_weight_limiter.expected_wait_s() > 0:
+            # Storm path: stay RESYNCING / unservable rather than hammer depth.
+            if sync.book.health is not BookHealth.RESYNCING:
+                sync.book.set_health(BookHealth.RESYNCING, error="binance spot resync throttled")
+            logger.info("binance spot resync weight-throttled %s", symbol)
+            return
+        try:
+            # block=True waits for a weight slot (startup snapshots); else fail-fast.
+            await self._binance_spot_weight_limiter.acquire(
+                max_wait_s=None if block else 0.0
+            )
+        except RateLimitWaitExceeded:
+            if sync.book.health is not BookHealth.RESYNCING:
+                sync.book.set_health(BookHealth.RESYNCING, error="binance spot resync throttled")
+            logger.info("binance spot resync weight-budget throttled %s", symbol)
+            return
+        self._binance_spot_last_resync_mono[symbol] = time.monotonic()
         sync.book.set_health(BookHealth.RESYNCING)
         try:
             resp = await self._http().get(
@@ -447,16 +553,41 @@ class WsFeedManager:
 
         stream_id = f"bybit_{category}"
         topics = [f"orderbook.1000.{s}" for s in symbols]
+        chunk_size = (
+            self._settings.bybit_spot_subscribe_chunk
+            if category == "spot"
+            else self._settings.bybit_linear_subscribe_chunk
+        )
+        topic_chunks = chunked(topics, chunk_size)
         sock_holder: list[ReconnectingWebSocket] = []
 
         async def on_open() -> None:
             self._registry.mark_connection(stream_id, open=True)
-            # Bybit multiplex: one subscribe op with multiple args.
-            await sock_holder[0].send_json({"op": "subscribe", "args": topics})
+            self._clear_stream_error(stream_id)
+            # Chunked subscribe — Bybit spot rejects args size > 10 (WHI-855).
+            for batch in topic_chunks:
+                await sock_holder[0].send_json({"op": "subscribe", "args": batch})
 
         async def on_message(payload: dict[str, Any] | list[Any] | str) -> None:
             if not isinstance(payload, dict):
                 return
+            # Subscribe ack: {"success": bool, "ret_msg": "...", "op": "subscribe"}
+            if payload.get("op") == "subscribe" or "success" in payload:
+                ok = payload.get("success")
+                if ok is False:
+                    ret = str(
+                        payload.get("ret_msg") or payload.get("retMsg") or "subscribe failed"
+                    )
+                    self._fail_subscribe_books(
+                        stream_id,
+                        venue="bybit",
+                        instrument_type=instrument,
+                        symbols=symbols,
+                        message=ret,
+                    )
+                    return
+                if ok is True:
+                    return
             topic = str(payload.get("topic") or "")
             if not topic.startswith("orderbook."):
                 return
@@ -522,9 +653,17 @@ class WsFeedManager:
 
         stream_id = "hyperliquid"
         sock_holder: list[ReconnectingWebSocket] = []
+        # HL ignores transport pings → disable unless config explicitly re-enables.
+        transport_ping: float | None = (
+            self._settings.default_transport_ping_interval_sec
+            if self._settings.hyperliquid_transport_ping
+            else None
+        )
+        app_ping_iv = self._settings.hyperliquid_app_ping_interval_sec
 
         async def on_open() -> None:
             self._registry.mark_connection(stream_id, open=True)
+            self._clear_stream_error(stream_id)
             for coin in coins:
                 await sock_holder[0].send_json(
                     {
@@ -541,7 +680,14 @@ class WsFeedManager:
             if not isinstance(payload, dict):
                 return
             channel = payload.get("channel")
+            # App-level pong replies — ignore.
+            if channel == "pong":
+                return
             data = payload.get("data")
+            if channel == "error" or payload.get("error"):
+                err = data if data is not None else payload.get("error") or payload
+                self._set_stream_error(stream_id, f"hyperliquid error: {err}")
+                return
             if channel != "l2Book" or not isinstance(data, dict):
                 return
             coin = str(data.get("coin") or "")
@@ -570,6 +716,9 @@ class WsFeedManager:
             instrument_type="perp",
             symbols=coins,
             sock_holder=sock_holder,
+            ping_interval=transport_ping,
+            app_ping_interval_sec=app_ping_iv,
+            app_ping_payload={"method": "ping"},
         )
 
     # ----- Lighter ------------------------------------------------------
@@ -585,6 +734,7 @@ class WsFeedManager:
 
         async def on_open() -> None:
             self._registry.mark_connection(stream_id, open=True)
+            self._clear_stream_error(stream_id)
             for market_id in self._lighter_markets:
                 await sock_holder[0].send_json(
                     {"type": "subscribe", "channel": f"order_book/{market_id}"}
@@ -592,6 +742,12 @@ class WsFeedManager:
 
         async def on_message(payload: dict[str, Any] | list[Any] | str) -> None:
             if not isinstance(payload, dict):
+                return
+            # Age out lost resubscribes even when the book is quiet (no new gaps).
+            self._expire_stale_lighter_resyncs(time.monotonic())
+            if payload.get("error") or str(payload.get("type") or "") == "error":
+                err = payload.get("error") or payload.get("message") or payload
+                self._set_stream_error(stream_id, f"lighter error: {err}")
                 return
             channel = str(payload.get("channel") or "")
             if "order_book" not in channel:
@@ -615,6 +771,11 @@ class WsFeedManager:
                 if msg_type.startswith("subscribed") or "nonce" in data:
                     if data.get("begin_nonce") is None or msg_type.startswith("subscribed"):
                         sync.on_snapshot(bids=bids_n, asks=asks_n, nonce=nonce)
+                        # Complete a pending resubscribe only when a real snapshot lands.
+                        mid_key = str(market_id)
+                        if mid_key in self._lighter_resync_pending_mono:
+                            self._lighter_resync_pending_mono.pop(mid_key, None)
+                            self.note_resync("lighter", ok=True)
                         return
             begin_raw = data.get("begin_nonce")
             nonce_raw = data.get("nonce")
@@ -640,8 +801,47 @@ class WsFeedManager:
             sock_holder=sock_holder,
         )
 
+    def _expire_stale_lighter_resyncs(self, now: float) -> None:
+        """Age out resubscribes that never produced a snapshot (WHI-855)."""
+        timeout = self._settings.lighter_resync_snapshot_timeout_sec
+        stale = [
+            mid
+            for mid, sent_at in self._lighter_resync_pending_mono.items()
+            if now - sent_at >= timeout
+        ]
+        for mid in stale:
+            self._lighter_resync_pending_mono.pop(mid, None)
+            self.note_resync("lighter", ok=False)
+            sync = self._lighter_syncs.get(mid)
+            if sync is not None and sync.book.health is BookHealth.RESYNCING:
+                # Stay unservable; REST fallback continues via try_local_book.
+                sync.book.set_health(
+                    BookHealth.RESYNCING,
+                    error="lighter resubscribe snapshot timed out",
+                )
+            logger.warning("lighter resync snapshot timed out market=%s", mid)
+
     async def _resync_lighter(self, market_id: str, sync: LighterSync) -> None:
+        """Recover from a gap by re-subscribing the channel (WHI-855).
+
+        The server's subscribe snapshot carries a real nonce the delta chain can
+        continue from. REST-with-synthetic-``nonce=0`` livelocks forever.
+        """
         now = time.monotonic()
+        self._expire_stale_lighter_resyncs(now)
+        # Already waiting on a prior resubscribe — do not re-arm the timeout clock
+        # or re-send (that would make the 15s snapshot timeout unreachable).
+        if market_id in self._lighter_resync_pending_mono:
+            logger.info("lighter resync already pending market=%s", market_id)
+            return
+        sock = self._stream_socks.get("lighter")
+        if sock is None or not sock.is_connected:
+            self.note_resync("lighter", ok=False)
+            sync.book.set_health(
+                BookHealth.DISCONNECTED, error="lighter resync: socket not connected"
+            )
+            logger.warning("lighter resync aborted market=%s: socket not connected", market_id)
+            return
         last = self._lighter_last_resync_mono.get(market_id, 0.0)
         min_iv = self._settings.lighter_min_resync_interval_sec
         if now - last < min_iv:
@@ -650,19 +850,15 @@ class WsFeedManager:
         self._lighter_last_resync_mono[market_id] = now
         sync.book.set_health(BookHealth.RESYNCING)
         try:
-            resp = await self._http().get(
-                f"{_LIGHTER_REST}/api/v1/orderBookOrders",
-                params={"market_id": market_id, "limit": "100"},
+            # Stamp once; subsequent gaps while pending leave this timestamp alone.
+            self._lighter_resync_pending_mono[market_id] = now
+            await sock.send_json(
+                {"type": "subscribe", "channel": f"order_book/{market_id}"}
             )
-            resp.raise_for_status()
-            body = resp.json()
-            # Aggregate like the REST adapter; treat as snapshot with nonce 0.
-            bids = _aggregate_lighter_orders(body.get("bids") or body.get("bid_orders") or [])
-            asks = _aggregate_lighter_orders(body.get("asks") or body.get("ask_orders") or [])
-            sync.on_snapshot(bids=bids, asks=asks, nonce=0)
-            self.note_resync("lighter", ok=True)
-            logger.info("lighter resync ok market=%s", market_id)
+            # note_resync(ok=True) only when the server's snapshot arrives (on_message).
+            logger.info("lighter resync resubscribed market=%s", market_id)
         except Exception as exc:  # noqa: BLE001
+            self._lighter_resync_pending_mono.pop(market_id, None)
             self.note_resync("lighter", ok=False)
             sync.book.set_health(BookHealth.DISCONNECTED, error=str(exc))
             logger.warning("lighter resync failed market=%s: %s", market_id, exc)
@@ -680,27 +876,55 @@ class WsFeedManager:
         ts_ms = int(time.time() * 1000)
         url = f"{_APEX_WS_BASE}?{urlencode({'v': '2', 'timestamp': str(ts_ms)})}"
         sock_holder: list[ReconnectingWebSocket] = []
+        chunk_size = self._settings.apex_subscribe_chunk
+        topic_chunks = chunked(
+            [f"orderBook200.H.{s}" for s in symbols], chunk_size
+        )
 
         async def on_open() -> None:
             self._registry.mark_connection(stream_id, open=True)
-            args = [f"orderBook200.H.{s}" for s in symbols]
-            await sock_holder[0].send_json({"op": "subscribe", "args": args})
+            self._clear_stream_error(stream_id)
+            # Chunked subscribe — multi-arg batches return "handler not found" (WHI-855).
+            for batch in topic_chunks:
+                await sock_holder[0].send_json({"op": "subscribe", "args": batch})
 
         async def on_message(payload: dict[str, Any] | list[Any] | str) -> None:
             if not isinstance(payload, dict):
                 return
+            # Application-level ping from ApeX — must answer or the socket dies.
+            op = str(payload.get("op") or "")
+            if op == "ping":
+                if sock_holder:
+                    await sock_holder[0].send_json({"op": "pong"})
+                return
+            # Subscribe ack / error surfaces
+            if op == "subscribe" or "success" in payload or payload.get("error"):
+                ok = payload.get("success")
+                err = payload.get("error") or payload.get("ret_msg") or payload.get("retMsg")
+                if ok is False or err:
+                    msg = str(err or "subscribe failed")
+                    self._fail_subscribe_books(
+                        stream_id,
+                        venue="apex",
+                        instrument_type="perp",
+                        symbols=symbols,
+                        message=msg,
+                    )
+                    return
+                if ok is True:
+                    return
             topic = str(payload.get("topic") or payload.get("stream") or "")
             if "orderBook" not in topic and "orderbook" not in topic.lower():
                 # try channel field
                 topic = str(payload.get("channel") or topic)
-            sym = _apex_symbol_from_topic(topic, symbols)
-            if sym is None:
+            book_sym = _apex_symbol_from_topic(topic, symbols)
+            if book_sym is None:
                 data = payload.get("data")
                 if isinstance(data, dict) and data.get("s"):
-                    sym = str(data["s"]).upper()
-            if sym is None:
+                    book_sym = str(data["s"]).upper()
+            if book_sym is None:
                 return
-            sync = self._apex_syncs.get(sym)
+            sync = self._apex_syncs.get(book_sym)
             if sync is None:
                 return
             data = payload.get("data") if isinstance(payload.get("data"), dict) else payload
@@ -716,7 +940,7 @@ class WsFeedManager:
             else:
                 result = sync.on_delta(bids=bids, asks=asks, update_id=update_id)
             if result.needs_resync:
-                await self._resync_apex(sym, sync)
+                await self._resync_apex(book_sym, sync)
 
         self._spawn_socket(
             url,
@@ -795,31 +1019,6 @@ def _normalize_lighter_levels(raw: object) -> list[list[str]]:
         elif isinstance(row, (list, tuple)) and len(row) >= 2:
             out.append([str(row[0]), str(row[1])])
     return out
-
-
-def _aggregate_lighter_orders(orders: object) -> list[list[str]]:
-    if not isinstance(orders, list):
-        return []
-    buckets: dict[Decimal, Decimal] = {}
-    for order in orders:
-        if not isinstance(order, dict):
-            continue
-        try:
-            px = Decimal(str(order.get("price") or order.get("px")))
-            sz = Decimal(
-                str(
-                    order.get("remaining_base_amount")
-                    or order.get("size")
-                    or order.get("sz")
-                    or "0"
-                )
-            )
-        except Exception:  # noqa: BLE001
-            continue
-        if sz <= 0:
-            continue
-        buckets[px] = buckets.get(px, Decimal("0")) + sz
-    return [[str(px), str(sz)] for px, sz in buckets.items()]
 
 
 def _apex_symbol_from_topic(topic: str, symbols: Sequence[str]) -> str | None:
