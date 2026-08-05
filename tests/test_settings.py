@@ -94,7 +94,7 @@ def test_load_venue_settings_defaults() -> None:
 def test_committed_venues_yaml_disables_mock() -> None:
     """WHI-849: production config/venues.yaml disables the fixture mock adapter."""
     from spread_compare.settings import VenueSettings
-    from tests.conftest import load_committed_config
+    from tests._config import load_committed_config
 
     settings = VenueSettings.model_validate(load_committed_config("venues"))
     assert settings.disabled == ["mock"]

@@ -42,7 +42,7 @@ def test_get_venues_omits_mock_when_production_disabled(
     """WHI-849 AC: committed ``disabled: [mock]`` keeps mock off GET /venues."""
     from spread_compare import settings as settings_mod
     from spread_compare.settings import clear_settings_cache
-    from tests.conftest import load_committed_config
+    from tests._config import load_committed_config
 
     clear_settings_cache()
     monkeypatch.setattr(settings_mod, "_merge_local", load_committed_config)
