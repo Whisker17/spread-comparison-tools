@@ -189,6 +189,10 @@ class PollerGroupSettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     interval_sec: float = Field(gt=0)
+    # Per-group sampled tiers (WHI-864) — Jupiter stays sparse; Kyber/RPC keep
+    # the full §4.1 matrix. Must be WHI-799 §4.1 values so store keys match
+    # GET /quotes requests.
+    notionals_usd: list[Decimal] = Field(min_length=1)
     # Cap average sweep RPS as a fraction of a known capacity (Jupiter keyed).
     # Mutually optional with ``max_rps`` — at least one pacing bound applies via
     # interval-derived rate when both are absent/None.
@@ -199,6 +203,20 @@ class PollerGroupSettings(BaseModel):
     max_quote_age_for_best_sec: float = Field(gt=0)
     # Age past which a failed refresh degrades the stored row to error.
     max_stale_sec: float = Field(gt=0)
+
+    @field_validator("notionals_usd")
+    @classmethod
+    def _tier_notionals(cls, value: list[Decimal]) -> list[Decimal]:
+        from spread_compare.models import NOTIONAL_TIERS_USD
+
+        allowed = set(NOTIONAL_TIERS_USD)
+        for n in value:
+            if n not in allowed:
+                raise ValueError(
+                    f"notionals_usd entry {n} is not a WHI-799 §4.1 tier "
+                    f"{list(NOTIONAL_TIERS_USD)}"
+                )
+        return value
 
     @model_validator(mode="after")
     def _stale_not_below_best_age(self) -> PollerGroupSettings:
@@ -237,13 +255,13 @@ class StreamSettings(BaseModel):
 
 
 class PollerSettings(BaseModel):
-    """``config/poller.yaml`` — pull-only background poller (WHI-846)."""
+    """``config/poller.yaml`` — pull-only background poller (WHI-846 / WHI-864)."""
 
     model_config = ConfigDict(extra="forbid")
 
     enabled: bool
     poller_served_classes: list[VenueClass] = Field(min_length=1)
-    notionals_usd: list[Decimal] = Field(min_length=1)
+    # Tier set is per group (WHI-864); no global notionals_usd.
     groups: dict[str, PollerGroupSettings]
 
     @field_validator("poller_served_classes")
@@ -251,21 +269,6 @@ class PollerSettings(BaseModel):
     def _unique_classes(cls, value: list[VenueClass]) -> list[VenueClass]:
         if len(set(value)) != len(value):
             raise ValueError("poller_served_classes must not contain duplicates")
-        return value
-
-    @field_validator("notionals_usd")
-    @classmethod
-    def _tier_notionals(cls, value: list[Decimal]) -> list[Decimal]:
-        # Must be WHI-799 §4.1 tiers so store keys match GET /quotes requests.
-        from spread_compare.models import NOTIONAL_TIERS_USD
-
-        allowed = set(NOTIONAL_TIERS_USD)
-        for n in value:
-            if n not in allowed:
-                raise ValueError(
-                    f"notionals_usd entry {n} is not a WHI-799 §4.1 tier "
-                    f"{list(NOTIONAL_TIERS_USD)}"
-                )
         return value
 
     @field_validator("groups")

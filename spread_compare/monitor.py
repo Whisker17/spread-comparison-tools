@@ -92,6 +92,8 @@ class SweepHealthView(BaseModel):
     age_sec: float | None = None
     last_completed_at: datetime | None = None
     sweep_count: int = 0
+    # WHI-864: ticks skipped because a sweep was still in flight / overran.
+    skip_count: int = 0
     stale: bool = False
 
 
@@ -448,8 +450,10 @@ def _collect_sweeps(
         age: float | None = None
         last_at: datetime | None = None
         count = 0
+        skips = 0
         if poller is not None:
             count = poller.sweep_counts.get(group, 0)
+            skips = poller.sweep_skips.get(group, 0)
             last_mono = poller.last_sweep_completed_mono.get(group)
             if last_mono is not None:
                 age = max(0.0, now - last_mono)
@@ -464,6 +468,7 @@ def _collect_sweeps(
                 age_sec=age,
                 last_completed_at=last_at,
                 sweep_count=count,
+                skip_count=skips,
                 stale=stale,
             )
         )

@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 
 /**
- * Blue-chips page wiring for WHI-841 / WHI-843 size selector.
+ * Blue-chips page wiring for WHI-841 / WHI-864 size selector.
  * WHI-848: production uses one WebSocket; unit tests mock the stream so
- * AssetSpreadBlock falls back to the HTTP hook (still one multi-tier call
- * per asset when stream is absent).
+ * AssetSpreadBlock falls back to the HTTP hook (one single-tier call per
+ * asset when stream is absent — WHI-864).
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -14,7 +14,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { BlueChipsSection } from "@/components/BlueChipsSection";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { NOTIONAL_TIERS_USD } from "@/config/notionals";
 import { blueChipsSection } from "@/config/sections/blue-chips";
 
 const { useQuotesMatrixMock, fetchAssetsMock, replaceMock } = vi.hoisted(() => ({
@@ -101,18 +100,19 @@ beforeEach(() => {
 
 afterEach(cleanup);
 
-describe("BlueChipsSection (WHI-843)", () => {
-  it("renders one shared size selector (not per-asset)", () => {
+describe("BlueChipsSection (WHI-864)", () => {
+  it("renders one shared size selector without All (not per-asset)", () => {
     render(<BlueChipsSection />, { wrapper: Wrapper });
     expect(screen.getAllByTestId("size-selector")).toHaveLength(1);
-    expect(screen.getByTestId("size-option-all")).toBeTruthy();
+    expect(screen.queryByTestId("size-option-all")).toBeNull();
+    expect(screen.getByTestId("size-option-1000")).toBeTruthy();
   });
 
-  it("issues one multi-tier /quotes request per asset (3 total, all tiers)", () => {
+  it("issues one single-tier /quotes request per asset (default $1k)", () => {
     render(<BlueChipsSection />, { wrapper: Wrapper });
 
     expect(blueChipsSection.assets).toEqual(["BTC", "ETH", "SOL"]);
-    // One call per asset with every section notional (not 15 single-tier calls).
+    // One call per asset with only the selected tier (not all five).
     expect(useQuotesMatrixMock.mock.calls).toHaveLength(3);
 
     for (const asset of blueChipsSection.assets) {
@@ -121,8 +121,8 @@ describe("BlueChipsSection (WHI-843)", () => {
       );
       expect(call, `no /quotes request for ${asset}`).toBeDefined();
       const params = call?.[0] as { notionals: string[] };
-      expect(params.notionals).toEqual([...NOTIONAL_TIERS_USD]);
-      expect(params.notionals).toHaveLength(5);
+      expect(params.notionals).toEqual([blueChipsSection.defaultNotional]);
+      expect(params.notionals).toHaveLength(1);
     }
   });
 });

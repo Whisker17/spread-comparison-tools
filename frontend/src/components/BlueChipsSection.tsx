@@ -21,7 +21,6 @@ import {
 } from "@/hooks/useQuotesStream";
 import { fetchAssets } from "@/lib/api";
 import { formatNotional } from "@/lib/format";
-import { isSizeAll } from "@/lib/notionalSize";
 import type { StreamFilter } from "@/lib/streamQuotes";
 
 /**
@@ -29,7 +28,7 @@ import type { StreamFilter } from "@/lib/streamQuotes";
  * Owns section-config helpers so AssetSpreadBlock stays section-agnostic.
  * Representation labels prefer GET /assets (backend SSOT) with static fallback.
  *
- * WHI-843: page-level size selector is a view preference; multi-tier matrix.
+ * WHI-864: page-level size selector; stream/HTTP cover one tier at a time.
  * WHI-848: one WebSocket for the page (zero periodic GET /quotes).
  */
 export function BlueChipsSection() {
@@ -73,12 +72,13 @@ function BlueChipsSectionInner() {
     return [
       {
         assets: [...section.assets],
-        notionals: [...section.notionals],
+        // WHI-864: subscribe only the visible tier.
+        notionals: [notional],
         venues: [...venueSet],
         instrument_type: section.instrumentType,
       },
     ];
-  }, [section]);
+  }, [section, notional]);
 
   return (
     <QuotesStreamProvider filters={streamFilters}>
@@ -126,23 +126,11 @@ function BlueChipsStreamBody({
           </div>
         </div>
         <p className="text-xs text-zinc-500">
-          {isSizeAll(notional) ? (
-            <>
-              Showing{" "}
-              <strong className="font-medium text-zinc-700 dark:text-zinc-300">
-                all sizes
-              </strong>{" "}
-              over one live WebSocket (WHI-848).
-            </>
-          ) : (
-            <>
-              Focus size{" "}
-              <strong className="font-medium text-zinc-700 dark:text-zinc-300">
-                {formatNotional(notional)}
-              </strong>
-              .
-            </>
-          )}
+          Size{" "}
+          <strong className="font-medium text-zinc-700 dark:text-zinc-300">
+            {formatNotional(notional)}
+          </strong>{" "}
+          over one live WebSocket (WHI-848).
         </p>
       </header>
 

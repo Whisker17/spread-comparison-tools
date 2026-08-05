@@ -82,21 +82,31 @@ def _ok_quote(
 
 
 def _poller_settings(**group_overrides: object) -> PollerSettings:
+    full_tiers = [
+        Decimal("100"),
+        Decimal("1000"),
+        Decimal("10000"),
+        Decimal("100000"),
+        Decimal("1000000"),
+    ]
     groups = {
         "jupiter": PollerGroupSettings(
             interval_sec=15.0,
+            notionals_usd=full_tiers,
             budget_share=0.6,
             max_quote_age_for_best_sec=30.0,
             max_stale_sec=90.0,
         ),
         "kyber": PollerGroupSettings(
             interval_sec=30.0,
+            notionals_usd=full_tiers,
             max_rps=2.0,
             max_quote_age_for_best_sec=60.0,
             max_stale_sec=120.0,
         ),
         "rpc": PollerGroupSettings(
             interval_sec=20.0,
+            notionals_usd=full_tiers,
             max_rps=5.0,
             max_quote_age_for_best_sec=40.0,
             max_stale_sec=100.0,
@@ -108,13 +118,6 @@ def _poller_settings(**group_overrides: object) -> PollerSettings:
     return PollerSettings(
         enabled=True,
         poller_served_classes=["amm_dex", "prop_amm"],
-        notionals_usd=[
-            Decimal("100"),
-            Decimal("1000"),
-            Decimal("10000"),
-            Decimal("100000"),
-            Decimal("1000000"),
-        ],
         groups=groups,
     )
 
@@ -124,8 +127,23 @@ def test_load_poller_settings_defaults() -> None:
     s = load_poller_settings()
     assert s.enabled is True
     assert set(s.poller_served_classes) == {"amm_dex", "prop_amm"}
-    assert s.groups["jupiter"].interval_sec == 15.0
+    # WHI-864: Jupiter sparse tiers + interval derived from 1 RPS budget.
+    assert s.groups["jupiter"].interval_sec == 120.0
     assert s.groups["jupiter"].budget_share == 0.6
+    assert s.groups["jupiter"].notionals_usd == [
+        Decimal("100"),
+        Decimal("1000"),
+        Decimal("1000000"),
+    ]
+    # Free groups keep the full §4.1 matrix.
+    assert s.groups["kyber"].notionals_usd == [
+        Decimal("100"),
+        Decimal("1000"),
+        Decimal("10000"),
+        Decimal("100000"),
+        Decimal("1000000"),
+    ]
+    assert s.groups["rpc"].notionals_usd == s.groups["kyber"].notionals_usd
 
 
 def test_group_for_venue_mapping() -> None:
@@ -251,9 +269,16 @@ async def test_sweep_one_snapshot_and_mid_per_asset(
     counting_humidifi: _CountingPropAdapter,
 ) -> None:
     store = QuoteStore()
-    settings = _poller_settings()
     # Only sweep one notional to keep the plan small.
-    settings = settings.model_copy(update={"notionals_usd": [Decimal("10000")]})
+    settings = _poller_settings(
+        jupiter=PollerGroupSettings(
+            interval_sec=15.0,
+            notionals_usd=[Decimal("10000")],
+            budget_share=0.6,
+            max_quote_age_for_best_sec=30.0,
+            max_stale_sec=90.0,
+        )
+    )
     mids_seen: list[str] = []
 
     class TrackingMid(FixedMid):
@@ -630,19 +655,133 @@ def test_inter_call_delay_respects_budget_share(
             response_cache_ttl_sec=0,
         ),
     )
-    # Keyed: 90 calls / 15s = 6 RPS; budget 0.6 * 10 = 6 → delay ≈ 1/6.
+    # WHI-864: keyed sustained = capacity/window = 10/10 = 1 RPS;
+    # budget_share 0.6 → 0.6 RPS. Pace at the cap (do not stretch to fill
+    # interval_sec so real headroom remains for idle).
     monkeypatch.setenv("JUPITER_API_KEY", "test-key")
+    clear_settings_cache()
     delay = poller._inter_call_delay(  # noqa: SLF001
-        "jupiter", settings.groups["jupiter"], n_calls=90
+        "jupiter", settings.groups["jupiter"], n_calls=54
     )
-    assert abs(delay - (1.0 / 6.0)) < 1e-9
+    assert abs(delay - (1.0 / 0.6)) < 1e-9
+    # 54 calls at 0.6 RPS ≈ 90 s < interval 15 would be impossible; the
+    # helper only returns inter-call spacing — the loop idles the remainder.
 
-    # Keyless: capacity 5 → max 3 RPS → delay ≈ 1/3 (stricter than interval).
+    # Keyless: 5/10 = 0.5 RPS × 0.6 share → 0.3 RPS.
     monkeypatch.delenv("JUPITER_API_KEY", raising=False)
+    clear_settings_cache()
     delay_keyless = poller._inter_call_delay(  # noqa: SLF001
-        "jupiter", settings.groups["jupiter"], n_calls=90
+        "jupiter", settings.groups["jupiter"], n_calls=54
     )
-    assert abs(delay_keyless - (1.0 / 3.0)) < 1e-9
+    assert abs(delay_keyless - (1.0 / 0.3)) < 1e-9
+
+
+@pytest.mark.asyncio
+async def test_concurrent_sweep_is_skipped_not_overlapped() -> None:
+    """Injected slow sweep causes a second run_sweep to skip (WHI-864)."""
+    settings = _poller_settings(
+        jupiter=PollerGroupSettings(
+            interval_sec=15.0,
+            notionals_usd=[Decimal("10000")],
+            budget_share=0.6,
+            max_quote_age_for_best_sec=30.0,
+            max_stale_sec=90.0,
+        )
+    )
+    entered = asyncio.Event()
+    release = asyncio.Event()
+
+    poller = PullQuotePoller(
+        FixedMid(_MID),
+        store=QuoteStore(),
+        settings=settings,
+        aggregator_settings=AggregatorSettings(
+            venue_timeout_sec=2.0,
+            venue_timeout_by_class={},
+            response_cache_ttl_sec=0,
+        ),
+        sleep=lambda _s: None,
+    )
+
+    original_body = poller._run_sweep_body  # noqa: SLF001
+
+    async def slow_body(group: str, cfg: PollerGroupSettings) -> str:
+        entered.set()
+        await release.wait()
+        return await original_body(group, cfg)
+
+    poller._run_sweep_body = slow_body  # type: ignore[method-assign]
+
+    first = asyncio.create_task(poller.run_sweep("jupiter"))
+    await entered.wait()
+    # Second concurrent call must not start another body — returns None + skip.
+    second = await poller.run_sweep("jupiter")
+    assert second is None
+    assert poller.sweep_skips.get("jupiter", 0) == 1
+    assert poller.sweep_counts.get("jupiter", 0) == 0
+
+    release.set()
+    snap = await first
+    assert snap is not None
+    assert poller.sweep_counts.get("jupiter", 0) == 1
+    # Still only one skip from the concurrent attempt.
+    assert poller.sweep_skips.get("jupiter", 0) == 1
+
+
+@pytest.mark.asyncio
+async def test_group_loop_overrun_skips_missed_ticks() -> None:
+    """A slow sweep past interval_sec counts overrun skips, not back-to-back."""
+    mono = {"t": 0.0}
+    settings = _poller_settings(
+        jupiter=PollerGroupSettings(
+            interval_sec=10.0,
+            notionals_usd=[Decimal("10000")],
+            budget_share=0.6,
+            max_quote_age_for_best_sec=30.0,
+            max_stale_sec=90.0,
+        )
+    )
+    holder: dict[str, PullQuotePoller] = {}
+    cycles = {"n": 0}
+
+    async def controlled_sleep(seconds: float) -> None:
+        # Stop on the first post-sweep wait (after overrun accounting).
+        cycles["n"] += 1
+        if cycles["n"] >= 1 and holder["p"].sweep_skips.get("jupiter", 0) > 0:
+            holder["p"]._stop.set()
+            return
+        mono["t"] += max(0.0, seconds)
+
+    poller = PullQuotePoller(
+        FixedMid(_MID),
+        store=QuoteStore(),
+        settings=settings,
+        aggregator_settings=AggregatorSettings(
+            venue_timeout_sec=2.0,
+            venue_timeout_by_class={},
+            response_cache_ttl_sec=0,
+        ),
+        clock=lambda: mono["t"],
+        sleep=controlled_sleep,
+    )
+    holder["p"] = poller
+
+    async def slow_body(group: str, cfg: PollerGroupSettings) -> str:
+        # Sweep wall time 25s against interval 10s → two missed ticks.
+        mono["t"] += 25.0
+        poller._mark_sweep_complete(group)  # noqa: SLF001 — mirror real body
+        return "snap-slow"
+
+    poller._run_sweep_body = slow_body  # type: ignore[method-assign]
+
+    await asyncio.wait_for(
+        poller._group_loop("jupiter", settings.groups["jupiter"]),  # noqa: SLF001
+        timeout=2.0,
+    )
+
+    assert poller.sweep_counts.get("jupiter", 0) >= 1
+    # 25s elapsed vs 10s interval → at least two overrun skips (not zero).
+    assert poller.sweep_skips.get("jupiter", 0) >= 2
 
 
 @pytest.mark.asyncio

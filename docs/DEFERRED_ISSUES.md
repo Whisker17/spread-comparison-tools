@@ -115,9 +115,19 @@ defines none: `docs/GIT_WORKFLOW.md` § High-risk paths), **Medium**
   the mint/address map so live smoke can still probe QQQB once mid exists.
 
 - **Jupiter header adaptation does not retune `window_sec` from `x-ratelimit-reset`**
-  (Low, WHI-836). Capacity adapts from remaining+current; window stays config-fixed
-  at the measured ~1s. If a plan's reset interval diverges, add reset-based window
-  adaptation.
+  (Low, WHI-836 / WHI-864). Capacity adapts from remaining+current; window stays
+  config-fixed at the measured Free-plan refill (~10s for capacity 10 → 1 RPS
+  sustained; see `config/jupiter.yaml`). If a plan's reset interval diverges, add
+  reset-based window adaptation.
+
+- **Long Jupiter sweeps stamp mid_stale on late samples** (Medium, WHI-864).
+  Pairing invariant pins one mid per asset for the whole sweep (`poller.py`
+  `_run_sweep_body`). At 0.6 RPS the 54-call Jupiter matrix spans ~90 s, while
+  `mid.yaml` `stale_threshold_sec` is 5 s — so later samples in the sweep are
+  mid_stale even though the mid was fresh at sweep start. CEX/perp rows in the
+  same matrix stay seconds-fresh. Options: re-resolve mid mid-sweep with a new
+  snapshot_id (breaks same-sweep pairing across venues), raise mid threshold
+  for poller rows only, or shorten the Jupiter matrix further. Not fixed here.
 
 - **AdapterConfigError collapses to generic adapter_error in aggregator** (Low, WHI-806).
   `AdapterConfigError` subclasses `AdapterError`; the aggregator maps both to

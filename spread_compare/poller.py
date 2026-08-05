@@ -160,8 +160,12 @@ class PullQuotePoller:
         self._stop = asyncio.Event()
         self._tasks: list[asyncio.Task[None]] = []
         self._started = False
+        # Per-group in-flight guard (WHI-864): never run two sweeps concurrently.
+        self._sweep_in_progress: dict[str, bool] = {}
         # Diagnostics for tests / PR verification / WHI-819 monitor.
         self.sweep_counts: dict[str, int] = {}
+        # Skipped because a previous sweep was still running (or schedule overrun).
+        self.sweep_skips: dict[str, int] = {}
         self.upstream_calls: int = 0
         # Monotonic timestamp of last completed sweep per group (None = never).
         self.last_sweep_completed_mono: dict[str, float] = {}
@@ -211,34 +215,71 @@ class PullQuotePoller:
         logger.info("pull quote poller stopped")
 
     async def _group_loop(self, group: str, cfg: PollerGroupSettings) -> None:
-        """Run sweeps until stop; failures never kill the loop (WHI-840 style)."""
+        """Run sweeps until stop; failures never kill the loop (WHI-840 style).
+
+        Fixed-period schedule: each tick is due at ``next_due``. If a sweep is
+        still in flight when the next tick arrives (should not happen with a
+        single task, but guards concurrent ``run_sweep`` callers), the tick is
+        **skipped** and counted. If a sweep overruns ``interval_sec``, missed
+        ticks are skipped rather than stacking back-to-back (WHI-864).
+        """
+        next_due = self._clock()
         while not self._stop.is_set():
-            started = self._clock()
+            now = self._clock()
+            wait = next_due - now
+            if wait > 0:
+                try:
+                    await self._async_sleep(wait)
+                except asyncio.CancelledError:
+                    raise
+            if self._stop.is_set():
+                break
             try:
+                # run_sweep skips (returns None) when already in flight —
+                # that is the sole overlap guard (WHI-864).
                 await self.run_sweep(group)
             except asyncio.CancelledError:
                 raise
             except Exception:  # noqa: BLE001 — keep other groups alive
                 logger.exception("poller group %s sweep failed", group)
-            elapsed = self._clock() - started
-            wait = max(0.0, cfg.interval_sec - elapsed)
-            if wait > 0 and not self._stop.is_set():
-                try:
-                    await self._async_sleep(wait)
-                except asyncio.CancelledError:
-                    raise
+            # Advance schedule from the planned slot; skip any fully elapsed
+            # intervals so a slow sweep cannot collapse the period to zero.
+            next_due += cfg.interval_sec
+            now = self._clock()
+            skipped_ticks = 0
+            while next_due <= now:
+                next_due += cfg.interval_sec
+                skipped_ticks += 1
+            if skipped_ticks:
+                self._mark_sweep_skipped(
+                    group,
+                    reason="overrun",
+                    n=skipped_ticks,
+                )
 
-    async def run_sweep(self, group: str) -> str:
+    async def run_sweep(self, group: str) -> str | None:
         """Execute one sweep for ``group``. Returns the sweep ``snapshot_id``.
 
-        Public so tests can drive a single pass without the background loop.
+        Returns ``None`` when a sweep is already in flight for ``group``
+        (WHI-864 non-overlap). Public so tests can drive a single pass without
+        the background loop.
         """
         cfg = self._settings.groups.get(group)
         if cfg is None:
             raise KeyError(f"unknown poller group: {group!r}")
 
+        if self._sweep_in_progress.get(group, False):
+            self._mark_sweep_skipped(group, reason="in_flight")
+            return None
+        self._sweep_in_progress[group] = True
+        try:
+            return await self._run_sweep_body(group, cfg)
+        finally:
+            self._sweep_in_progress[group] = False
+
+    async def _run_sweep_body(self, group: str, cfg: PollerGroupSettings) -> str:
         snapshot_id = str(uuid.uuid4())
-        work = self._plan_work(group)
+        work = self._plan_work(group, cfg)
         if not work:
             logger.debug("poller group %s: no work items", group)
             self._mark_sweep_complete(group)
@@ -299,9 +340,24 @@ class PullQuotePoller:
         self.last_sweep_completed_mono[group] = now_mono
         self.last_sweep_completed_at[group] = self._wall()
 
-    def _plan_work(self, group: str) -> list[_WorkItem]:
+    def _mark_sweep_skipped(
+        self, group: str, *, reason: str, n: int = 1
+    ) -> None:
+        """Count and log a skipped sweep tick (visible on /health)."""
+        if n < 1:
+            return
+        self.sweep_skips[group] = self.sweep_skips.get(group, 0) + n
+        logger.warning(
+            "poller group %s skipped %s sweep(s) reason=%s total_skips=%s",
+            group,
+            n,
+            reason,
+            self.sweep_skips[group],
+        )
+
+    def _plan_work(self, group: str, cfg: PollerGroupSettings) -> list[_WorkItem]:
         """Enumerate (venue, asset, tier, side) for venues in this group."""
-        notionals = [Decimal(n) for n in self._settings.notionals_usd]
+        notionals = list(cfg.notionals_usd)
         items: list[_WorkItem] = []
         for slug in list_venues():
             try:
@@ -343,11 +399,15 @@ class PullQuotePoller:
     def _inter_call_delay(
         self, group: str, cfg: PollerGroupSettings, *, n_calls: int
     ) -> float:
-        """Seconds between calls so avg RPS ≤ budget and sweep spans the interval."""
+        """Seconds between call starts so avg RPS ≤ the group budget.
+
+        Pace at the budget cap (``budget_share`` / ``max_rps``), not stretched
+        to fill ``interval_sec`` — the loop idles the remainder so real
+        headroom exists for RTT / 429 / ``/simulate`` (WHI-864). When no cap
+        is configured, spread work evenly across the interval.
+        """
         if n_calls <= 1:
             return 0.0
-        # Finish within the interval when possible.
-        interval_rps = n_calls / cfg.interval_sec
         caps: list[float] = []
         if cfg.max_rps is not None:
             caps.append(cfg.max_rps)
@@ -355,8 +415,10 @@ class PullQuotePoller:
             capacity = self._group_capacity_rps(group)
             if capacity is not None:
                 caps.append(capacity * cfg.budget_share)
-        max_allowed = min(caps) if caps else interval_rps
-        target_rps = min(interval_rps, max_allowed)
+        if caps:
+            target_rps = min(caps)
+        else:
+            target_rps = n_calls / cfg.interval_sec
         if target_rps <= 0:
             return cfg.interval_sec
         return 1.0 / target_rps

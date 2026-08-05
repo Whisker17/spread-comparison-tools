@@ -127,6 +127,11 @@ HTTP client construction transport extras (WHI-858): missing optional SOCKS
 extra (`ImportError` for `socksio` / `httpx[socks]`) at `BaseAdapter.http`
 raises venue-named `AdapterFetchError` (degradable) instead of raw
 `ImportError` killing boot; dependency includes `httpx[socks]`.
+Jupiter budget + poller sample matrix (WHI-864): Free-plan limiter
+(`keyed_capacity=10`, `window_sec=10` → ~1 RPS sustained); per-group
+`notionals_usd` (Jupiter 3-tier both sides; Kyber/RPC full §4.1); non-
+overlapping sweeps with `skip_count` on `/health`; dashboard one-tier
+fetch/subscribe (no SizeSelector `All`).
 
 **Not implemented:** remaining venue adapters (WHI-805), collector.
 Do not assume a module exists until its issue lands.

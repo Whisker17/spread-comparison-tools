@@ -26,15 +26,13 @@ export type SectionConfig = {
    */
   hiddenVenuesByAsset?: Readonly<Record<string, readonly string[]>>;
   /**
-   * Notional tiers fetched for this section (WHI-843 multi-tier package).
-   * May be a subset of `NOTIONAL_TIERS_USD`. Size selector can focus one tier
-   * or show all columns (`defaultNotional: "all"`).
+   * Notional tiers offered by the size selector (usually full §4.1 list).
+   * WHI-864: dashboard fetches/subscribes only the selected tier at a time.
    */
   notionals: readonly string[];
   /**
-   * Default size view when `?size=` is absent or invalid.
-   * Prefer `DEFAULT_SIZE_VIEW` (`"all"`) for multi-column (WHI-843), or a
-   * concrete tier for single-size focus (WHI-841).
+   * Default size when `?size=` is absent or invalid — a concrete tier USD
+   * string (WHI-864; multi-column ``all`` removed).
    */
   defaultNotional: string;
   /** Default side / round-trip view. */

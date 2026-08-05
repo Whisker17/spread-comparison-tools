@@ -1,33 +1,24 @@
 "use client";
 
 /**
- * Segmented size control (WHI-841 / WHI-843).
+ * Segmented size control (WHI-841 / WHI-864).
  *
- * WHI-843 restores multi-column matrices via one multi-tier request. The
- * selector is a **view preference**: ``All`` shows every tier column; a
- * concrete size focuses one column (with detail columns). Tier lists are
- * always passed in — never hardcode so a sixth tier appears without edits.
+ * One tier at a time — no ``All`` multi-column chip. Tier lists are always
+ * passed in — never hardcode so a sixth tier appears without edits.
  */
 
 import { formatNotional } from "@/lib/format";
-import { SIZE_ALL } from "@/lib/notionalSize";
 import { cn } from "@/lib/utils";
 
 export type SizeSelectorProps = {
   /** Selectable notional tiers as USD strings (e.g. from `NOTIONAL_TIERS_USD`). */
   tiers: readonly string[];
-  /**
-   * Current view: a tier USD string, or ``all`` for multi-column.
-   */
+  /** Current view: a tier USD string. */
   value: string;
   onChange: (notionalUsd: string) => void;
   className?: string;
   /** Accessible name; default "SIZE". */
   label?: string;
-  /**
-   * When true (default), show an ``All`` chip for multi-column focus (WHI-843).
-   */
-  showAllOption?: boolean;
 };
 
 export function SizeSelector({
@@ -36,12 +27,11 @@ export function SizeSelector({
   onChange,
   className,
   label = "SIZE",
-  showAllOption = true,
 }: SizeSelectorProps) {
-  const options: { id: string; label: string }[] = [
-    ...(showAllOption ? [{ id: SIZE_ALL, label: "All" }] : []),
-    ...tiers.map((tier) => ({ id: tier, label: formatNotional(tier) })),
-  ];
+  const options = tiers.map((tier) => ({
+    id: tier,
+    label: formatNotional(tier),
+  }));
 
   return (
     <div

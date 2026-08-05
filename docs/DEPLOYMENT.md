@@ -62,6 +62,16 @@ backend-only; that contract lives with the frontend.
 Host overlays (only if needed beyond committed config): see
 `deploy/host/README.md`.
 
+### Config schema notes (breaking overlays)
+
+- **WHI-864 `poller.yaml`**: `notionals_usd` moved from top-level into each
+  `groups.<name>` entry (required). A host
+  `/etc/spread-comparison/config/poller.local.yaml` that still has top-level
+  `notionals_usd` or that replaces `groups:` without the new key will fail
+  validation at boot (process-killing config error). Before deploying this
+  change, inspect and rewrite any poller overlay to the per-group shape, or
+  remove the overlay and rely on the committed defaults.
+
 ## Deploy
 
 On the host (or over SSH as root):
@@ -227,7 +237,9 @@ fire/resolve is logged at WARNING (`journalctl -u spread-comparison`).
   book counts by health, max age, resync window counts, `stream_error`,
   `connected_age_sec`.
 - **`engine.sweeps[]`**: per poller group — `age_sec` since last completed sweep,
-  `stale` vs `interval_sec × sweep_stale_multiplier`.
+  `stale` vs `interval_sec × sweep_stale_multiplier`, `sweep_count`, and
+  `skip_count` (WHI-864 ticks skipped while a sweep was still in flight or
+  overran the interval).
 - **`engine.mid_age_sec`**: age of the probe asset mid (default BTC).
 - **`engine.alerts`**: currently open conditions (same codes as webhook).
 - **`engine.in_startup_grace`**: true during `startup_grace_sec` — data probe and

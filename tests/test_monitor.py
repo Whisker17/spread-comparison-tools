@@ -512,7 +512,11 @@ def test_collect_snapshot_includes_stream_and_sweep_ages() -> None:
     assert "binance_spot" in stream_ids, stream_ids
     jup = next(s for s in snap.sweeps if s.group == "jupiter")
     assert jup.age_sec == pytest.approx(50.0)
-    assert jup.stale is True  # 50 > 15*2.5
+    # WHI-864: jupiter interval is 120s; 50s age is within threshold.
+    threshold = jup.interval_sec * cfg.sweep_stale_multiplier
+    assert jup.stale is (50.0 > threshold)
+    assert jup.stale is False
+    assert jup.skip_count == 0
 
 
 def test_ws_manager_resync_counts_window() -> None:

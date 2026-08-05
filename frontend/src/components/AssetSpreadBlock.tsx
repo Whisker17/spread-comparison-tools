@@ -1,13 +1,13 @@
 "use client";
 
 /**
- * One logical asset: live multi-notional matrix + TOB + snapshot summary.
+ * One logical asset: live single-notional matrix + TOB + snapshot summary.
  * Section-agnostic — callers pass venue order, labels, size view, and
  * orderbook rows so WHI-809/810/811 do not share section-config imports.
  *
- * WHI-843: one multi-tier `/quotes` request per asset (all section notionals).
- * The size selector is a view preference — ``all`` shows every column; a
- * concrete size focuses one column with detail (WHI-841 focus mode).
+ * WHI-864: fetch/subscribe only the displayed tier (one notional). Switching
+ * size re-requests that tier (store + local books — no upstream fan-out).
+ * Multi-notional ``GET /quotes?notionals=`` remains for API callers.
  */
 
 import { Info, RefreshCw } from "lucide-react";
@@ -23,10 +23,7 @@ import { useQuotesMatrix } from "@/hooks/useQuotes";
 import { useQuotesStreamOptional } from "@/hooks/useQuotesStream";
 import type { InstrumentType, TopOfBook } from "@/lib/api";
 import { formatNotional, formatTimestamp } from "@/lib/format";
-import {
-  isSizeAll,
-  notionalsForSizeView,
-} from "@/lib/notionalSize";
+import { notionalsForSizeView } from "@/lib/notionalSize";
 import type { SideView } from "@/lib/summary";
 import { cn } from "@/lib/utils";
 import {
@@ -44,9 +41,9 @@ export type AssetSpreadBlockProps = {
   section: SectionConfig;
   asset: string;
   /**
-   * Size view preference (WHI-843): ``all`` = multi-column matrix; a tier USD
-   * string = single-size focus with detail columns. Parent owns selection via
-   * SizeSelector + `?size=` URL. Fetch always covers `section.notionals`.
+   * Selected tier USD string (WHI-864: one tier at a time). Parent owns
+   * selection via SizeSelector + `?size=` URL. Fetch/subscribe covers only
+   * this tier.
    */
   notional: string;
   /** Visible venue row order (already filtered for this asset). */
@@ -115,17 +112,11 @@ export function AssetSpreadBlock({
 }: AssetSpreadBlockProps) {
   const [sideView, setSideView] = useState<SideView>(section.defaultSideView);
 
-  // Always fetch every section tier in one multi-tier request (WHI-843).
-  const fetchNotionals = useMemo(
-    () => [...section.notionals],
-    [section.notionals],
-  );
-  // View preference: all columns vs single-size focus.
+  // WHI-864: fetch only the displayed tier (one notional).
   const displayNotionals = useMemo(
     () => notionalsForSizeView(notional, section.notionals),
     [notional, section.notionals],
   );
-  const multiColumn = isSizeAll(notional);
 
   // WHI-848: when a page-level QuotesStreamProvider is present, read pushed
   // state (zero GET /quotes polling). Otherwise fall back to HTTP poll for
@@ -134,7 +125,7 @@ export function AssetSpreadBlock({
   const useStream = stream !== null;
   const httpQuery = useQuotesMatrix({
     asset,
-    notionals: fetchNotionals,
+    notionals: displayNotionals,
     // Pin to the section venue set so we don't surface mock/other adapters.
     venues: venues.length > 0 ? venues : undefined,
     instrument_type: instrumentType ?? section.instrumentType,
@@ -173,11 +164,10 @@ export function AssetSpreadBlock({
 
   const pairs = useMemo(() => {
     const all = data?.pairs ?? [];
-    if (multiColumn) return all;
     const focus = displayNotionals[0];
     if (!focus) return all;
     return all.filter((p) => String(p.notional_usd) === focus);
-  }, [data?.pairs, multiColumn, displayNotionals]);
+  }, [data?.pairs, displayNotionals]);
 
   const orderbookVenues = useMemo(
     () => orderbookVenuesProp ?? venues,
@@ -234,9 +224,7 @@ export function AssetSpreadBlock({
   }, [showVenueSymbolNote, pairs, venues, venueDisplayNames, asset]);
 
   const proseLabels = summaryVenueLabels ?? venueLabels;
-  const sizeLabel = multiColumn
-    ? `${section.notionals.length} sizes`
-    : formatNotional(notional);
+  const sizeLabel = formatNotional(notional);
   const subtitleText =
     subtitle ??
     `All venue classes · ${sizeLabel} · ${sideView.replace("_", " ")}`;
@@ -435,7 +423,7 @@ export function AssetSpreadBlock({
             sideView={sideView}
             metric={section.cellMetric}
             venueLabels={venueLabels}
-            showDetailColumns={!multiColumn}
+            showDetailColumns={true}
             onRetry={() => refetch()}
           />
           {section.showTopOfBook && orderbookVenues.length > 0 && (

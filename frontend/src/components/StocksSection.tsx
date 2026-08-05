@@ -96,12 +96,13 @@ function StocksSectionInner() {
       }
       return {
         assets: [...board.assets],
-        notionals: [...board.notionals],
+        // WHI-864: subscribe only the visible tier.
+        notionals: [notional],
         venues: [...venueSet],
         instrument_type: board.instrumentType,
       };
     });
-  }, []);
+  }, [notional]);
 
   return (
     <QuotesStreamProvider filters={streamFilters}>

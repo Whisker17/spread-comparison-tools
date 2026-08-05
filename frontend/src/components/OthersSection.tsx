@@ -64,23 +64,25 @@ function OthersSectionInner() {
     }
     const venues = [...OTHER_VENUES];
     const filters: StreamFilter[] = [];
+    // WHI-864: subscribe only the visible tier.
+    const notionals = [notional];
     if (spotAssets.length > 0) {
       filters.push({
         assets: spotAssets,
-        notionals: [...section.notionals],
+        notionals,
         venues,
       });
     }
     if (perpAssets.length > 0) {
       filters.push({
         assets: perpAssets,
-        notionals: [...section.notionals],
+        notionals,
         venues,
         instrument_type: "perp",
       });
     }
     return filters;
-  }, [section.notionals]);
+  }, [notional]);
 
   return (
     <QuotesStreamProvider filters={streamFilters}>
