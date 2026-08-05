@@ -6,6 +6,7 @@
  */
 
 import type { components, paths } from "@/lib/api-types";
+import { resolveApiBaseUrl } from "@/lib/apiBaseUrl";
 
 export type QuotesResponse = components["schemas"]["QuotesResponse"];
 export type VenueResponse = components["schemas"]["VenueResponse"];
@@ -47,11 +48,17 @@ export class ApiError extends Error {
   }
 }
 
-/** Backend base URL (no trailing slash). Browser default: localhost:8000. */
+/**
+ * Backend base URL (no trailing slash).
+ *
+ * Development defaults to localhost when unset. Production builds reject
+ * unset and loopback values (WHI-857) so the client bundle cannot point
+ * visitors at their own machines.
+ */
 export function getApiBaseUrl(): string {
-  const raw =
-    process.env.NEXT_PUBLIC_API_URL?.trim() || "http://localhost:8000";
-  return raw.replace(/\/+$/, "");
+  return resolveApiBaseUrl(process.env.NEXT_PUBLIC_API_URL, {
+    isProduction: process.env.NODE_ENV === "production",
+  });
 }
 
 type FetchOptions = {
