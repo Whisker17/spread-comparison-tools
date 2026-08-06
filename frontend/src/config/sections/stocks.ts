@@ -26,7 +26,10 @@ import {
 
 export const STOCKS_POLL_MS = 30_000;
 
-/** Phase-1 underlyings (catalog order matches assets.py / WHI-798 §6.2.1). */
+/**
+ * Stock underlyings (catalog order matches assets.py).
+ * Phase-1 anchors + WHI-884 / WHI-883 P0 expansion.
+ */
 export const STOCK_UNDERLYINGS = [
   "NVDA",
   "TSLA",
@@ -34,6 +37,14 @@ export const STOCK_UNDERLYINGS = [
   "MSFT",
   "QQQ",
   "SPCX",
+  "CRCL",
+  "GOOGL",
+  "AMD",
+  "PLTR",
+  "META",
+  "AMZN",
+  "SPY",
+  "MSTR",
 ] as const;
 
 export type StockUnderlying = (typeof STOCK_UNDERLYINGS)[number];
@@ -169,6 +180,17 @@ export const STOCK_FORMS_STATIC: Readonly<
   ],
   QQQ: [
     {
+      id: "perp",
+      form_class: "perp",
+      coverage: "live",
+      representations: {
+        binance: "QQQUSDT",
+        bybit: "QQQUSDT",
+        lighter: "QQQ",
+        apex: "QQQ-USDT",
+      },
+    },
+    {
       id: "bstock",
       form_class: "tokenized",
       coverage: "live",
@@ -191,6 +213,171 @@ export const STOCK_FORMS_STATIC: Readonly<
       },
     },
   ],
+  CRCL: [
+    {
+      id: "perp",
+      form_class: "perp",
+      coverage: "live",
+      representations: {
+        binance: "CRCLUSDT",
+        bybit: "CRCLUSDT",
+        hyperliquid: "xyz:CRCL",
+        lighter: "CRCL",
+        apex: "CRCL-USDT",
+      },
+    },
+    {
+      id: "bstock",
+      form_class: "tokenized",
+      coverage: "live",
+      representations: { binance: "CRCLBUSDT" },
+    },
+  ],
+  GOOGL: [
+    {
+      id: "perp",
+      form_class: "perp",
+      coverage: "live",
+      representations: {
+        binance: "GOOGLUSDT",
+        bybit: "GOOGLUSDT",
+        hyperliquid: "xyz:GOOGL",
+        lighter: "GOOGL",
+        apex: "GOOGL-USDT",
+      },
+    },
+    {
+      id: "bstock",
+      form_class: "tokenized",
+      coverage: "live",
+      representations: { binance: "GOOGLBUSDT" },
+    },
+    {
+      id: "xstock_cex",
+      form_class: "tokenized",
+      coverage: "live",
+      representations: { bybit: "GOOGLXUSDT" },
+    },
+  ],
+  AMD: [
+    {
+      id: "perp",
+      form_class: "perp",
+      coverage: "live",
+      representations: {
+        binance: "AMDUSDT",
+        bybit: "AMDSTOCKUSDT",
+        hyperliquid: "xyz:AMD",
+        lighter: "AMD",
+        apex: "AMD-USDT",
+      },
+    },
+  ],
+  PLTR: [
+    {
+      id: "perp",
+      form_class: "perp",
+      coverage: "live",
+      representations: {
+        binance: "PLTRUSDT",
+        bybit: "PLTRUSDT",
+        hyperliquid: "xyz:PLTR",
+        lighter: "PLTR",
+        apex: "PLTR-USDT",
+      },
+    },
+  ],
+  META: [
+    {
+      id: "perp",
+      form_class: "perp",
+      coverage: "live",
+      representations: {
+        binance: "METAUSDT",
+        bybit: "METAUSDT",
+        hyperliquid: "xyz:META",
+        lighter: "META",
+        apex: "META-USDT",
+      },
+    },
+    {
+      id: "bstock",
+      form_class: "tokenized",
+      coverage: "live",
+      representations: { binance: "METABUSDT" },
+    },
+    {
+      id: "xstock_cex",
+      form_class: "tokenized",
+      coverage: "live",
+      representations: { bybit: "METAXUSDT" },
+    },
+  ],
+  AMZN: [
+    {
+      id: "perp",
+      form_class: "perp",
+      coverage: "live",
+      representations: {
+        binance: "AMZNUSDT",
+        bybit: "AMZNUSDT",
+        hyperliquid: "xyz:AMZN",
+        lighter: "AMZN",
+        apex: "AMZN-USDT",
+      },
+    },
+    {
+      id: "bstock",
+      form_class: "tokenized",
+      coverage: "live",
+      representations: { binance: "AMZNBUSDT" },
+    },
+    {
+      id: "xstock_cex",
+      form_class: "tokenized",
+      coverage: "live",
+      representations: { bybit: "AMZNXUSDT" },
+    },
+  ],
+  SPY: [
+    {
+      id: "perp",
+      form_class: "perp",
+      coverage: "live",
+      representations: {
+        binance: "SPYUSDT",
+        bybit: "SPYUSDT",
+        lighter: "SPY",
+        apex: "SPY-USDT",
+      },
+    },
+    {
+      id: "bstock",
+      form_class: "tokenized",
+      coverage: "live",
+      representations: { binance: "SPYBUSDT" },
+    },
+  ],
+  MSTR: [
+    {
+      id: "perp",
+      form_class: "perp",
+      coverage: "live",
+      representations: {
+        binance: "MSTRUSDT",
+        bybit: "MSTRUSDT",
+        hyperliquid: "xyz:MSTR",
+        lighter: "MSTR",
+        apex: "MSTR-USDT",
+      },
+    },
+    {
+      id: "bstock",
+      form_class: "tokenized",
+      coverage: "live",
+      representations: { binance: "MSTRBUSDT" },
+    },
+  ],
 };
 
 export const STOCK_ASSET_SUBTITLES: Readonly<Record<string, string>> = {
@@ -198,8 +385,16 @@ export const STOCK_ASSET_SUBTITLES: Readonly<Record<string, string>> = {
   TSLA: "Tesla · equity perp",
   AAPL: "Apple · equity perp",
   MSFT: "Microsoft · equity perp",
-  QQQ: "Invesco QQQ · bStocks (BSC)",
+  QQQ: "Invesco QQQ · equity perp + bStocks (BSC)",
   SPCX: "SpaceX · bStocks (BSC)",
+  CRCL: "Circle · equity perp + bStocks",
+  GOOGL: "Alphabet · equity perp + bStocks + xStocks CEX",
+  AMD: "AMD · equity perp (Bybit AMDSTOCKUSDT)",
+  PLTR: "Palantir · equity perp",
+  META: "Meta · equity perp + bStocks + xStocks CEX",
+  AMZN: "Amazon · equity perp + bStocks + xStocks CEX",
+  SPY: "SPDR S&P 500 · equity perp (no HL exact) + bStocks",
+  MSTR: "MicroStrategy · equity perp + bStocks",
 };
 
 /**

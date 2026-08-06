@@ -147,6 +147,10 @@ Underlying-first stocks frontend (WHI-882): `/stocks` one board per
 underlying; matrix rows keyed `venue|form`; form badges; form_class best in
 summary/matrix; regenerated OpenAPI client; stream `pairIdentityKey` includes
 form.
+Catalog P0 stock expansion (WHI-884): CRCL/GOOGL/AMD/PLTR/META/AMZN/SPY/MSTR
+(+ QQQ perp live); form-aware CEX maps + Bybit `AMDSTOCKUSDT` venue override;
+HL exact-only WS (no SPY/QQQ proxy); live bstock@BN + xstock_cex@Bybit; Sol
+xStocks stay unverified (zero Jupiter budget).
 
 **Not implemented:** remaining venue adapters (WHI-805), collector.
 Do not assume a module exists until its issue lands.

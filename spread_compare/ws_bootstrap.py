@@ -15,6 +15,7 @@ from spread_compare.cex_symbols import resolve_cex_symbol, supported_cex_assets
 from spread_compare.mids import MidService
 from spread_compare.perp_symbols import (
     HL_PHASE1_ASSETS,
+    PERP_DEX_SERVED_ASSETS,
     resolve_apex_base,
     resolve_hl_coin,
     resolve_lighter_symbol,
@@ -41,11 +42,9 @@ _FAST_MID_ASSETS = (
     "BNB",
 )
 
-# Phase-1 logical set shared across HL / Lighter / ApeX WS subscriptions.
-# Includes PEPE/BONK multiplier infrastructure (not in assets.ASSETS).
-# Named after the product surface, not one venue — HL_PHASE1_ASSETS is the
-# shared constant in perp_symbols.py.
-_WS_SERVED_PERP_ASSETS: tuple[str, ...] = HL_PHASE1_ASSETS
+# Product-surface set for Lighter / ApeX WS (includes SPY/QQQ).
+# HL WS uses HL_PHASE1_ASSETS (exact markets only — no SPY/QQQ proxies).
+_WS_SERVED_PERP_ASSETS: tuple[str, ...] = PERP_DEX_SERVED_ASSETS
 
 
 async def start_ws_ingest(
@@ -64,10 +63,14 @@ async def start_ws_ingest(
     registry.set_max_book_age_sec(ws_settings.max_book_age_sec)
     manager = WsFeedManager(ws_settings, registry=registry)
 
-    binance_spot = _cex_symbols("spot")
-    binance_fut = _cex_symbols("perp")
-    bybit_spot = _cex_symbols("spot", exclude_bstocks=True)
-    bybit_linear = _cex_symbols("perp")
+    binance_spot = _cex_symbols(
+        "spot", venue="binance", tokenized_forms=("bstock",)
+    )
+    binance_fut = _cex_symbols("perp", venue="binance")
+    bybit_spot = _cex_symbols(
+        "spot", venue="bybit", tokenized_forms=("xstock_cex",)
+    )
+    bybit_linear = _cex_symbols("perp", venue="bybit")
     hl_coins = _hl_coins()
     lighter_markets = _lighter_markets()
     apex_symbols = _apex_cross_symbols()
@@ -125,28 +128,47 @@ async def stop_ws_ingest(
     set_ws_feed_manager(None)
 
 
-def _cex_symbols(book_side: str, *, exclude_bstocks: bool = False) -> list[str]:
+def _cex_symbols(
+    book_side: str,
+    *,
+    venue: str,
+    tokenized_forms: tuple[str, ...] = (),
+) -> list[str]:
     """CEX wire symbols for WS subscribe (crypto + form-aware stock books).
 
-    ``exclude_bstocks=True`` (Bybit spot): skip form=bstock *B symbols; Bybit
-    uses *X xStocks instead (out of phase-1 WS unless listed as xstock_cex).
+    ``venue`` selects venue-specific wire overrides (e.g. Bybit AMDSTOCKUSDT).
+    ``tokenized_forms`` adds live stock spot forms (``bstock`` on Binance,
+    ``xstock_cex`` on Bybit). Empty → crypto/perp books only.
     """
+    from spread_compare.assets import get_form
+
     out: list[str] = []
+    # Crypto / others: form=None (cex_symbols flat map).
+    # Stock perps: form-aware API only (never bare-asset alias — WHI-881).
     for asset in supported_cex_assets(book_side):  # type: ignore[arg-type]
-        sym = resolve_cex_symbol(asset, book_side)  # type: ignore[arg-type]
+        if get_form(asset, "perp") is not None:
+            continue  # handled below via form="perp"
+        sym = resolve_cex_symbol(asset, book_side, venue=venue)  # type: ignore[arg-type]
         if sym:
             out.append(sym)
-    if book_side == "spot" and not exclude_bstocks:
-        # Binance bStocks: only Phase-1 live form coverage (WHI-881 / WHI-798 §6.2).
-        from spread_compare.assets import get_form
-
-        for asset in supported_cex_assets("spot", form="bstock"):
-            form_row = get_form(asset, "bstock")
-            if form_row is None or form_row.coverage != "live":
-                continue
-            sym = resolve_cex_symbol(asset, "spot", form="bstock")
+    if book_side == "perp":
+        for asset in supported_cex_assets("perp", form="perp"):
+            sym = resolve_cex_symbol(
+                asset, "perp", form="perp", venue=venue
+            )
             if sym:
                 out.append(sym)
+    if book_side == "spot":
+        for form_id in tokenized_forms:
+            for asset in supported_cex_assets("spot", form=form_id):
+                form_row = get_form(asset, form_id)
+                if form_row is None or form_row.coverage != "live":
+                    continue
+                sym = resolve_cex_symbol(
+                    asset, "spot", form=form_id, venue=venue
+                )
+                if sym:
+                    out.append(sym)
     # Prefer blue chips first for connection subscribe order.
     priority = {"BTCUSDT", "ETHUSDT", "SOLUSDT"}
     out = sorted(set(out), key=lambda s: (0 if s in priority else 1, s))
@@ -154,13 +176,14 @@ def _cex_symbols(book_side: str, *, exclude_bstocks: bool = False) -> list[str]:
 
 
 def _hl_coins() -> list[str]:
-    """Hyperliquid coins for WS — phase-1 product set only (WHI-855).
+    """Hyperliquid coins for WS — exact product markets only (WHI-855 / WHI-884).
 
     Previously used the adapter's full meta universe (300+ coins), so reconnect
-    re-subscribed hundreds of markets the dashboard never quotes.
+    re-subscribed hundreds of markets the dashboard never quotes. SPY/QQQ have
+    only proxy HL index markets and must not be subscribed as exact tickers.
     """
     coins: list[str] = []
-    for asset in _WS_SERVED_PERP_ASSETS:
+    for asset in HL_PHASE1_ASSETS:
         try:
             coins.append(resolve_hl_coin(asset).venue_symbol)
         except Exception:  # noqa: BLE001

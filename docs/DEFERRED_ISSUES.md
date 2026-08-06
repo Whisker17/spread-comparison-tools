@@ -32,6 +32,19 @@ defines none: `docs/GIT_WORKFLOW.md` § High-risk paths), **Medium**
 
 ## Open
 
+- **P0 stock bStocks lack Pancake/Tessera rows despite surveyed pools** (Medium, WHI-884).
+  `spread_compare/assets.py` / `adapters/_prop_common.BSC_TOKENS` — WHI-883 §5.2/§6.4
+  phase B allows optional Pancake for TVL ≳ $10k (SPYB thick; GOOGL/META/AMZN mid).
+  WHI-884 ships BN spot only (zero RPC/Jupiter delta; no on-chain token addresses in
+  catalog). Tessera whitelist still QQQB/SPCXB/NVDAB/NVDAon. Fix: per-token address
+  capture + Kyber green, then extend `BSC_TOKENS` / form representations.
+
+- **Solana xStocks stay off Jupiter poller after P0 catalog expansion** (Medium, WHI-884).
+  `config/poller.yaml` jupiter group / `prop_jupiter` — WHI-883 §6: Free-plan budget
+  cannot absorb 8× xStock × 3 prop × 3 tier × 2 side. Forms catalogued as
+  `unverified`/`absent` (AMZN prop NO_ROUTES). Fix: per-mint route probe then
+  re-budget before any poller membership.
+
 - **Stock quote payload has no `form_class`; FE re-derives it** (Low, WHI-882).
   `frontend/src/lib/pairIdentity.ts::formClassOf` /
   `frontend/src/lib/summary.ts::bestVenuePerTier` — §5.2 form_class best uses a

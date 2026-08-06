@@ -10,22 +10,65 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from spread_compare.perp_symbols import HL_PHASE1_ASSETS, resolve_hl_coin
+from spread_compare.perp_symbols import (
+    HL_PHASE1_ASSETS,
+    PERP_DEX_SERVED_ASSETS,
+    UnsupportedPerpSymbolError,
+    resolve_hl_coin,
+)
 from spread_compare.ws_bootstrap import (
     _apex_cross_symbols,
+    _cex_symbols,
     _hl_coins,
     _lighter_markets,
 )
 
 
-def test_hl_coins_are_phase1_only_not_full_meta() -> None:
-    # No adapter needed — pure phase-1 map.
+def test_hl_coins_are_exact_product_markets_not_full_meta() -> None:
+    # No adapter needed — pure product map. SPY/QQQ have no exact HL market.
     coins = _hl_coins()
     expected = {resolve_hl_coin(a).venue_symbol for a in HL_PHASE1_ASSETS}
     assert set(coins) == expected
+    assert "SPY" not in HL_PHASE1_ASSETS
+    assert "QQQ" not in HL_PHASE1_ASSETS
+    assert "SPY" in PERP_DEX_SERVED_ASSETS
+    assert "QQQ" in PERP_DEX_SERVED_ASSETS
+    assert "xyz:SPY" not in coins
+    assert "SPY" not in coins
+    assert "xyz:QQQ" not in coins
+    assert "QQQ" not in coins
+    assert "xyz:CRCL" in coins
+    assert "xyz:AMD" in coins
     # Bound well below the 300+ full-meta count that shipped broken.
     assert len(coins) <= len(HL_PHASE1_ASSETS)
     assert len(coins) < 50
+    # Structural: bare SPY/QQQ must not resolve to a fake main-book coin.
+    for bare in ("SPY", "QQQ"):
+        with pytest.raises(UnsupportedPerpSymbolError):
+            resolve_hl_coin(bare)
+
+
+def test_cex_ws_includes_p0_books_and_amd_bybit_wire() -> None:
+    bn_fut = _cex_symbols("perp", venue="binance")
+    by_lin = _cex_symbols("perp", venue="bybit")
+    assert "CRCLUSDT" in bn_fut
+    assert "AMDUSDT" in bn_fut
+    assert "AMDSTOCKUSDT" in by_lin
+    assert "AMDUSDT" not in by_lin
+    bn_spot = _cex_symbols("spot", venue="binance", tokenized_forms=("bstock",))
+    assert "CRCLBUSDT" in bn_spot
+    assert "SPYBUSDT" in bn_spot
+    # AMD/PLTR bstock is catalog-only (unverified) — not WS-subscribed.
+    assert "AMDBUSDT" not in bn_spot
+    assert "PLTRBUSDT" not in bn_spot
+    by_spot = _cex_symbols(
+        "spot", venue="bybit", tokenized_forms=("xstock_cex",)
+    )
+    # CRCL *X is unverified (survey §5.2); GOOGL/META/AMZN *X are live.
+    assert "CRCLXUSDT" not in by_spot
+    assert "GOOGLXUSDT" in by_spot
+    # bStocks never on Bybit spot subscribe.
+    assert "CRCLBUSDT" not in by_spot
 
 
 def test_lighter_markets_filter_to_phase1(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -68,4 +111,4 @@ def test_apex_symbols_filter_to_phase1(monkeypatch: pytest.MonkeyPatch) -> None:
     assert "BTCUSDT" in symbols
     assert "ETHUSDT" in symbols
     assert "RAREPERPUSDT" not in symbols
-    assert len(symbols) <= len(HL_PHASE1_ASSETS)
+    assert len(symbols) <= len(PERP_DEX_SERVED_ASSETS)

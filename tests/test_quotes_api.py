@@ -63,10 +63,12 @@ def test_get_assets(client: TestClient) -> None:
     # WHI-881: underlyings, not tokenized token ids.
     assert {"BTC", "ETH", "SOL"} <= ids
     assert {"NVDA", "TSLA", "AAPL", "MSFT", "QQQ", "SPCX"} <= ids
+    # WHI-884 P0 expansion.
+    assert {"CRCL", "GOOGL", "AMD", "PLTR", "META", "AMZN", "SPY", "MSTR"} <= ids
     assert {"DOGE", "WIF", "XRP", "SUI", "LINK", "AVAX", "ADA", "BNB"} <= ids
     assert "NVDAB" not in ids
     assert "QQQB" not in ids
-    assert len(ids) == 17
+    assert len(ids) == 25
     btc = next(r for r in rows if r["id"] == "BTC")
     assert btc["category"] == "crypto_blue_chip"
     assert btc["representations"]["binance"] == "BTCUSDT"

@@ -283,8 +283,8 @@ _STOCK_ROWS: Final[tuple[AssetInfo, ...]] = (
                     "bybit": "QQQUSDT",
                     "lighter": "QQQ",
                     "apex": "QQQ-USDT",
+                    # HL has only proxy xyz:XYZ100 — never exact QQQ (WHI-883).
                 },
-                coverage="unverified",
             ),
             _form("xstock", {}, coverage="unverified"),
         ),
@@ -307,6 +307,217 @@ _STOCK_ROWS: Final[tuple[AssetInfo, ...]] = (
                 {"bybit": "SPCXXUSDT"},
                 coverage="unverified",
             ),
+            _form("xstock", {}, coverage="unverified"),
+        ),
+    ),
+
+    # WHI-884 / WHI-883 P0 expansion (underlying-first; forms as dimension).
+    AssetInfo(
+        id="CRCL",
+        category="stock",
+        representations=None,
+        forms=(
+            _form(
+                "perp",
+                {
+                    "binance": "CRCLUSDT",
+                    "bybit": "CRCLUSDT",
+                    "hyperliquid": "xyz:CRCL",
+                    "lighter": "CRCL",
+                    "apex": "CRCL-USDT",
+                },
+            ),
+            _form(
+                "bstock",
+                {"binance": "CRCLBUSDT"},
+            ),
+            _form(
+                "xstock_cex",
+                {"bybit": "CRCLXUSDT"},
+                # Survey §5.2 row 1: catalog *X, not fan-out (unlike GOOGL/META/AMZN).
+                coverage="unverified",
+            ),
+            _form("ondo", {}, coverage="unverified"),
+            _form("xstock", {}, coverage="unverified"),
+        ),
+    ),
+    AssetInfo(
+        id="GOOGL",
+        category="stock",
+        representations=None,
+        forms=(
+            _form(
+                "perp",
+                {
+                    "binance": "GOOGLUSDT",
+                    "bybit": "GOOGLUSDT",
+                    "hyperliquid": "xyz:GOOGL",
+                    "lighter": "GOOGL",
+                    "apex": "GOOGL-USDT",
+                },
+            ),
+            _form(
+                "bstock",
+                {"binance": "GOOGLBUSDT"},
+            ),
+            _form(
+                "xstock_cex",
+                {"bybit": "GOOGLXUSDT"},
+            ),
+            _form("ondo", {}, coverage="unverified"),
+            _form("xstock", {}, coverage="unverified"),
+        ),
+    ),
+    AssetInfo(
+        id="AMD",
+        category="stock",
+        representations=None,
+        forms=(
+            _form(
+                "perp",
+                {
+                    "binance": "AMDUSDT",
+                    # Bybit wire is AMDSTOCKUSDT (not AMDUSDT) — see cex_symbols.
+                    "bybit": "AMDSTOCKUSDT",
+                    "hyperliquid": "xyz:AMD",
+                    "lighter": "AMD",
+                    "apex": "AMD-USDT",
+                },
+            ),
+            _form(
+                "bstock",
+                {"binance": "AMDBUSDT"},
+                # Survey §5.2: catalog BN bStock but do not fan-out (thin AMM).
+                coverage="unverified",
+            ),
+            _form("ondo", {}, coverage="unverified"),
+            _form("xstock", {}, coverage="unverified"),
+        ),
+    ),
+    AssetInfo(
+        id="PLTR",
+        category="stock",
+        representations=None,
+        forms=(
+            _form(
+                "perp",
+                {
+                    "binance": "PLTRUSDT",
+                    "bybit": "PLTRUSDT",
+                    "hyperliquid": "xyz:PLTR",
+                    "lighter": "PLTR",
+                    "apex": "PLTR-USDT",
+                },
+            ),
+            _form(
+                "bstock",
+                {"binance": "PLTRBUSDT"},
+                # Survey §5.2: catalog BN bStock but do not fan-out.
+                coverage="unverified",
+            ),
+            _form("ondo", {}, coverage="unverified"),
+            _form("xstock", {}, coverage="unverified"),
+        ),
+    ),
+    AssetInfo(
+        id="META",
+        category="stock",
+        representations=None,
+        forms=(
+            _form(
+                "perp",
+                {
+                    "binance": "METAUSDT",
+                    "bybit": "METAUSDT",
+                    "hyperliquid": "xyz:META",
+                    "lighter": "META",
+                    "apex": "META-USDT",
+                },
+            ),
+            _form(
+                "bstock",
+                {"binance": "METABUSDT"},
+            ),
+            _form(
+                "xstock_cex",
+                {"bybit": "METAXUSDT"},
+            ),
+            _form("ondo", {}, coverage="unverified"),
+            _form("xstock", {}, coverage="unverified"),
+        ),
+    ),
+    AssetInfo(
+        id="AMZN",
+        category="stock",
+        representations=None,
+        forms=(
+            _form(
+                "perp",
+                {
+                    "binance": "AMZNUSDT",
+                    "bybit": "AMZNUSDT",
+                    "hyperliquid": "xyz:AMZN",
+                    "lighter": "AMZN",
+                    "apex": "AMZN-USDT",
+                },
+            ),
+            _form(
+                "bstock",
+                {"binance": "AMZNBUSDT"},
+            ),
+            _form(
+                "xstock_cex",
+                {"bybit": "AMZNXUSDT"},
+            ),
+            _form("ondo", {}, coverage="unverified"),
+            # Mint exists; Sol prop probed NO_ROUTES (WHI-883). Catalog form,
+            # no fan-out (survey §5.2 — keep coverage=unverified, not absent).
+            _form("xstock", {}, coverage="unverified"),
+        ),
+    ),
+    AssetInfo(
+        id="SPY",
+        category="stock",
+        representations=None,
+        forms=(
+            _form(
+                "perp",
+                {
+                    "binance": "SPYUSDT",
+                    "bybit": "SPYUSDT",
+                    "lighter": "SPY",
+                    "apex": "SPY-USDT",
+                    # HL has only proxy xyz:SP500 — never exact SPY (WHI-883).
+                },
+            ),
+            _form(
+                "bstock",
+                {"binance": "SPYBUSDT"},
+            ),
+            _form("ondo", {}, coverage="unverified"),
+            _form("xstock", {}, coverage="unverified"),
+        ),
+    ),
+    AssetInfo(
+        id="MSTR",
+        category="stock",
+        representations=None,
+        forms=(
+            _form(
+                "perp",
+                {
+                    "binance": "MSTRUSDT",
+                    "bybit": "MSTRUSDT",
+                    "hyperliquid": "xyz:MSTR",
+                    "lighter": "MSTR",
+                    "apex": "MSTR-USDT",
+                },
+            ),
+            _form(
+                "bstock",
+                {"binance": "MSTRBUSDT"},
+            ),
+            _form("ondo", {}, coverage="unverified"),
             _form("xstock", {}, coverage="unverified"),
         ),
     ),
@@ -435,12 +646,18 @@ STOCK_PERP_UNDERLYINGS: Final[frozenset[str]] = frozenset(
         "AAPL",
         "NVDA",
         "MSFT",
-        "AMZN",
+        "QQQ",
+        "SPY",
+        "CRCL",
         "GOOGL",
+        "AMD",
+        "PLTR",
         "META",
+        "AMZN",
+        "MSTR",
+        # P1 mid seeds (catalog boards not yet shipped).
         "COIN",
         "HOOD",
-        "MSTR",
     }
 )
 

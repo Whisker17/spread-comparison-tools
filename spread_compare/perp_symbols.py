@@ -27,6 +27,14 @@ _HL_OVERRIDES: Final[dict[str, PerpVenueSymbol]] = {
     "NVDA": PerpVenueSymbol("xyz:NVDA"),
     "AAPL": PerpVenueSymbol("xyz:AAPL"),
     "MSFT": PerpVenueSymbol("xyz:MSFT"),
+    # WHI-884 / WHI-883 P0 exact HIP-3 equities (never SPY/QQQ — proxy only).
+    "CRCL": PerpVenueSymbol("xyz:CRCL"),
+    "GOOGL": PerpVenueSymbol("xyz:GOOGL"),
+    "AMD": PerpVenueSymbol("xyz:AMD"),
+    "PLTR": PerpVenueSymbol("xyz:PLTR"),
+    "META": PerpVenueSymbol("xyz:META"),
+    "AMZN": PerpVenueSymbol("xyz:AMZN"),
+    "MSTR": PerpVenueSymbol("xyz:MSTR"),
     "PEPE": PerpVenueSymbol("kPEPE", Decimal(1000)),
     "BONK": PerpVenueSymbol("kBONK", Decimal(1000)),
 }
@@ -42,9 +50,8 @@ _SCALED_1000_OVERRIDES: Final[dict[str, PerpVenueSymbol]] = {
     "BONK": PerpVenueSymbol("1000BONK", Decimal(1000)),
 }
 
-# Phase-1 logical assets that adapters advertise when meta is not yet loaded.
-# PEPE/BONK are multiplier infrastructure (P1 catalog); not in assets.ASSETS.
-HL_PHASE1_ASSETS: Final[tuple[str, ...]] = (
+# Crypto + others on every perp DEX (and HL main book).
+_PERP_DEX_CRYPTO: Final[tuple[str, ...]] = (
     "BTC",
     "ETH",
     "SOL",
@@ -56,12 +63,41 @@ HL_PHASE1_ASSETS: Final[tuple[str, ...]] = (
     "AVAX",
     "ADA",
     "BNB",
+)
+
+# Equity with exact HL ``xyz:`` markets (WHI-883 — never SPY/QQQ proxies).
+_PERP_DEX_EQUITY_HL_EXACT: Final[tuple[str, ...]] = (
     "TSLA",
     "NVDA",
     "AAPL",
     "MSFT",
-    "PEPE",
-    "BONK",
+    "CRCL",
+    "GOOGL",
+    "AMD",
+    "PLTR",
+    "META",
+    "AMZN",
+    "MSTR",
+)
+
+# Equity listed on Lighter/ApeX (+ CEX) but **no** exact HL market (proxy only).
+_PERP_DEX_EQUITY_NO_HL: Final[tuple[str, ...]] = ("SPY", "QQQ")
+
+# Multiplier infrastructure (P1 catalog); not in assets.ASSETS.
+_PERP_DEX_MEME: Final[tuple[str, ...]] = ("PEPE", "BONK")
+
+# Hyperliquid cold ``supported_assets`` + HL WS: exact markets only.
+# Name kept for adapter call sites; scope is HL-exact product surface.
+HL_PHASE1_ASSETS: Final[tuple[str, ...]] = (
+    _PERP_DEX_CRYPTO + _PERP_DEX_EQUITY_HL_EXACT + _PERP_DEX_MEME
+)
+
+# Lighter / ApeX / WS product set — includes SPY/QQQ (no HL exact).
+PERP_DEX_SERVED_ASSETS: Final[tuple[str, ...]] = (
+    _PERP_DEX_CRYPTO
+    + _PERP_DEX_EQUITY_HL_EXACT
+    + _PERP_DEX_EQUITY_NO_HL
+    + _PERP_DEX_MEME
 )
 
 # HIP-3 sub-dex prefixes allowed beyond the main book (WHI-798 §8 Q10).
@@ -75,10 +111,16 @@ class UnsupportedPerpSymbolError(ValueError):
     """Logical asset / coin form is not allowed on this venue map."""
 
 
+# Underlyings with only HL proxy indices (xyz:SP500 / xyz:XYZ100) — never
+# exact tickers. Bare resolution must fail closed (WHI-883 §5.4 / R4).
+_HL_NO_EXACT: Final[frozenset[str]] = frozenset({"SPY", "QQQ"})
+
+
 def resolve_hl_coin(asset: str) -> PerpVenueSymbol:
     """Map logical asset → Hyperliquid coin form + multiplier.
 
-    Rejects disallowed HIP-3 dex prefixes (only ``xyz`` + main book).
+    Rejects disallowed HIP-3 dex prefixes (only ``xyz`` + main book) and
+    equity underlyings with proxy-only HL markets (SPY/QQQ).
     """
     key = asset.strip()
     if ":" in key:
@@ -90,6 +132,11 @@ def resolve_hl_coin(asset: str) -> PerpVenueSymbol:
             )
         return PerpVenueSymbol(f"{dex_l}:{name.upper()}")
     upper = key.upper()
+    if upper in _HL_NO_EXACT:
+        raise UnsupportedPerpSymbolError(
+            f"hyperliquid has no exact market for {upper} "
+            f"(proxy index only — do not map as exact)"
+        )
     if upper in _HL_OVERRIDES:
         return _HL_OVERRIDES[upper]
     return PerpVenueSymbol(upper)

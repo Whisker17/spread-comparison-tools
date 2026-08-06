@@ -82,12 +82,22 @@ _CRYPTO_CEX: Final[dict[str, CexSymbol]] = {
 # Stock forms: (underlying, form) → CexSymbol.
 # Wire symbols are explicit catalog maps — never ``{TICKER}B`` string templates.
 _STOCK_CEX: Final[dict[tuple[str, str], CexSymbol]] = {
-    # Equity perps (form=perp).
+    # Equity perps (form=perp). Default wire is {TICKER}USDT (Binance TradFi /
+    # Bybit linear common form). Venue-specific exceptions live in
+    # ``_STOCK_CEX_VENUE_OVERRIDES`` (e.g. Bybit AMDSTOCKUSDT).
     ("TSLA", "perp"): _perp_only("TSLAUSDT"),
     ("NVDA", "perp"): _perp_only("NVDAUSDT"),
     ("AAPL", "perp"): _perp_only("AAPLUSDT"),
     ("MSFT", "perp"): _perp_only("MSFTUSDT"),
     ("QQQ", "perp"): _perp_only("QQQUSDT"),
+    ("CRCL", "perp"): _perp_only("CRCLUSDT"),
+    ("GOOGL", "perp"): _perp_only("GOOGLUSDT"),
+    ("AMD", "perp"): _perp_only("AMDUSDT"),
+    ("PLTR", "perp"): _perp_only("PLTRUSDT"),
+    ("META", "perp"): _perp_only("METAUSDT"),
+    ("AMZN", "perp"): _perp_only("AMZNUSDT"),
+    ("SPY", "perp"): _perp_only("SPYUSDT"),
+    ("MSTR", "perp"): _perp_only("MSTRUSDT"),
     # bStocks CEX spot (Binance *B).
     ("NVDA", "bstock"): _spot_only("NVDABUSDT"),
     ("QQQ", "bstock"): _spot_only("QQQBUSDT"),
@@ -95,11 +105,30 @@ _STOCK_CEX: Final[dict[tuple[str, str], CexSymbol]] = {
     ("TSLA", "bstock"): _spot_only("TSLABUSDT"),
     ("AAPL", "bstock"): _spot_only("AAPLBUSDT"),
     ("MSFT", "bstock"): _spot_only("MSFTBUSDT"),
-    # Bybit xStocks CEX spot (*X) — catalogued; fan-out may be unverified.
+    ("CRCL", "bstock"): _spot_only("CRCLBUSDT"),
+    ("GOOGL", "bstock"): _spot_only("GOOGLBUSDT"),
+    ("AMD", "bstock"): _spot_only("AMDBUSDT"),
+    ("PLTR", "bstock"): _spot_only("PLTRBUSDT"),
+    ("META", "bstock"): _spot_only("METABUSDT"),
+    ("AMZN", "bstock"): _spot_only("AMZNBUSDT"),
+    ("SPY", "bstock"): _spot_only("SPYBUSDT"),
+    ("MSTR", "bstock"): _spot_only("MSTRBUSDT"),
+    # Bybit xStocks CEX spot (*X).
     ("NVDA", "xstock_cex"): _spot_only("NVDAXUSDT"),
     ("TSLA", "xstock_cex"): _spot_only("TSLAXUSDT"),
     ("AAPL", "xstock_cex"): _spot_only("AAPLXUSDT"),
     ("SPCX", "xstock_cex"): _spot_only("SPCXXUSDT"),
+    ("CRCL", "xstock_cex"): _spot_only("CRCLXUSDT"),
+    ("GOOGL", "xstock_cex"): _spot_only("GOOGLXUSDT"),
+    ("META", "xstock_cex"): _spot_only("METAXUSDT"),
+    ("AMZN", "xstock_cex"): _spot_only("AMZNXUSDT"),
+}
+
+# (asset, form, book_side, venue) → wire symbol when it diverges from ``_STOCK_CEX``.
+# Book_side is spot|perp. Only exceptional cases — never a full second map.
+_STOCK_CEX_VENUE_OVERRIDES: Final[dict[tuple[str, str, str, str], str]] = {
+    # Bybit linear uses AMDSTOCKUSDT (WHI-798 §4.4 / WHI-883).
+    ("AMD", "perp", "perp", "bybit"): "AMDSTOCKUSDT",
 }
 
 # Flat asset-keyed view for call sites that still resolve without form
@@ -114,6 +143,9 @@ def get_cex_symbol(asset: str, *, form: str | None = None) -> CexSymbol | None:
     Stock underlyings require ``form`` — no silent bare-asset → perp alias
     (WHI-799 §6.2 / WHI-881). Callers that need the perp book pass
     ``form="perp"`` explicitly (e.g. mid mark sampling).
+
+    Venue-specific wire exceptions are applied in :func:`resolve_cex_symbol`
+    via ``venue=`` — the base record stays the common (usually Binance) form.
     """
     key = asset.upper()
     if form is not None:
@@ -126,8 +158,25 @@ def resolve_cex_symbol(
     instrument_type: InstrumentType | CexBookSide = "spot",
     *,
     form: str | None = None,
+    venue: str | None = None,
 ) -> str | None:
-    """Return the CEX wire symbol for ``asset``/``instrument_type``/``form``."""
+    """Return the CEX wire symbol for ``asset``/``instrument_type``/``form``.
+
+    Pass ``venue`` when the book can diverge across CEX venues (e.g. Bybit
+    ``AMDSTOCKUSDT`` vs Binance ``AMDUSDT``). Unknown venues fall back to the
+    shared map entry.
+    """
+    key = asset.upper()
+    form_l = form.lower() if form is not None else None
+    book: str | None = None
+    if instrument_type in ("spot", "perp"):
+        book = instrument_type
+    if venue is not None and form_l is not None and book is not None:
+        override = _STOCK_CEX_VENUE_OVERRIDES.get(
+            (key, form_l, book, venue.lower())
+        )
+        if override is not None:
+            return override
     entry = get_cex_symbol(asset, form=form)
     if entry is None:
         return None
