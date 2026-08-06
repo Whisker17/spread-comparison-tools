@@ -275,6 +275,7 @@ class _GasUnknownHighOutput(BaseAdapter):
         mid: ReferenceMid,
         instrument_type: InstrumentType | None = None,
         fee_tier: str | None = None,
+        form: str | None = None,
     ) -> Quote:
         qty = notional_usd / mid.mid
         # Slightly better than mid so expected_output beats mock after fees-in-price.
@@ -317,6 +318,7 @@ class _GasUnknownHighOutput(BaseAdapter):
         *,
         mid: ReferenceMid,
         instrument_type: Literal["spot", "perp"] | None = None,
+        form: str | None = None,
     ) -> TopOfBook | None:
         return None
 

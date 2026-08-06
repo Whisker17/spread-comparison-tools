@@ -88,8 +88,13 @@ class VenueAdapter(Protocol):
         mid: ReferenceMid,
         instrument_type: InstrumentType | None = None,
         fee_tier: str | None = None,
+        form: str | None = None,
     ) -> Quote:
-        """Return a size-aware quote. Computes spread/total bps via shared formulas."""
+        """Return a size-aware quote. Computes spread/total bps via shared formulas.
+
+        ``form`` (WHI-881): stock tradeable form (``perp``/``bstock``/…); null for
+        non-stocks. Adapters that do not need form must still accept the kwarg.
+        """
         ...
 
     async def get_quotes_batch(
@@ -101,6 +106,7 @@ class VenueAdapter(Protocol):
         mid: ReferenceMid,
         instrument_type: InstrumentType | None = None,
         fee_tier: str | None = None,
+        form: str | None = None,
     ) -> list[Quote]:
         """Price many notionals × sides (WHI-843).
 
@@ -115,6 +121,7 @@ class VenueAdapter(Protocol):
         *,
         mid: ReferenceMid,
         instrument_type: Literal["spot", "perp"] | None = None,
+        form: str | None = None,
     ) -> TopOfBook | None:
         """Return TOB for orderbook venues; always None for AMM/Prop.
 
@@ -213,6 +220,7 @@ class BaseAdapter:
         mid: ReferenceMid,
         instrument_type: InstrumentType | None = None,
         fee_tier: str | None = None,
+        form: str | None = None,
     ) -> list[Quote]:
         """Default multi-tier path: sequential :meth:`get_quote` (no book reuse).
 
@@ -233,6 +241,7 @@ class BaseAdapter:
                         mid=mid,
                         instrument_type=instrument_type,
                         fee_tier=fee_tier,
+                        form=form,
                     )
                 )
         return out

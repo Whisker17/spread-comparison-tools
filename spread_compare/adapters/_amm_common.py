@@ -1210,9 +1210,10 @@ class AmmDexAdapter(BaseAdapter):
         *,
         mid: ReferenceMid,
         instrument_type: Literal["spot", "perp"] | None = None,
+        form: str | None = None,
     ) -> TopOfBook | None:
         """AMM venues have no orderbook concept (WHI-799 §7)."""
-        _ = asset, mid, instrument_type
+        _ = asset, mid, instrument_type, form
         return None
 
     async def get_quote(
@@ -1224,6 +1225,7 @@ class AmmDexAdapter(BaseAdapter):
         mid: ReferenceMid,
         instrument_type: InstrumentType | None = None,
         fee_tier: str | None = None,
+        form: str | None = None,
     ) -> Quote:
         _ = fee_tier
         itype: InstrumentType = instrument_type or default_instrument_type(self.venue_class)
@@ -1252,7 +1254,26 @@ class AmmDexAdapter(BaseAdapter):
             raise AdapterError(f"notional_usd must be positive, got {notional_usd}")
 
         try:
-            result = await self._quote_best(asset_key, side, notional_usd, mid)
+            base = self._base_token(asset_key, form=form)
+        except (KeyError, ValueError) as exc:
+            return build_non_ok_quote(
+                venue=self.venue,
+                mid=mid,
+                asset=asset_key,
+                side=side,
+                notional_usd=notional_usd,
+                instrument_type=itype,
+                status="unsupported_asset",
+                error_code="unsupported_asset",
+                error_message=(
+                    f"{asset_key} form={form!r} not supported on {self.venue}: {exc}"
+                ),
+            )
+
+        try:
+            result = await self._quote_best(
+                asset_key, side, notional_usd, mid, form=form
+            )
         except AdapterError as exc:
             # WHI-842/WHI-844: exhausted RPC 429 budget → status=rate_limited.
             if is_rate_limited_error(exc):
@@ -1292,7 +1313,6 @@ class AmmDexAdapter(BaseAdapter):
                 error_message=f"no executable pool quote for {asset_key} on {self.venue}",
             )
 
-        base = self._base_token(asset_key)
         quote = self._quote_token()
         if result.exact_out:
             # Buy ExactOut: amount_in=quote spent, amount_out=base received.
@@ -1350,7 +1370,7 @@ class AmmDexAdapter(BaseAdapter):
             venue_symbol=f"{base.symbol}/{quote.symbol}",
         )
 
-    def _base_token(self, asset: str) -> TokenInfo:
+    def _base_token(self, asset: str, *, form: str | None = None) -> TokenInfo:
         raise NotImplementedError
 
     def _quote_token(self) -> TokenInfo:
@@ -1362,5 +1382,7 @@ class AmmDexAdapter(BaseAdapter):
         side: Side,
         notional_usd: Decimal,
         mid: ReferenceMid,
+        *,
+        form: str | None = None,
     ) -> QuoterResult | None:
         raise NotImplementedError

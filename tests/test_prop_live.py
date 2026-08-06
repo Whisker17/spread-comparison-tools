@@ -111,13 +111,16 @@ async def test_live_tessera_bsc_btcb_usdt() -> None:
 
 @pytest.mark.live
 @pytest.mark.asyncio
-async def test_live_tessera_bsc_qqqb_usdt() -> None:
+async def test_live_tessera_bsc_qqq_bstock_usdt() -> None:
     adapter = get("tessera_bsc")
     await adapter.startup()
     try:
-        mid = _mid("QQQB", "500")
-        quote = await adapter.get_quote("QQQB", "buy", Decimal("1000"), mid=mid)
+        mid = _mid("QQQ", "500")
+        quote = await adapter.get_quote(
+            "QQQ", "buy", Decimal("1000"), mid=mid, form="bstock"
+        )
         assert quote.status == "ok", quote.error_message
+        assert quote.form == "bstock"
         assert quote.qty_method == "quote_exact_in_approx"
         assert quote.effective_price is not None
         assert quote.fee_breakdown.gas_unknown is False

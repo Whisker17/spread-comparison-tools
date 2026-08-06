@@ -145,6 +145,8 @@ class Quote(BaseModel):
     snapshot_id: str
     venue: str
     asset: str
+    # WHI-880/881: stock form id (WHI-798 §4.6); null for blue chips / others.
+    form: str | None = None
     venue_symbol: str | None = None
     instrument_type: InstrumentType
     side: Side
@@ -244,6 +246,7 @@ class TopOfBook(BaseModel):
     snapshot_id: str
     venue: str
     asset: str
+    form: str | None = None  # WHI-880; aligned with Quote.form
     instrument_type: Literal["spot", "perp"]
     best_bid: Decimal
     best_ask: Decimal
@@ -265,6 +268,7 @@ class SizeQuotePair(BaseModel):
     snapshot_id: str
     venue: str
     asset: str
+    form: str | None = None  # WHI-880; aligned with buy/sell Quote.form
     instrument_type: InstrumentType
     notional_usd: Decimal
     buy: Quote | None = None
@@ -288,6 +292,7 @@ class SizeQuotePair(BaseModel):
                     "snapshot_id",
                     "venue",
                     "asset",
+                    "form",
                     "instrument_type",
                     "notional_usd",
                 )
@@ -306,7 +311,7 @@ class SizeQuotePair(BaseModel):
                     f"(got {tob.instrument_type!r}, pair {self.instrument_type!r}; "
                     "WHI-799 §6.4)"
                 )
-            for field in ("snapshot_id", "venue", "asset"):
+            for field in ("snapshot_id", "venue", "asset", "form"):
                 if getattr(tob, field) != getattr(self, field):
                     raise ValueError(
                         f"top_of_book.{field} must match pair (WHI-799 §6.4)"

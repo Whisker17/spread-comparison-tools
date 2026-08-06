@@ -126,18 +126,20 @@ def test_adapters_registered() -> None:
     assert "pancakeswap_bsc" in venues
 
 
-def test_pancakeswap_supports_bstocks() -> None:
-    """WHI-826: P0-A tokenized stocks on PancakeSwap BSC."""
+def test_pancakeswap_supports_stock_underlyings() -> None:
+    """WHI-881: PancakeSwap BSC lists underlyings; form maps to token tickers."""
     adapter = get("pancakeswap_bsc")
     supported = set(adapter.supported_assets())
-    assert {"BTC", "ETH", "QQQB", "SPCXB", "NVDAB", "NVDAON"} <= supported
+    assert {"BTC", "ETH", "QQQ", "SPCX", "NVDA"} <= supported
     # Token addresses must stay aligned with Tessera BSC (single SSOT).
     from spread_compare.adapters._prop_common import BSC_TOKENS
     from spread_compare.adapters.amm_pancakeswap import PancakeSwapBscAdapter
 
     pcs = PancakeSwapBscAdapter()
-    for asset in ("QQQB", "SPCXB", "NVDAB", "NVDAON"):
-        assert pcs._base_token(asset).address == BSC_TOKENS[asset].address
+    assert pcs._base_token("QQQ", form="bstock").address == BSC_TOKENS["QQQB"].address
+    assert pcs._base_token("SPCX", form="bstock").address == BSC_TOKENS["SPCXB"].address
+    assert pcs._base_token("NVDA", form="bstock").address == BSC_TOKENS["NVDAB"].address
+    assert pcs._base_token("NVDA", form="ondo").address == BSC_TOKENS["NVDAON"].address
 
 
 def test_encode_decode_quoter_roundtrip() -> None:

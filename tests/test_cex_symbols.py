@@ -1,4 +1,4 @@
-"""CEX symbol map with instrument dimension + multipliers (WHI-826)."""
+"""CEX symbol map with instrument dimension + multipliers (WHI-826 / WHI-881)."""
 
 from __future__ import annotations
 
@@ -19,16 +19,22 @@ def test_blue_chip_same_both_sides() -> None:
     assert resolve_cex_multiplier("BTC", "perp") == Decimal(1)
 
 
-def test_tokenized_spot_only() -> None:
-    assert resolve_cex_symbol("QQQB", "spot") == "QQQBUSDT"
-    assert resolve_cex_symbol("QQQB", "perp") is None
-    assert "QQQB" in supported_cex_assets("spot")
-    assert "QQQB" not in supported_cex_assets("perp")
+def test_tokenized_bstock_form_spot_only() -> None:
+    assert resolve_cex_symbol("QQQ", "spot", form="bstock") == "QQQBUSDT"
+    assert resolve_cex_symbol("QQQ", "perp", form="bstock") is None
+    assert resolve_cex_symbol("NVDA", "spot", form="bstock") == "NVDABUSDT"
+    assert "QQQ" in supported_cex_assets("spot", form="bstock")
+    assert "QQQ" not in supported_cex_assets("perp", form="bstock")
+    # Bare token ids no longer resolve.
+    assert resolve_cex_symbol("QQQB", "spot") is None
 
 
-def test_equity_perp_only() -> None:
-    assert resolve_cex_symbol("TSLA", "spot") is None
+def test_equity_perp_form() -> None:
+    assert resolve_cex_symbol("TSLA", "spot", form="perp") is None
+    assert resolve_cex_symbol("TSLA", "perp", form="perp") == "TSLAUSDT"
+    # Bare stock without form falls back to perp book (mid path).
     assert resolve_cex_symbol("TSLA", "perp") == "TSLAUSDT"
+    assert resolve_cex_symbol("TSLA", "spot") is None
     assert "TSLA" not in supported_cex_assets("spot")
     assert "TSLA" in supported_cex_assets("perp")
 

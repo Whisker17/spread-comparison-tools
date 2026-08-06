@@ -123,7 +123,8 @@ class AerodromeBaseAdapter(AmmDexAdapter):
     # No Uniswap-style fee tiers; CL tick spacing ≠ fixed fee table (WHI-800 §5.2).
     lp_fee_tiers: tuple[int, ...] = ()
 
-    def _base_token(self, asset: str) -> TokenInfo:
+    def _base_token(self, asset: str, *, form: str | None = None) -> TokenInfo:
+        _ = form
         if asset == "BTC":
             return _CBBTC
         if asset == "ETH":
@@ -139,8 +140,10 @@ class AerodromeBaseAdapter(AmmDexAdapter):
         side: Side,
         notional_usd: Decimal,
         mid: ReferenceMid,
+        *,
+        form: str | None = None,
     ) -> QuoterResult | None:
-        base = self._base_token(asset)
+        base = self._base_token(asset, form=form)
         quote = self._quote_token()
         q_star = notional_usd / mid.mid
 

@@ -11,6 +11,14 @@ http_timeout_sec: 5.0
 # Staler mids still price but stamp mid_stale per WHI-799 §3.2.
 max_age_for_ws_quote_sec: 2.0
 
+# WHI-881 / WHI-799 §3.3.1: stock underlying P2 tokenized CEX TOB order.
+# First success wins; wire symbols come from (asset, form) cex_symbols map.
+stock_mid_p2_order:
+  - form: bstock
+    venue: binance
+  - form: xstock_cex
+    venue: bybit
+
 # Pyth price-feed IDs (Hermes). Used for P3 and when force_pyth is true.
 # https://pyth.network/developers/price-feed-ids
 pyth_feed_ids:

@@ -60,27 +60,44 @@ def test_get_assets(client: TestClient) -> None:
     assert resp.status_code == 200
     rows = resp.json()
     ids = {r["id"] for r in rows}
-    # WHI-826 Phase 1 catalog: blue chips + stocks + equity perps + others.
+    # WHI-881: underlyings, not tokenized token ids.
     assert {"BTC", "ETH", "SOL"} <= ids
-    assert {"QQQB", "SPCXB", "NVDAB", "NVDAON"} <= ids
-    assert {"TSLA", "NVDA", "AAPL", "MSFT"} <= ids
+    assert {"NVDA", "TSLA", "AAPL", "MSFT", "QQQ", "SPCX"} <= ids
     assert {"DOGE", "WIF", "XRP", "SUI", "LINK", "AVAX", "ADA", "BNB"} <= ids
-    assert len(ids) == 19
+    assert "NVDAB" not in ids
+    assert "QQQB" not in ids
+    assert len(ids) == 17
     btc = next(r for r in rows if r["id"] == "BTC")
     assert btc["category"] == "crypto_blue_chip"
     assert btc["representations"]["binance"] == "BTCUSDT"
     assert btc["representations"]["uniswap_eth"] == "WBTC"
     assert btc["representations"]["humidifi"] == "cbBTC"
-    qqqb = next(r for r in rows if r["id"] == "QQQB")
-    assert qqqb["category"] == "tokenized_stock"
-    assert qqqb["representations"]["binance"] == "QQQBUSDT"
-    assert qqqb["representations"]["pancakeswap_bsc"] == "QQQB"
-    assert qqqb["representations"]["tessera_bsc"] == "QQQB"
+    assert btc["forms"] is None
+    nvda = next(r for r in rows if r["id"] == "NVDA")
+    assert nvda["category"] == "stock"
+    assert nvda["representations"] is None
+    assert nvda["forms"] is not None
+    form_ids = {f["id"] for f in nvda["forms"]}
+    assert {"perp", "bstock", "ondo"} <= form_ids
+    bstock = next(f for f in nvda["forms"] if f["id"] == "bstock")
+    assert bstock["representations"]["binance"] == "NVDABUSDT"
+    assert bstock["representations"]["pancakeswap_bsc"] == "NVDAB"
+    assert bstock["representations"]["tessera_bsc"] == "NVDAB"
     tsla = next(r for r in rows if r["id"] == "TSLA")
-    assert tsla["category"] == "equity_perp"
-    assert tsla["representations"]["hyperliquid"] == "xyz:TSLA"
+    assert tsla["category"] == "stock"
+    perp = next(f for f in tsla["forms"] if f["id"] == "perp")
+    assert perp["representations"]["hyperliquid"] == "xyz:TSLA"
     doge = next(r for r in rows if r["id"] == "DOGE")
     assert doge["category"] == "other"
+
+
+def test_legacy_asset_id_quotes_422(client: TestClient) -> None:
+    resp = client.get("/quotes", params={"asset": "NVDAB", "notional": "1000"})
+    assert resp.status_code == 422
+    detail = resp.json()["detail"]
+    assert detail["error_code"] == "legacy_asset_id"
+    assert detail["asset"] == "NVDA"
+    assert detail["form"] == "bstock"
 
 
 def test_get_fees(client: TestClient) -> None:

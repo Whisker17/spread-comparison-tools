@@ -140,6 +140,17 @@ def test_origin_allowed_matches_cors_list() -> None:
     assert origin_allowed("", origins) is False
 
 
+def test_pair_identity_key_includes_form() -> None:
+    """WHI-881: dual forms on same venue must not clobber in delta merge."""
+    a = _ok_pair(venue="tessera_bsc", asset="NVDA")
+    assert pair_identity_key(a) == f"tessera_bsc|{a.notional_usd}|{a.instrument_type}|-"
+    bstock = a.model_copy(update={"form": "bstock"})
+    ondo = a.model_copy(update={"form": "ondo"})
+    assert pair_identity_key(bstock).endswith("|bstock")
+    assert pair_identity_key(ondo).endswith("|ondo")
+    assert pair_identity_key(bstock) != pair_identity_key(ondo)
+
+
 def test_diff_pairs_ignores_age_sec_only_but_sees_stale() -> None:
     """age_sec advances every serve — must not force a delta alone (WHI-848)."""
     a = _ok_pair(age_sec=1.0, quote_stale=False)

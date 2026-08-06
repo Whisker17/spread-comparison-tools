@@ -18,6 +18,10 @@ _TEST_MID = MidSettings(
     http_timeout_sec=5,
     max_age_for_ws_quote_sec=2.0,
     pyth_feed_ids={},
+    stock_mid_p2_order=[
+        {"form": "bstock", "venue": "binance"},
+        {"form": "xstock_cex", "venue": "bybit"},
+    ],
 )
 
 
@@ -135,6 +139,10 @@ async def test_force_pyth() -> None:
         pyth_feed_ids={
             "BTC": "e62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43"
         },
+        stock_mid_p2_order=[
+            {"form": "bstock", "venue": "binance"},
+            {"form": "xstock_cex", "venue": "bybit"},
+        ],
     )
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
         svc = MidService(settings, client=client)

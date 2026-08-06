@@ -138,11 +138,15 @@ muted "not sampled"; Jupiter sample anchors `$100/$1k/$10k` (both sides).
 Underlying-first stock model **spec** (WHI-880): WHI-798 §1.2/§4.6/§6.2
 + WHI-799 §3.3/§5.2.1/§6.2/§6.7 amended — one logical asset per equity
 underlying, forms as a dimension (`perp`/`bstock`/`ondo`/`xstock`/
-`xstock_cex`), shared mid, form_class best; **code still per-token
-catalog** until WHI-881.
+`xstock_cex`), shared mid, form_class best.
+Underlying-first catalog/API/stream/poller (WHI-881): stock underlyings
+with nested forms in `assets.py`; `(asset, form)` CEX/AMM/prop resolution;
+`GET /assets` nests forms; `GET /quotes?forms=` + store/stream keys include
+form; legacy token ids (NVDAB/QQQB/…) return structured 422; FE still
+WHI-882.
 
 **Not implemented:** remaining venue adapters (WHI-805), collector;
-underlying-first catalog/API/stream (WHI-881).
+underlying-first frontend (WHI-882).
 Do not assume a module exists until its issue lands.
 
 **Blocking gap:** `docs/DESIGN.md` is still mostly the empty template stub (§4.2 module
@@ -203,10 +207,10 @@ Module layout is fixed by `docs/DESIGN.md` §4.2. Keep this section a short mirr
 that section — one bullet per top-level module, its single responsibility, and the
 load-bearing interfaces other modules may depend on.
 
-- **`spread_compare/models.py`** — WHI-799 pydantic models + Quote §6.2 invariants.
+- **`spread_compare/models.py`** — WHI-799 pydantic models + Quote §6.2 invariants (incl. `form` for stocks, WHI-881).
 - **`spread_compare/venues.py`** — static venue slug registry (WHI-799 §6.5) + chain for FE.
-- **`spread_compare/assets.py`** — logical asset catalog + representation labels (WHI-798 §3.3); `USD_STABLES` / `is_usd_stable` peg predicate + `TRADEABLE_USD_STABLES` for simulate pair pickers (WHI-833).
-- **`spread_compare/cex_symbols.py`** — logical asset → CEX spot/perp USDT symbols + multipliers (WHI-798 §3.3 / WHI-826).
+- **`spread_compare/assets.py`** — logical asset catalog + nested stock forms (WHI-798 §3.3 / WHI-881); `USD_STABLES` / `is_usd_stable` peg predicate + `TRADEABLE_USD_STABLES` for simulate pair pickers (WHI-833).
+- **`spread_compare/cex_symbols.py`** — logical asset → CEX spot/perp USDT symbols + multipliers; stock resolution is `(asset, form)`-aware (WHI-798 §3.3 / WHI-826 / WHI-881).
 - **`spread_compare/perp_symbols.py`** — perp-DEX logical → venue coin/base + multipliers (HL HIP-3, k-prefix, 1000×).
 - **`spread_compare/bookwalk.py`** — sole walk-the-book VWAP; CEX/perp adapters import only this.
 - **`spread_compare/costs.py`** — sole `spread_bps` / `total_cost_bps` / `basis_bps`; aggregator never recomputes.

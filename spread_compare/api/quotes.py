@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from decimal import Decimal, InvalidOperation
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
@@ -17,7 +17,7 @@ from spread_compare.aggregator import (
     QuotesPackage,
     UnknownVenueError,
 )
-from spread_compare.assets import list_assets
+from spread_compare.assets import legacy_asset_migration, list_assets
 from spread_compare.fees import list_fee_schedules
 from spread_compare.mids import MidResolutionError
 from spread_compare.models import (
@@ -68,15 +68,35 @@ class VenueResponse(BaseModel):
     adapter_registered: bool = False
 
 
+class FormInfoResponse(BaseModel):
+    """One stock form on ``GET /assets`` (WHI-881)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    form_class: str
+    representations: dict[str, str]
+    coverage: str
+
+
 class AssetResponse(BaseModel):
-    """One row of ``GET /assets``."""
+    """One row of ``GET /assets``.
+
+    Stocks: ``representations`` is null and ``forms`` lists nested forms.
+    Non-stocks: flat ``representations`` and ``forms`` is null.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
     id: str
     category: str
-    representations: dict[str, str] = Field(
-        description="Venue slug → representation label (WHI-798 §3.3)."
+    representations: dict[str, str] | None = Field(
+        default=None,
+        description="Venue slug → representation label (non-stocks; null for stocks).",
+    )
+    forms: list[FormInfoResponse] | None = Field(
+        default=None,
+        description="Nested forms for stock underlyings (null for non-stocks).",
     )
 
 
@@ -101,6 +121,22 @@ def _get_aggregator(request: Request) -> QuoteAggregator:
     if agg is None:
         raise HTTPException(status_code=503, detail="aggregator not initialized")
     return agg  # type: ignore[no-any-return]
+
+
+def _legacy_asset_detail(asset: str) -> dict[str, Any] | None:
+    mig = legacy_asset_migration(asset)
+    if mig is None:
+        return None
+    underlying, form = mig
+    return {
+        "error_code": "legacy_asset_id",
+        "message": (
+            f"{asset.upper()} is a retired token id; use asset={underlying} "
+            f"with forms={form} (WHI-881 underlying-first catalog)"
+        ),
+        "asset": underlying,
+        "form": form,
+    }
 
 
 @router.get("/quotes", response_model=QuotesResponse)
@@ -135,8 +171,21 @@ async def get_quotes(
         InstrumentType | None,
         Query(description="Override adapter default instrument type"),
     ] = None,
+    forms: Annotated[
+        str | None,
+        Query(
+            description=(
+                "Comma-separated stock form ids (WHI-881); default = all live forms "
+                "for stocks, ignored for non-stocks"
+            ),
+        ),
+    ] = None,
 ) -> QuotesResponse:
     """Fan out to adapters; one asset, one or many notional tiers (WHI-843)."""
+    legacy = _legacy_asset_detail(asset)
+    if legacy is not None:
+        raise HTTPException(status_code=422, detail=legacy)
+
     try:
         notional_arg = _parse_notional_params(notional=notional, notionals=notionals)
     except ValueError as exc:
@@ -144,6 +193,9 @@ async def get_quotes(
 
     venue_list = (
         [v.strip() for v in venues.split(",") if v.strip()] if venues else None
+    )
+    form_list = (
+        [f.strip().lower() for f in forms.split(",") if f.strip()] if forms else None
     )
 
     aggregator = _get_aggregator(request)
@@ -154,10 +206,14 @@ async def get_quotes(
             venues=venue_list,
             side=side,
             instrument_type=instrument_type,
+            forms=form_list,
         )
     except InvalidNotionalError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except UnknownVenueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except ValueError as exc:
+        # Unknown form id from resolve_forms_filter.
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except MidResolutionError as exc:
         raise HTTPException(
@@ -233,15 +289,31 @@ def get_venues() -> list[VenueResponse]:
 
 @router.get("/assets", response_model=list[AssetResponse])
 def get_assets() -> list[AssetResponse]:
-    """Logical assets + per-venue representation labels (WHI-798 §3.3)."""
-    return [
-        AssetResponse(
-            id=a.id,
-            category=a.category,
-            representations=dict(a.representations),
+    """Logical assets + representations / nested forms (WHI-798 §3.3 / WHI-881)."""
+    rows: list[AssetResponse] = []
+    for a in list_assets():
+        forms: list[FormInfoResponse] | None = None
+        if a.forms is not None:
+            forms = [
+                FormInfoResponse(
+                    id=f.id,
+                    form_class=f.form_class,
+                    representations=dict(f.representations),
+                    coverage=f.coverage,
+                )
+                for f in a.forms
+            ]
+        rows.append(
+            AssetResponse(
+                id=a.id,
+                category=a.category,
+                representations=(
+                    dict(a.representations) if a.representations is not None else None
+                ),
+                forms=forms,
+            )
         )
-        for a in list_assets()
-    ]
+    return rows
 
 
 @router.get("/fees", response_model=list[FeeSchedule])

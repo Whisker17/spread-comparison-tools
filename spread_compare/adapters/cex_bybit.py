@@ -21,8 +21,6 @@ from spread_compare.models import InstrumentType, Side
 _BASE = "https://api.bybit.com"
 # WHI-802: default limit=200. Tunables deferred — docs/DEFERRED_ISSUES.md (WHI-802).
 _ORDERBOOK_LIMIT = 200
-# bStocks (*B) are Binance-only; Bybit uses *X xStocks (out of Phase 1 — WHI-798 §4.3).
-_BYBIT_NO_SPOT: frozenset[str] = frozenset({"QQQB", "SPCXB", "NVDAB"})
 
 
 @register_adapter
@@ -42,8 +40,15 @@ class BybitAdapter(CexBaseAdapter):
         self,
         asset: str,
         instrument_type: InstrumentType | CexBookSide | None,
+        *,
+        form: str | None = None,
     ) -> bool:
-        if asset.upper() in _BYBIT_NO_SPOT and instrument_type in (None, "spot"):
+        _ = asset
+        # bStocks (*B) are Binance-only; Bybit uses *X xStocks (WHI-798 §4.3 / WHI-881).
+        if form is not None and form.lower() == "bstock" and instrument_type in (
+            None,
+            "spot",
+        ):
             return False
         return True
 

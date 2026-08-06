@@ -85,6 +85,7 @@ def test_new_adapter_module_auto_registers() -> None:
                 mid: ReferenceMid,
                 instrument_type: InstrumentType | None = None,
                 fee_tier: str | None = None,
+            form: str | None = None,
             ) -> Quote:
                 raise NotImplementedError
 
@@ -94,6 +95,7 @@ def test_new_adapter_module_auto_registers() -> None:
                 *,
                 mid: ReferenceMid,
                 instrument_type: Literal["spot", "perp"] | None = None,
+            form: str | None = None,
             ) -> TopOfBook | None:
                 return None
 

@@ -36,6 +36,7 @@ class StreamFilterSpec(BaseModel):
     venues: list[str] | None = None
     side: Side | None = None
     instrument_type: InstrumentType | None = None
+    forms: list[str] | None = None
 
     @field_validator("assets", mode="before")
     @classmethod
@@ -52,6 +53,15 @@ class StreamFilterSpec(BaseModel):
         if not isinstance(value, list):
             return value
         return [str(v).strip() for v in value if str(v).strip()]
+
+    @field_validator("forms", mode="before")
+    @classmethod
+    def _lower_forms(cls, value: object) -> object:
+        if value is None:
+            return None
+        if not isinstance(value, list):
+            return value
+        return [str(v).strip().lower() for v in value if str(v).strip()]
 
 
 class StreamSubscribe(BaseModel):
@@ -75,6 +85,7 @@ class StreamSubscribe(BaseModel):
     venues: list[str] | None = None
     side: Side | None = None
     instrument_type: InstrumentType | None = None
+    forms: list[str] | None = None
     filters: list[StreamFilterSpec] | None = None
 
     @field_validator("assets", mode="before")
@@ -95,6 +106,15 @@ class StreamSubscribe(BaseModel):
             return value
         return [str(v).strip() for v in value if str(v).strip()]
 
+    @field_validator("forms", mode="before")
+    @classmethod
+    def _lower_forms(cls, value: object) -> object:
+        if value is None:
+            return None
+        if not isinstance(value, list):
+            return value
+        return [str(v).strip().lower() for v in value if str(v).strip()]
+
     def resolved_filters(self) -> list[StreamFilterSpec]:
         """Normalize flat or multi form into a non-empty filter list."""
         if self.filters:
@@ -108,6 +128,7 @@ class StreamSubscribe(BaseModel):
                 venues=self.venues,
                 side=self.side,
                 instrument_type=self.instrument_type,
+                forms=self.forms,
             )
         ]
 
@@ -149,13 +170,15 @@ class StreamFilter:
     venues: tuple[str, ...] | None
     side: Side | None
     instrument_type: InstrumentType | None
+    forms: tuple[str, ...] | None = None
 
     def cache_key(self) -> str:
         venues = ",".join(self.venues) if self.venues is not None else "*"
         notionals = ",".join(str(n) for n in self.notionals)
+        forms = ",".join(self.forms) if self.forms is not None else "*"
         return (
             f"{self.asset}|{notionals}|{venues}|{self.side or '*'}|"
-            f"{self.instrument_type or '*'}"
+            f"{self.instrument_type or '*'}|{forms}"
         )
 
 
@@ -173,8 +196,11 @@ def parse_notionals(raw: Iterable[str]) -> tuple[Decimal, ...]:
 
 
 def pair_identity_key(pair: SizeQuotePair) -> str:
-    """Stable key for delta merge (venue × notional × instrument)."""
-    return f"{pair.venue}|{pair.notional_usd}|{pair.instrument_type}"
+    """Stable key for delta merge (venue × notional × instrument × form)."""
+    return (
+        f"{pair.venue}|{pair.notional_usd}|{pair.instrument_type}|"
+        f"{pair.form or '-'}"
+    )
 
 
 def pair_fingerprint(pair: SizeQuotePair) -> str:
@@ -407,6 +433,8 @@ class QuoteStreamHub:
 
     def subscribe(self, client: StreamClient, msg: StreamSubscribe) -> None:
         """Replace the client's asset filters with this subscription."""
+        from spread_compare.assets import legacy_asset_migration
+
         specs = msg.resolved_filters()
         new_filters: dict[str, StreamFilter] = {}
         venues_union: set[str] = set()
@@ -418,7 +446,20 @@ class QuoteStreamHub:
                 venues_tuple = tuple(venues)
                 venues_union.update(venues)
             notionals = parse_notionals(spec.notionals)
+            forms_tuple: tuple[str, ...] | None = None
+            if spec.forms is not None:
+                forms_tuple = tuple(dict.fromkeys(spec.forms))
             for asset in assets:
+                mig = legacy_asset_migration(asset)
+                if mig is not None:
+                    underlying, form_id = mig
+                    raise StreamLimitError(
+                        "legacy_asset_id",
+                        (
+                            f"{asset} is a retired token id; use asset={underlying} "
+                            f"with forms=[{form_id}] (WHI-881)"
+                        ),
+                    )
                 # Later specs win on duplicate assets (last-writer).
                 new_filters[asset] = StreamFilter(
                     asset=asset,
@@ -426,6 +467,7 @@ class QuoteStreamHub:
                     venues=venues_tuple,
                     side=spec.side,
                     instrument_type=spec.instrument_type,
+                    forms=forms_tuple,
                 )
         if len(new_filters) > self._settings.max_assets_per_client:
             raise StreamLimitError(
@@ -501,6 +543,7 @@ class QuoteStreamHub:
                     venues=list(filt.venues) if filt.venues is not None else None,
                     side=filt.side,
                     instrument_type=filt.instrument_type,
+                    forms=list(filt.forms) if filt.forms is not None else None,
                 )
                 return key, pkg, None
             except Exception as exc:  # noqa: BLE001 — degrade one filter

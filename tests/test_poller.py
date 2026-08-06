@@ -187,6 +187,43 @@ def test_store_put_get_no_reprice() -> None:
     assert got.quote.spread_bps == Decimal("5.5")
 
 
+def test_store_form_keys_do_not_clobber() -> None:
+    """WHI-881: tessera_bsc NVDA bstock + ondo occupy distinct store keys."""
+    store = QuoteStore(clock=lambda: 100.0)
+    mid = _MID.model_copy(update={"asset": "NVDA", "mid": Decimal("100")})
+    bstock_q = _ok_quote(venue="tessera_bsc", mid=mid, spread=Decimal("10")).model_copy(
+        update={"form": "bstock", "asset": "NVDA"}
+    )
+    ondo_q = _ok_quote(venue="tessera_bsc", mid=mid, spread=Decimal("20")).model_copy(
+        update={"form": "ondo", "asset": "NVDA"}
+    )
+    key_b = QuoteStoreKey(
+        venue="tessera_bsc",
+        asset="NVDA",
+        instrument_type="prop_amm",
+        notional_usd=Decimal("10000"),
+        side="buy",
+        form="bstock",
+    )
+    key_o = QuoteStoreKey(
+        venue="tessera_bsc",
+        asset="NVDA",
+        instrument_type="prop_amm",
+        notional_usd=Decimal("10000"),
+        side="buy",
+        form="ondo",
+    )
+    assert key_b != key_o
+    store.put(key_b, bstock_q, group="kyber", success=True, observed_at=_TS)
+    store.put(key_o, ondo_q, group="kyber", success=True, observed_at=_TS)
+    assert store.get(key_b) is not None
+    assert store.get(key_b).quote.spread_bps == Decimal("10")  # type: ignore[union-attr]
+    assert store.get(key_o) is not None
+    assert store.get(key_o).quote.spread_bps == Decimal("20")  # type: ignore[union-attr]
+    assert "bstock" in str(key_b)
+    assert "ondo" in str(key_o)
+
+
 def test_stamp_stored_quote_age_and_stale() -> None:
     q = _ok_quote()
     fresh = stamp_stored_quote(q, age_sec=10.0, max_quote_age_for_best_sec=30.0)
@@ -213,6 +250,7 @@ class _CountingPropAdapter(BaseAdapter):
         mid: ReferenceMid,
         instrument_type: InstrumentType | None = None,
         fee_tier: str | None = None,
+        form: str | None = None,
     ) -> Quote:
         _ = fee_tier, instrument_type
         type(self).calls += 1
@@ -229,6 +267,7 @@ class _CountingPropAdapter(BaseAdapter):
         *,
         mid: ReferenceMid,
         instrument_type: Literal["spot", "perp"] | None = None,
+        form: str | None = None,
     ) -> TopOfBook | None:
         _ = asset, mid, instrument_type
         return None

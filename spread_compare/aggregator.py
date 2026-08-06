@@ -25,6 +25,11 @@ from spread_compare.adapters.base import (
 )
 from spread_compare.adapters.registry import get as registry_get
 from spread_compare.adapters.registry import is_available, list_venues
+from spread_compare.assets import (
+    form_key,
+    resolve_forms_filter,
+    venues_for_form,
+)
 from spread_compare.budget import quote_deadline
 from spread_compare.costs import (
     half_spread_bps,
@@ -70,10 +75,22 @@ CLASS_INSTRUMENTS: dict[VenueClass, frozenset[InstrumentType]] = {
 def effective_instrument_type(
     venue_class: VenueClass,
     requested: InstrumentType | None,
+    *,
+    form: str | None = None,
 ) -> InstrumentType:
-    """Apply filter only when the venue class can serve that instrument type."""
+    """Resolve instrument_type for a venue class (WHI-799 §6.2 / WHI-881).
+
+    Stock form overrides CEX default: ``form_class=perp`` → perp book;
+    tokenized forms → spot. An explicit ``requested`` filter still wins when
+    the venue class can serve it (crypto spot/perp toggle).
+    """
     if requested is not None and requested in CLASS_INSTRUMENTS[venue_class]:
         return requested
+    if form is not None and venue_class == "cex":
+        # WHI-799 §6.2 instrument_type derivation table.
+        if form == "perp":
+            return "perp"
+        return "spot"
     return default_instrument_type(venue_class)
 
 
@@ -158,12 +175,14 @@ def error_quote(
     error_message: str,
     timestamp: datetime | None = None,
     status: Literal["error", "rate_limited", "not_sampled"] = "error",
+    form: str | None = None,
 ) -> Quote:
     """Build a non-ok Quote row (WHI-799 §6.6 / WHI-844 / WHI-865)."""
     return Quote(
         snapshot_id=mid.snapshot_id,
         venue=venue,
         asset=asset,
+        form=form,
         instrument_type=instrument_type,
         side=side,
         notional_usd=notional_usd,
@@ -189,6 +208,7 @@ def rate_limited_quote(
     instrument_type: InstrumentType,
     error_message: str,
     timestamp: datetime | None = None,
+    form: str | None = None,
 ) -> Quote:
     """Build a ``status=rate_limited`` Quote row (WHI-844 / WHI-799 §6.1)."""
     return error_quote(
@@ -202,6 +222,7 @@ def rate_limited_quote(
         error_message=error_message,
         timestamp=timestamp,
         status="rate_limited",
+        form=form,
     )
 
 
@@ -218,6 +239,7 @@ def not_initialized_quote(
     side: Side,
     notional_usd: Decimal,
     instrument_type: InstrumentType,
+    form: str | None = None,
 ) -> Quote:
     """``error_code=not_initialized`` row for venues whose startup() failed (WHI-840)."""
     return error_quote(
@@ -229,6 +251,7 @@ def not_initialized_quote(
         instrument_type=instrument_type,
         error_code="not_initialized",
         error_message=not_initialized_message(venue),
+        form=form,
     )
 
 
@@ -241,6 +264,7 @@ def not_sampled_quote(
     notional_usd: Decimal,
     instrument_type: InstrumentType,
     error_message: str,
+    form: str | None = None,
 ) -> Quote:
     """``status=not_sampled`` row for a pull-poller key with no store entry (WHI-865).
 
@@ -261,6 +285,7 @@ def not_sampled_quote(
         error_code="not_sampled",
         error_message=error_message,
         status="not_sampled",
+        form=form,
     )
 
 
@@ -296,6 +321,7 @@ async def quote_with_timeout(
     instrument_type: InstrumentType,
     timeout: float,
     log_tag: str = "",
+    form: str | None = None,
 ) -> Quote:
     """Call ``get_quote`` with a per-venue timeout; degrade to ``status=error``.
 
@@ -317,18 +343,21 @@ async def quote_with_timeout(
             side=side,
             notional_usd=notional_usd,
             instrument_type=instrument_type,
+            form=form,
         )
     try:
         # Bind remaining budget so limiters / 429 sleeps can fail fast (WHI-844).
         with quote_deadline(timeout):
             async with asyncio.timeout(timeout):
-                return await adapter.get_quote(
+                quote = await adapter.get_quote(
                     asset,
                     side,
                     notional_usd,
                     mid=mid,
                     instrument_type=instrument_type,
+                    form=form,
                 )
+                return _stamp_form(quote, form)
     except TimeoutError:
         logger.warning(
             "venue %s get_quote timed out after %ss (%s %s)%s",
@@ -347,6 +376,7 @@ async def quote_with_timeout(
             instrument_type=instrument_type,
             error_code="timeout",
             error_message=f"get_quote timed out after {timeout}s",
+            form=form,
         )
     except AdapterRateLimitedError as exc:
         logger.warning(
@@ -360,6 +390,7 @@ async def quote_with_timeout(
             notional_usd=notional_usd,
             instrument_type=instrument_type,
             error_message=str(exc),
+            form=form,
         )
     except AdapterError as exc:
         logger.warning("venue %s get_quote error%s: %s", adapter.venue, suffix, exc)
@@ -372,6 +403,7 @@ async def quote_with_timeout(
             instrument_type=instrument_type,
             error_code="adapter_error",
             error_message=str(exc),
+            form=form,
         )
     except Exception as exc:  # noqa: BLE001 — degrade per venue, never whole package
         logger.exception("venue %s get_quote unexpected error%s", adapter.venue, suffix)
@@ -384,7 +416,15 @@ async def quote_with_timeout(
             instrument_type=instrument_type,
             error_code="adapter_error",
             error_message=f"{type(exc).__name__}: {exc}",
+            form=form,
         )
+
+
+def _stamp_form(quote: Quote, form: str | None) -> Quote:
+    """Ensure Quote.form matches the fan-out form (adapters may omit)."""
+    if quote.form == form:
+        return quote
+    return quote.model_copy(update={"form": form})
 
 
 def apply_mid_stale(
@@ -430,6 +470,7 @@ def assemble_pair(
     top_of_book: TopOfBook | None,
     stale_threshold_sec: float,
     ws_mid_max_age_sec: float | None = None,
+    form: str | None = None,
 ) -> SizeQuotePair:
     """Build a SizeQuotePair from legs; sum bps only via costs helpers (WHI-799 §4.6)."""
     if buy is not None:
@@ -438,12 +479,16 @@ def assemble_pair(
             stale_threshold_sec=stale_threshold_sec,
             ws_mid_max_age_sec=ws_mid_max_age_sec,
         )
+        buy = _stamp_form(buy, form)
     if sell is not None:
         sell = apply_mid_stale(
             sell,
             stale_threshold_sec=stale_threshold_sec,
             ws_mid_max_age_sec=ws_mid_max_age_sec,
         )
+        sell = _stamp_form(sell, form)
+    if top_of_book is not None and top_of_book.form != form:
+        top_of_book = top_of_book.model_copy(update={"form": form})
 
     # Priced statuses keep numbers readable (WHI-845 excessive_impact); only
     # status=ok remains §5.2 best / heat eligible (FE gates on status separately).
@@ -461,6 +506,7 @@ def assemble_pair(
         snapshot_id=mid.snapshot_id,
         venue=venue,
         asset=asset,
+        form=form,
         instrument_type=instrument_type,
         notional_usd=notional_usd,
         buy=buy,
@@ -545,6 +591,7 @@ class QuoteAggregator:
         venues: Sequence[str] | None = None,
         side: Side | None = None,
         instrument_type: InstrumentType | None = None,
+        forms: Sequence[str] | None = None,
         snapshot_id: str | None = None,
         use_cache: bool = True,
     ) -> QuotesPackage:
@@ -555,14 +602,19 @@ class QuoteAggregator:
         (WHI-843). Poller-served classes (WHI-846) are read from the in-memory
         store and may carry a different per-row ``snapshot_id`` (one per sweep).
 
+        ``forms`` (WHI-881): optional stock form filter; default = all live forms
+        for stock underlyings, ``[None]`` for non-stocks.
+
         Raises:
             InvalidNotionalError: any notional not in §4.1 tiers, or empty list.
             UnknownVenueError: filter names an unregistered adapter.
             MidResolutionError: mid unavailable (caller maps to HTTP 503).
+            ValueError: unknown form id for the asset.
         """
         notionals = self._normalize_notionals(notional_usd)
 
         asset_key = asset.upper()
+        form_list = tuple(resolve_forms_filter(asset_key, list(forms) if forms else None))
         venue_slugs = self._resolve_venues(venues)
         sides: tuple[Side, ...] = (side,) if side is not None else ("buy", "sell")
         live_slugs, store_slugs = self._partition_venues(venue_slugs)
@@ -576,7 +628,7 @@ class QuoteAggregator:
             and bool(live_slugs)
         )
         cache_key = self._cache_key(
-            asset_key, notionals, live_slugs, sides, instrument_type
+            asset_key, notionals, live_slugs, sides, instrument_type, form_list
         )
 
         live_package: QuotesPackage | None = None
@@ -589,6 +641,7 @@ class QuoteAggregator:
                     venue_slugs=live_slugs,
                     sides=sides,
                     instrument_type=instrument_type,
+                    forms=form_list,
                 )
                 if hit is not None:
                     live_package = hit
@@ -609,10 +662,11 @@ class QuoteAggregator:
                                     venue_slugs=live_slugs,
                                     sides=sides,
                                     instrument_type=instrument_type,
+                                    forms=form_list,
                                     snapshot_id=snapshot_id,
                                 )
                                 self._store_cache(
-                                    package, live_slugs, sides, instrument_type
+                                    package, live_slugs, sides, instrument_type, form_list
                                 )
                                 if not future.done():
                                     future.set_result(package)
@@ -638,6 +692,7 @@ class QuoteAggregator:
                     venue_slugs=live_slugs,
                     sides=sides,
                     instrument_type=instrument_type,
+                    forms=form_list,
                     snapshot_id=snapshot_id,
                 )
 
@@ -665,6 +720,7 @@ class QuoteAggregator:
                 mid=mid,
                 sides=sides,
                 instrument_type=instrument_type,
+                forms=form_list,
             )
             pairs.extend(store_pairs)
 
@@ -686,30 +742,34 @@ class QuoteAggregator:
         mid: ReferenceMid,
         sides: Sequence[Side],
         instrument_type: InstrumentType | None,
+        forms: Sequence[str | None],
     ) -> list[SizeQuotePair]:
         """Read poller-served venues from the in-memory store (zero upstream)."""
         from spread_compare.poller import pair_from_store
 
         stale_threshold = self._mid_settings.stale_threshold_sec
         pairs: list[SizeQuotePair] = []
-        for slug in store_slugs:
-            adapter = registry_get(slug)
-            for n in notionals:
-                pairs.append(
-                    pair_from_store(
-                        self._quote_store,
-                        mid=mid,
-                        venue=slug,
-                        asset=asset,
-                        instrument_type=instrument_type,
-                        notional_usd=n,
-                        sides=sides,
-                        poller_settings=self._poller,
-                        stale_threshold_sec=stale_threshold,
-                        adapter=adapter,
-                        clock=self._clock,
+        for form in forms:
+            form_venues = self._venues_for_form_expansion(asset, form, store_slugs)
+            for slug in form_venues:
+                adapter = registry_get(slug)
+                for n in notionals:
+                    pairs.append(
+                        pair_from_store(
+                            self._quote_store,
+                            mid=mid,
+                            venue=slug,
+                            asset=asset,
+                            instrument_type=instrument_type,
+                            notional_usd=n,
+                            sides=sides,
+                            poller_settings=self._poller,
+                            stale_threshold_sec=stale_threshold,
+                            adapter=adapter,
+                            clock=self._clock,
+                            form=form,
+                        )
                     )
-                )
         return pairs
 
     @staticmethod
@@ -745,6 +805,7 @@ class QuoteAggregator:
         venue_slugs: Sequence[str],
         sides: Sequence[Side],
         instrument_type: InstrumentType | None,
+        forms: Sequence[str | None],
         snapshot_id: str | None,
     ) -> QuotesPackage:
         snap = snapshot_id or str(uuid.uuid4())
@@ -754,6 +815,12 @@ class QuoteAggregator:
             snapshot_id=snap,
             venue_timeout_sec=self._agg.venue_timeout_sec,
         )
+
+        # Expand (venue, form) work items — stocks can emit multiple forms per venue.
+        work: list[tuple[str, str | None]] = []
+        for form in forms:
+            for slug in self._venues_for_form_expansion(asset_key, form, venue_slugs):
+                work.append((slug, form))
 
         if len(notionals) == 1:
             pairs_nested = await asyncio.gather(
@@ -765,8 +832,9 @@ class QuoteAggregator:
                         mid=mid,
                         sides=sides,
                         instrument_type=instrument_type,
+                        form=form,
                     )
-                    for slug in venue_slugs
+                    for slug, form in work
                 )
             )
             pairs = list(pairs_nested)
@@ -781,8 +849,9 @@ class QuoteAggregator:
                         mid=mid,
                         sides=sides,
                         instrument_type=instrument_type,
+                        form=form,
                     )
-                    for slug in venue_slugs
+                    for slug, form in work
                 )
             )
             pairs = [p for group in pairs_lists for p in group]
@@ -795,6 +864,21 @@ class QuoteAggregator:
             pairs=pairs,
             notionals=notionals,
         )
+
+    @staticmethod
+    def _venues_for_form_expansion(
+        asset: str,
+        form: str | None,
+        venue_slugs: Sequence[str],
+    ) -> list[str]:
+        """Venues to fan out for one form (stock: catalog representation filter)."""
+        if form is None:
+            return list(venue_slugs)
+        labeled = venues_for_form(asset, form)
+        if not labeled:
+            # Unverified form with empty representations — no fan-out rows.
+            return []
+        return [slug for slug in venue_slugs if slug in labeled]
 
     def _resolve_venues(self, venues: Sequence[str] | None) -> list[str]:
         if not venues:
@@ -815,7 +899,9 @@ class QuoteAggregator:
         venues: Sequence[str],
         sides: Sequence[Side],
         instrument_type: InstrumentType | None,
+        forms: Sequence[str | None] = (),
     ) -> str:
+        forms_sig = ",".join(form_key(f) for f in forms) if forms else "*"
         return "|".join(
             [
                 asset,
@@ -823,6 +909,7 @@ class QuoteAggregator:
                 ",".join(venues),
                 ",".join(sides),
                 instrument_type or "",
+                forms_sig,
             ]
         )
 
@@ -835,6 +922,7 @@ class QuoteAggregator:
         venue_slugs: Sequence[str],
         sides: Sequence[Side],
         instrument_type: InstrumentType | None,
+        forms: Sequence[str | None] = (),
     ) -> QuotesPackage | None:
         """Exact hit, or single-tier subset of a multi-tier cached package (WHI-843)."""
         now = self._clock()
@@ -849,8 +937,9 @@ class QuoteAggregator:
         venues_sig = ",".join(venue_slugs)
         sides_sig = ",".join(sides)
         itype_sig = instrument_type or ""
+        forms_sig = ",".join(form_key(f) for f in forms) if forms else "*"
         prefix = f"{asset_key}|"
-        suffix = f"|{venues_sig}|{sides_sig}|{itype_sig}"
+        suffix = f"|{venues_sig}|{sides_sig}|{itype_sig}|{forms_sig}"
         for key, entry in self._cache.items():
             if entry.expires_at <= now:
                 continue
@@ -878,18 +967,19 @@ class QuoteAggregator:
         venue_slugs: Sequence[str],
         sides: Sequence[Side],
         instrument_type: InstrumentType | None,
+        forms: Sequence[str | None] = (),
     ) -> None:
         """Cache multi-tier package and per-tier slices for single-tier reuse."""
         expires = self._clock() + self._agg.response_cache_ttl_sec
         multi_key = self._cache_key(
-            package.asset, package.notionals, venue_slugs, sides, instrument_type
+            package.asset, package.notionals, venue_slugs, sides, instrument_type, forms
         )
         self._cache[multi_key] = _CacheEntry(expires_at=expires, package=package)
         if len(package.notionals) <= 1:
             return
         for n in package.notionals:
             single_key = self._cache_key(
-                package.asset, (n,), venue_slugs, sides, instrument_type
+                package.asset, (n,), venue_slugs, sides, instrument_type, forms
             )
             # Don't clobber a fresher exact single-tier entry.
             existing = self._cache.get(single_key)
@@ -917,6 +1007,7 @@ class QuoteAggregator:
         mid: ReferenceMid,
         sides: Sequence[Side],
         instrument_type: InstrumentType | None,
+        form: str | None = None,
     ) -> list[SizeQuotePair]:
         """Collect SizeQuotePair rows for every notional on one venue.
 
@@ -925,7 +1016,9 @@ class QuoteAggregator:
         (no reusable snapshot upstream).
         """
         adapter = registry_get(slug)
-        itype = effective_instrument_type(adapter.venue_class, instrument_type)
+        itype = effective_instrument_type(
+            adapter.venue_class, instrument_type, form=form
+        )
         timeout = self._agg.timeout_for(adapter.venue_class)
         stale_threshold = self._mid_settings.stale_threshold_sec
         side_order: list[Side] = list(sides)
@@ -938,6 +1031,7 @@ class QuoteAggregator:
                     asset=asset,
                     instrument_type=itype,
                     notional_usd=n,
+                    form=form,
                     buy=(
                         not_initialized_quote(
                             mid=mid,
@@ -946,6 +1040,7 @@ class QuoteAggregator:
                             side="buy",
                             notional_usd=n,
                             instrument_type=itype,
+                            form=form,
                         )
                         if "buy" in side_order
                         else None
@@ -958,6 +1053,7 @@ class QuoteAggregator:
                             side="sell",
                             notional_usd=n,
                             instrument_type=itype,
+                            form=form,
                         )
                         if "sell" in side_order
                         else None
@@ -981,6 +1077,7 @@ class QuoteAggregator:
                             notionals,
                             mid=mid,
                             instrument_type=itype,
+                            form=form,
                         )
             except TimeoutError:
                 logger.warning(
@@ -996,6 +1093,7 @@ class QuoteAggregator:
                         instrument_type=itype,
                         error_code="timeout",
                         error_message=f"get_quotes_batch timed out after {timeout}s",
+                        form=form,
                     )
                     for n in notionals
                     for side in side_order
@@ -1011,6 +1109,7 @@ class QuoteAggregator:
                         notional_usd=n,
                         instrument_type=itype,
                         error_message=str(exc),
+                        form=form,
                     )
                     for n in notionals
                     for side in side_order
@@ -1027,6 +1126,7 @@ class QuoteAggregator:
                         instrument_type=itype,
                         error_code="adapter_error",
                         error_message=str(exc),
+                        form=form,
                     )
                     for n in notionals
                     for side in side_order
@@ -1045,6 +1145,7 @@ class QuoteAggregator:
                         instrument_type=itype,
                         error_code="adapter_error",
                         error_message=f"{type(exc).__name__}: {exc}",
+                        form=form,
                     )
                     for n in notionals
                     for side in side_order
@@ -1052,7 +1153,7 @@ class QuoteAggregator:
 
             by_key: dict[tuple[Decimal, Side], Quote] = {}
             for q in batch_quotes:
-                by_key[(q.notional_usd, q.side)] = q
+                by_key[(q.notional_usd, q.side)] = _stamp_form(q, form)
 
             tob_outcome = await self._tob_with_timeout(
                 adapter,
@@ -1060,6 +1161,7 @@ class QuoteAggregator:
                 mid=mid,
                 instrument_type=itype,
                 timeout=timeout,
+                form=form,
             )
             top_of_book = tob_outcome.book
             tob_tag: str | None = None
@@ -1100,6 +1202,7 @@ class QuoteAggregator:
                         top_of_book=top_of_book,
                         stale_threshold_sec=stale_threshold,
                         ws_mid_max_age_sec=self._mid_settings.max_age_for_ws_quote_sec,
+                        form=form,
                     )
                 )
             return pairs
@@ -1114,6 +1217,7 @@ class QuoteAggregator:
                     mid=mid,
                     sides=sides,
                     instrument_type=instrument_type,
+                    form=form,
                 )
                 for n in notionals
             )
@@ -1129,9 +1233,12 @@ class QuoteAggregator:
         mid: ReferenceMid,
         sides: Sequence[Side],
         instrument_type: InstrumentType | None,
+        form: str | None = None,
     ) -> SizeQuotePair:
         adapter = registry_get(slug)
-        itype = effective_instrument_type(adapter.venue_class, instrument_type)
+        itype = effective_instrument_type(
+            adapter.venue_class, instrument_type, form=form
+        )
         timeout = self._agg.timeout_for(adapter.venue_class)
         stale_threshold = self._mid_settings.stale_threshold_sec
 
@@ -1146,6 +1253,7 @@ class QuoteAggregator:
                 mid=mid,
                 instrument_type=itype,
                 timeout=timeout,
+                form=form,
             )
             for side in side_order
         ]
@@ -1155,6 +1263,7 @@ class QuoteAggregator:
             mid=mid,
             instrument_type=itype,
             timeout=timeout,
+            form=form,
         )
         gathered = await asyncio.gather(*quote_coros, tob_coro)
         leg_results = list(gathered[:-1])
@@ -1202,6 +1311,7 @@ class QuoteAggregator:
             top_of_book=top_of_book,
             stale_threshold_sec=stale_threshold,
             ws_mid_max_age_sec=self._mid_settings.max_age_for_ws_quote_sec,
+            form=form,
         )
 
     async def _tob_with_timeout(
@@ -1212,6 +1322,7 @@ class QuoteAggregator:
         mid: ReferenceMid,
         instrument_type: InstrumentType,
         timeout: float,
+        form: str | None = None,
     ) -> _TobOutcome:
         if not is_available(adapter.venue):
             return _TobOutcome(
@@ -1226,10 +1337,15 @@ class QuoteAggregator:
                     if instrument_type in ("spot", "perp"):
                         tob_itype: Literal["spot", "perp"] = instrument_type
                         book = await adapter.get_orderbook_spread(
-                            asset, mid=mid, instrument_type=tob_itype
+                            asset,
+                            mid=mid,
+                            instrument_type=tob_itype,
+                            form=form,
                         )
                     else:
-                        book = await adapter.get_orderbook_spread(asset, mid=mid)
+                        book = await adapter.get_orderbook_spread(
+                            asset, mid=mid, form=form
+                        )
             return _TobOutcome(book=book, failed=False)
         except TimeoutError:
             logger.warning(

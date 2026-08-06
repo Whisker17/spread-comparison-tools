@@ -258,6 +258,7 @@ async def test_orderbook_tob_failure_stamps_raw_ref(
             mid: ReferenceMid,
             instrument_type: InstrumentType | None = None,
             fee_tier: str | None = None,
+            form: str | None = None,
         ) -> Quote:
             from spread_compare.models import FeeBreakdown
 
@@ -294,6 +295,7 @@ async def test_orderbook_tob_failure_stamps_raw_ref(
             *,
             mid: ReferenceMid,
             instrument_type: Literal["spot", "perp"] | None = None,
+            form: str | None = None,
         ) -> TopOfBook | None:
             from spread_compare.adapters.base import AdapterFetchError
 
@@ -384,6 +386,7 @@ async def test_response_cache_second_request_zero_upstream_within_ttl() -> None:
             mid: ReferenceMid,
             instrument_type: InstrumentType | None = None,
             fee_tier: str | None = None,
+            form: str | None = None,
         ) -> Quote:
             quote_calls["n"] += 1
             fees = FeeBreakdown(
@@ -419,6 +422,7 @@ async def test_response_cache_second_request_zero_upstream_within_ttl() -> None:
             *,
             mid: ReferenceMid,
             instrument_type: Literal["spot", "perp"] | None = None,
+            form: str | None = None,
         ) -> TopOfBook | None:
             return None
 
@@ -530,6 +534,7 @@ async def test_rate_limited_fail_fast_under_budget() -> None:
             mid: ReferenceMid,
             instrument_type: InstrumentType | None = None,
             fee_tier: str | None = None,
+            form: str | None = None,
         ) -> Quote:
             # Budget-aware acquire only — must not sleep past the quote deadline.
             await acquire_within_budget(self._limiter, venue=self.venue)
@@ -541,6 +546,7 @@ async def test_rate_limited_fail_fast_under_budget() -> None:
             *,
             mid: ReferenceMid,
             instrument_type: Literal["spot", "perp"] | None = None,
+            form: str | None = None,
         ) -> TopOfBook | None:
             return None
 
