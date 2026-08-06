@@ -32,11 +32,12 @@ def test_tokenized_bstock_form_spot_only() -> None:
 def test_equity_perp_form() -> None:
     assert resolve_cex_symbol("TSLA", "spot", form="perp") is None
     assert resolve_cex_symbol("TSLA", "perp", form="perp") == "TSLAUSDT"
-    # Bare stock without form falls back to perp book (mid path).
-    assert resolve_cex_symbol("TSLA", "perp") == "TSLAUSDT"
+    # Bare stock without form never aliases to perp (WHI-881).
+    assert resolve_cex_symbol("TSLA", "perp") is None
     assert resolve_cex_symbol("TSLA", "spot") is None
     assert "TSLA" not in supported_cex_assets("spot")
     assert "TSLA" in supported_cex_assets("perp")
+    assert "TSLA" in supported_cex_assets("perp", form="perp")
 
 
 def test_pepe_spot_vs_perp_multiplier() -> None:

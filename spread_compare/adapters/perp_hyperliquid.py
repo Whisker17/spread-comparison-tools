@@ -226,8 +226,9 @@ class HyperliquidAdapter(BaseAdapter):
         self,
         *,
         instrument_type: InstrumentType | None = None,
+        form: str | None = None,
     ) -> list[str]:
-        _ = instrument_type
+        _ = instrument_type, form
         if self._logical_assets:
             return list(self._logical_assets)
         return list(HL_PHASE1_ASSETS)

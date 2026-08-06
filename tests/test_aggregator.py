@@ -313,6 +313,7 @@ async def test_orderbook_tob_failure_stamps_raw_ref(
             self,
             *,
             instrument_type: InstrumentType | None = None,
+            form: str | None = None,
         ) -> list[str]:
             return ["BTC"]
 
@@ -438,6 +439,7 @@ async def test_response_cache_second_request_zero_upstream_within_ttl() -> None:
             self,
             *,
             instrument_type: InstrumentType | None = None,
+            form: str | None = None,
         ) -> list[str]:
             return ["BTC"]
 
@@ -562,6 +564,7 @@ async def test_rate_limited_fail_fast_under_budget() -> None:
             self,
             *,
             instrument_type: InstrumentType | None = None,
+            form: str | None = None,
         ) -> list[str]:
             return ["BTC"]
 

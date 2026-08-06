@@ -211,8 +211,9 @@ class LighterAdapter(BaseAdapter):
         self,
         *,
         instrument_type: InstrumentType | None = None,
+        form: str | None = None,
     ) -> list[str]:
-        _ = instrument_type
+        _ = instrument_type, form
         if self._markets_by_symbol:
             logicals = {scaled_1000_logical_id(sym) for sym in self._markets_by_symbol}
             blue = [c for c in _BLUE_CHIPS if c in logicals]

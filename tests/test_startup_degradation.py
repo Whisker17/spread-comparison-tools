@@ -524,8 +524,12 @@ async def test_simulate_failed_venue_is_not_initialized(
             raise AdapterFetchError("down")
 
         def supported_assets(
-            self, *, instrument_type: object | None = None
+            self,
+            *,
+            instrument_type: object | None = None,
+            form: str | None = None,
         ) -> list[str]:
+            _ = instrument_type, form
             return []  # empty warm-up cache shape
 
     monkeypatch.setitem(_REGISTRY, "lighter", BoomAdapter())

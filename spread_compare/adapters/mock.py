@@ -293,6 +293,7 @@ class MockAdapter(BaseAdapter):
         self,
         *,
         instrument_type: InstrumentType | None = None,
+        form: str | None = None,
     ) -> list[str]:
-        _ = instrument_type
+        _ = instrument_type, form
         return list(_SUPPORTED)

@@ -84,15 +84,15 @@ def effective_instrument_type(
     ``form_class=perp`` → perp; ``tokenized`` → spot. An explicit ``requested``
     filter still wins when the venue class can serve it (crypto spot/perp toggle).
     """
-    if requested is not None and requested in CLASS_INSTRUMENTS[venue_class]:
-        return requested
     if form is not None and venue_class == "cex":
         from spread_compare.assets import form_class_of
 
-        # WHI-799 §6.2 instrument_type derivation table (unique rule).
+        # WHI-799 §6.2 unique derivation: form_class wins over requested itype.
         if form_class_of(form) == "perp":
             return "perp"
         return "spot"
+    if requested is not None and requested in CLASS_INSTRUMENTS[venue_class]:
+        return requested
     return default_instrument_type(venue_class)
 
 

@@ -287,9 +287,12 @@ class _CountingPropAdapter(BaseAdapter):
         )
 
     def supported_assets(
-        self, *, instrument_type: InstrumentType | None = None
+        self,
+        *,
+        instrument_type: InstrumentType | None = None,
+        form: str | None = None,
     ) -> list[str]:
-        _ = instrument_type
+        _ = instrument_type, form
         return ["BTC"]
 
 

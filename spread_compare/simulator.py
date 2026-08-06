@@ -496,7 +496,10 @@ class TradeSimulator:
             )
             return _row_from_quote(quote, side=pair.side, form=form)
 
-        supported = {a.upper() for a in adapter.supported_assets(instrument_type=itype)}
+        supported = {
+            a.upper()
+            for a in adapter.supported_assets(instrument_type=itype, form=form)
+        }
         if pair.asset not in supported:
             return _not_supported_row(
                 venue=slug,

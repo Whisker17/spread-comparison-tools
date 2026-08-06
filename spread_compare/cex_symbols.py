@@ -109,18 +109,16 @@ CEX_USDT_SYMBOLS: Final[dict[str, CexSymbol]] = dict(_CRYPTO_CEX)
 
 
 def get_cex_symbol(asset: str, *, form: str | None = None) -> CexSymbol | None:
-    """Return the CEX symbol record for ``asset`` (and optional stock ``form``)."""
+    """Return the CEX symbol record for ``asset`` (and optional stock ``form``).
+
+    Stock underlyings require ``form`` — no silent bare-asset → perp alias
+    (WHI-799 §6.2 / WHI-881). Callers that need the perp book pass
+    ``form="perp"`` explicitly (e.g. mid mark sampling).
+    """
     key = asset.upper()
     if form is not None:
         return _STOCK_CEX.get((key, form.lower()))
-    # Bare asset lookup: crypto/others, or stock with only a default single book.
-    if key in _CRYPTO_CEX:
-        return _CRYPTO_CEX[key]
-    # Stock without form: prefer perp if listed (legacy equity mid/mark paths).
-    perp = _STOCK_CEX.get((key, "perp"))
-    if perp is not None:
-        return perp
-    return None
+    return _CRYPTO_CEX.get(key)
 
 
 def resolve_cex_symbol(

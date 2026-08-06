@@ -1200,8 +1200,9 @@ class AmmDexAdapter(BaseAdapter):
         self,
         *,
         instrument_type: InstrumentType | None = None,
+        form: str | None = None,
     ) -> list[str]:
-        _ = instrument_type
+        _ = instrument_type, form
         return list(self.supported)
 
     async def get_orderbook_spread(

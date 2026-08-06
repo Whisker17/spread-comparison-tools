@@ -763,13 +763,16 @@ class CexBaseAdapter(BaseAdapter, ABC):
         self,
         *,
         instrument_type: InstrumentType | None = None,
+        form: str | None = None,
     ) -> list[str]:
         if instrument_type in ("spot", "perp"):
-            assets = supported_cex_assets(instrument_type)
+            assets = supported_cex_assets(instrument_type, form=form)
         else:
             assets = supported_cex_assets()
         return [
-            a for a in assets if self._venue_lists_asset(a, instrument_type)
+            a
+            for a in assets
+            if self._venue_lists_asset(a, instrument_type, form=form)
         ]
 
     def _venue_lists_asset(

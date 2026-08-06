@@ -102,6 +102,7 @@ class SlowAdapter(BaseAdapter):
         self,
         *,
         instrument_type: InstrumentType | None = None,
+        form: str | None = None,
     ) -> list[str]:
         return ["BTC"]
 
@@ -149,5 +150,6 @@ class StubAdapter(BaseAdapter):
         self,
         *,
         instrument_type: InstrumentType | None = None,
+        form: str | None = None,
     ) -> list[str]:
         return []

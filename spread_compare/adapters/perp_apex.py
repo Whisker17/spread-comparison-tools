@@ -206,8 +206,9 @@ class ApexAdapter(BaseAdapter):
         self,
         *,
         instrument_type: InstrumentType | None = None,
+        form: str | None = None,
     ) -> list[str]:
-        _ = instrument_type
+        _ = instrument_type, form
         if self._symbols_by_base:
             logicals = {scaled_1000_logical_id(base) for base in self._symbols_by_base}
             blue = [c for c in _BLUE_CHIPS if c in logicals]

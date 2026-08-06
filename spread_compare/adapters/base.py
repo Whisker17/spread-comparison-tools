@@ -142,8 +142,9 @@ class VenueAdapter(Protocol):
         self,
         *,
         instrument_type: InstrumentType | None = None,
+        form: str | None = None,
     ) -> list[str]:
-        """Assets this adapter can quote for the given (or default) instrument type."""
+        """Assets this adapter can quote for the given instrument type / form."""
         ...
 
 
