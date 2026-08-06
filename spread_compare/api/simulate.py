@@ -114,7 +114,7 @@ class SimulatePairErrorDetail(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     message: str
-    reason: Literal["unknown_asset", "cross_pair"]
+    reason: Literal["unknown_asset", "cross_pair", "legacy_asset_id"]
 
 
 class SimulatePairsResponse(BaseModel):
