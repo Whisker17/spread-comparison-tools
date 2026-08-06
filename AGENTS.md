@@ -165,6 +165,10 @@ Pancake bStock fan-out (WHI-891): wire Phase-A tokens SPYB/AAPLB/TSLAB/MSFTB/
 GOOGLB/METAB/AMZNB into `BSC_TOKENS` + Pancake adapter + catalog
 `coverage=live` (Tessera whitelist unchanged; Solana props still out); rpc
 poller `interval_sec` 30→45 with proportional age/stale gates.
+Stock form coverage honesty (WHI-892): WHI-799 §6.1.1 display contract;
+catalog `xstock` → `coverage=absent` (empty venues); FE carries wire
+coverage + form badges + `catalog|<form>` summary rows; non-live never
+§5.2 best; catalog↔adapter resolvability test (all stock venues).
 
 **Not implemented:** remaining venue adapters (WHI-805), collector.
 Do not assume a module exists until its issue lands.

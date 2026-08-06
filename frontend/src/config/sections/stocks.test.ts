@@ -4,8 +4,12 @@ import {
   BSTOCKS_REBASE_FOOTNOTE,
   buildStockMatrixRows,
   buildStocksVenueLabels,
+  CATALOG_SUMMARY_VENUE,
+  coverageBadgeLabel,
   FORM_BADGE_LABELS,
   hasBstockForm,
+  liveQuoteableFormIds,
+  nonLiveRowKeys,
   resolveStockForms,
   STOCK_FORMS_STATIC,
   STOCK_UNDERLYINGS,
@@ -160,12 +164,46 @@ describe("stocks section config (WHI-882 underlying-first)", () => {
       },
     ];
     const forms = resolveStockForms("TSLA", assets);
-    // Only live forms.
-    expect(forms.map((f) => f.id)).toEqual(["perp"]);
+    // WHI-892: include unverified; carry wire coverage (never stamp live).
+    expect(forms.map((f) => f.id)).toEqual(["perp", "bstock"]);
+    expect(forms.find((f) => f.id === "bstock")?.coverage).toBe("unverified");
     expect(venuesFromForms(forms)).toEqual(["binance", "bybit"]);
   });
 
-  it("does not resurrect static forms when the API returns zero live forms", () => {
+  it("carries wire unverified coverage through resolveStockForms (WHI-892)", () => {
+    const assets: AssetResponse[] = [
+      {
+        id: "NVDA",
+        category: "stock",
+        representations: null,
+        forms: [
+          {
+            id: "xstock_cex",
+            form_class: "tokenized",
+            coverage: "unverified",
+            representations: { bybit: "NVDAXUSDT" },
+          },
+          {
+            id: "xstock",
+            form_class: "tokenized",
+            coverage: "absent",
+            representations: {},
+          },
+        ],
+      },
+    ];
+    const forms = resolveStockForms("NVDA", assets);
+    expect(forms).toHaveLength(2);
+    const xcex = forms.find((f) => f.id === "xstock_cex")!;
+    expect(xcex.coverage).toBe("unverified");
+    expect(xcex.coverage).not.toBe("live");
+    const xstock = forms.find((f) => f.id === "xstock")!;
+    expect(xstock.coverage).toBe("absent");
+    // Unverified has venues but is not default fan-out.
+    expect(liveQuoteableFormIds(forms)).toEqual([]);
+  });
+
+  it("does not resurrect static forms when the API returns only non-live forms", () => {
     const assets: AssetResponse[] = [
       {
         id: "NVDA",
@@ -181,7 +219,97 @@ describe("stocks section config (WHI-882 underlying-first)", () => {
         ],
       },
     ];
-    expect(resolveStockForms("NVDA", assets)).toEqual([]);
+    const forms = resolveStockForms("NVDA", assets);
+    // Wire forms win; do not merge static live forms back in.
+    expect(forms).toHaveLength(1);
+    expect(forms[0]?.coverage).toBe("unverified");
+    expect(forms[0]?.id).toBe("perp");
+  });
+
+  it("builds catalog summary rows for venue-less forms (WHI-892)", () => {
+    const forms = resolveStockForms("NVDA", [
+      {
+        id: "NVDA",
+        category: "stock",
+        representations: null,
+        forms: [
+          {
+            id: "perp",
+            form_class: "perp",
+            coverage: "live",
+            representations: { binance: "NVDAUSDT" },
+          },
+          {
+            id: "xstock",
+            form_class: "tokenized",
+            coverage: "absent",
+            representations: {},
+          },
+          {
+            id: "ondo",
+            form_class: "tokenized",
+            coverage: "unverified",
+            representations: {},
+          },
+        ],
+      },
+    ]);
+    const rows = buildStockMatrixRows(forms);
+    expect(rows.map((r) => r.rowKey)).toContain(
+      makeRowKey(CATALOG_SUMMARY_VENUE, "xstock"),
+    );
+    expect(rows.map((r) => r.rowKey)).toContain(
+      makeRowKey(CATALOG_SUMMARY_VENUE, "ondo"),
+    );
+    const xstock = rows.find((r) => r.form === "xstock")!;
+    expect(xstock.isCatalogSummary).toBe(true);
+    expect(xstock.coverage).toBe("absent");
+    expect(coverageBadgeLabel(xstock.coverage)).toBe("no route");
+    const ondo = rows.find((r) => r.form === "ondo")!;
+    expect(coverageBadgeLabel(ondo.coverage)).toBe("unverified");
+    // Catalog venue never appears in quote/stream venue filters.
+    expect(venuesFromForms(forms)).toEqual(["binance"]);
+    expect(nonLiveRowKeys(rows).sort()).toEqual(
+      [
+        makeRowKey(CATALOG_SUMMARY_VENUE, "ondo"),
+        makeRowKey(CATALOG_SUMMARY_VENUE, "xstock"),
+      ].sort(),
+    );
+    const labels = buildStocksVenueLabels(rows);
+    expect(labels[makeRowKey(CATALOG_SUMMARY_VENUE, "xstock")]).toMatch(
+      /no route/i,
+    );
+    expect(labels[makeRowKey(CATALOG_SUMMARY_VENUE, "ondo")]).toMatch(
+      /unverified/i,
+    );
+  });
+
+  it("excludes non-live row keys from best eligibility set (WHI-892)", () => {
+    const forms = resolveStockForms("NVDA", [
+      {
+        id: "NVDA",
+        category: "stock",
+        representations: null,
+        forms: [
+          {
+            id: "perp",
+            form_class: "perp",
+            coverage: "live",
+            representations: { binance: "NVDAUSDT" },
+          },
+          {
+            id: "xstock_cex",
+            form_class: "tokenized",
+            coverage: "unverified",
+            representations: { bybit: "NVDAXUSDT" },
+          },
+        ],
+      },
+    ]);
+    const rows = buildStockMatrixRows(forms);
+    expect(nonLiveRowKeys(rows)).toEqual([makeRowKey("bybit", "xstock_cex")]);
+    // Default fan-out is live only; unverified is chrome + never best.
+    expect(liveQuoteableFormIds(forms)).toEqual(["perp"]);
   });
 
   it("marks only orderbook venues for TOB rows", () => {

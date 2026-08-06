@@ -13,6 +13,9 @@ import {
   buildStockMatrixRows,
   buildStocksVenueLabels,
   hasBstockForm,
+  isBestEligibleCoverage,
+  liveQuoteableFormIds,
+  nonLiveRowKeys,
   orderbookRows,
   resolveStockForms,
   STOCK_ASSET_SUBTITLES,
@@ -74,23 +77,29 @@ function StocksSectionInner() {
   }, [assetsQuery.data]);
 
   const streamFilters = useMemo<StreamFilter[]>(() => {
-    // Single filter: all underlyings, all live-form venues, no instrument pin.
-    const venueSet = new Set<string>();
-    for (const forms of formsByUnderlying.values()) {
-      for (const v of venuesFromForms(forms)) {
-        venueSet.add(v);
-      }
-    }
-    return [
-      {
-        assets: [...STOCK_UNDERLYINGS],
-        // WHI-864: subscribe only the visible tier.
+    // One filter per underlying so `forms=` never includes a form absent from
+    // that asset's catalog (global union → resolve_forms_filter ValueError /
+    // collect_failed — WHI-892 review).
+    // WHI-864: subscribe only the visible tier.
+    // Default fan-out = live only (WHI-799 §6.1.1); non-live rows are chrome.
+    // Skip underlyings with zero live venue-bearing forms — an empty
+    // `venues: []` is treated as "all venues" server-side (aggregator
+    // `_resolve_venues`), which would invert the allow-list.
+    const filters: StreamFilter[] = [];
+    for (const underlying of STOCK_UNDERLYINGS) {
+      const forms = formsByUnderlying.get(underlying) ?? [];
+      const liveForms = forms.filter((f) => isBestEligibleCoverage(f.coverage));
+      const formIds = liveQuoteableFormIds(forms);
+      const venues = venuesFromForms(liveForms);
+      if (formIds.length === 0 || venues.length === 0) continue;
+      filters.push({
+        assets: [underlying],
         notionals: [notional],
-        venues: [...venueSet],
-        // Default forms = all live (backend); omit instrument_type so form
-        // expansion picks spot vs perp per form_class (WHI-881).
-      },
-    ];
+        venues,
+        forms: formIds,
+      });
+    }
+    return filters;
   }, [notional, formsByUnderlying]);
 
   return (
@@ -191,6 +200,17 @@ function StocksStreamBody({
           pool returns <code className="text-[11px]">no_quote</code> and
           renders as &quot;—&quot;, not a page error.
         </p>
+        <p>
+          <strong className="font-medium text-zinc-700 dark:text-zinc-300">
+            Coverage.
+          </strong>{" "}
+          Forms marked <em>unverified</em> or <em>no route</em> stay visible
+          (WHI-892 / WHI-799 §6.1.1) so a reader can tell &quot;never verified&quot;
+          from &quot;probed, no route&quot; from a live cell that is currently{" "}
+          <code className="text-[11px]">no_quote</code> /{" "}
+          <code className="text-[11px]">not_sampled</code>. Non-live rows never
+          win best.
+        </p>
       </footer>
     </div>
   );
@@ -216,14 +236,17 @@ function UnderlyingBoard({
     () => orderbookRows(rows).map((r) => r.rowKey),
     [rows],
   );
-  const formIds = useMemo(() => forms.map((f) => f.id), [forms]);
+  // HTTP/stream form filter = live venue-bearing only; non-live are chrome.
+  const formIds = useMemo(() => liveQuoteableFormIds(forms), [forms]);
+  const allFormIds = useMemo(() => forms.map((f) => f.id), [forms]);
+  const disabledKeys = useMemo(() => nonLiveRowKeys(rows), [rows]);
   const showBstockNote = hasBstockForm(forms);
 
   return (
     <section
       className="space-y-3"
       data-testid={`stocks-board-${underlying}`}
-      data-forms={formIds.join(",")}
+      data-forms={allFormIds.join(",")}
       aria-labelledby={`stocks-board-${underlying}-title`}
     >
       {showBstockNote ? (
@@ -255,7 +278,7 @@ function UnderlyingBoard({
             className="mt-2 text-sm text-zinc-500"
             data-testid={`no-live-forms-${underlying}`}
           >
-            No live forms in the catalog for this underlying — nothing to quote.
+            No forms in the catalog for this underlying — nothing to quote.
           </p>
         </div>
       ) : (
@@ -270,6 +293,7 @@ function UnderlyingBoard({
           summaryVenueLabels={summaryLabels}
           orderbookVenues={orderbookRowKeys}
           forms={formIds}
+          disabledVenues={disabledKeys}
           emphasizeMidSource
           midSourceHint={STOCKS_MID_SOURCE_HINT}
           matrixRowHeaderLabel={STOCKS_MATRIX_ROW_HEADER}

@@ -371,8 +371,11 @@ export interface components {
             representations: {
                 [key: string]: string;
             };
-            /** Coverage */
-            coverage: string;
+            /**
+             * Coverage
+             * @enum {string}
+             */
+            coverage: "live" | "unverified" | "absent";
         };
         /** HTTPValidationError */
         HTTPValidationError: {

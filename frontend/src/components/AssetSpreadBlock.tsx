@@ -18,6 +18,7 @@ import { SpreadMatrix } from "@/components/SpreadMatrix";
 import { TopOfBookRow } from "@/components/TopOfBookRow";
 import { Button } from "@/components/ui/button";
 import { Tooltip } from "@/components/ui/tooltip";
+import { VENUE_META } from "@/config/sections/helpers";
 import type { SectionConfig } from "@/config/sections/types";
 import { useQuotesMatrix } from "@/hooks/useQuotes";
 import { useQuotesStreamOptional } from "@/hooks/useQuotesStream";
@@ -97,6 +98,11 @@ export type AssetSpreadBlockProps = {
    * forms on the backend for stock underlyings.
    */
   forms?: readonly string[];
+  /**
+   * Row keys dimmed and excluded from §5.2 best (WHI-892 non-live coverage).
+   * Passed through to SpreadMatrix as disabledVenues.
+   */
+  disabledVenues?: readonly string[];
   /** Matrix first-column header (section product copy). */
   matrixRowHeaderLabel?: string;
   /** Extra best-highlight footnote (section product copy). */
@@ -120,6 +126,7 @@ export function AssetSpreadBlock({
   venueDisplayNames,
   instrumentType,
   forms,
+  disabledVenues,
   matrixRowHeaderLabel,
   matrixBestNoteExtra,
 }: AssetSpreadBlockProps) {
@@ -132,10 +139,20 @@ export function AssetSpreadBlock({
   );
 
   // Row keys may be `venue|form` (stocks) — strip form for the venue filter.
+  // Drop synthetic / unknown slugs (catalog summary rows are label-only, WHI-892).
+  // Empty list must not become `undefined` (undefined = all venues upstream).
   const venueSlugsForRequest = useMemo(() => {
-    if (venues.length === 0) return undefined;
-    const slugs = new Set(venues.map((k) => parseRowKey(k).venue));
-    return [...slugs];
+    if (venues.length === 0) return null;
+    const slugs = [
+      ...new Set(
+        venues
+          .map((k) => parseRowKey(k).venue)
+          .filter((v) => v.length > 0 && VENUE_META[v] !== undefined),
+      ),
+    ];
+    // No real venues → skip HTTP entirely (do not invent a sentinel slug that
+    // 422s via UnknownVenueError, and do not omit → all-venues fan-out).
+    return slugs.length > 0 ? slugs : null;
   }, [venues]);
 
   // WHI-848: when a page-level QuotesStreamProvider is present, read pushed
@@ -147,12 +164,13 @@ export function AssetSpreadBlock({
     asset,
     notionals: displayNotionals,
     // Pin to the section venue set so we don't surface mock/other adapters.
-    venues: venueSlugsForRequest,
+    venues: venueSlugsForRequest ?? undefined,
     instrument_type: instrumentType ?? section.instrumentType,
     forms,
-    // Disable HTTP poll when the page stream owns transport.
+    // Disable HTTP when stream owns transport, or when rows are chrome-only
+    // (catalog summaries / non-live) with no real venue to request.
     refetchInterval: useStream ? false : section.pollIntervalMs,
-    enabled: !useStream,
+    enabled: !useStream && venueSlugsForRequest !== null,
   });
 
   const streamData = useStream ? stream.matrixFor(asset) : undefined;
@@ -444,11 +462,15 @@ export function AssetSpreadBlock({
             metric={section.cellMetric}
             venues={venues}
             venueLabels={proseLabels}
+            // Exclude non-live from best prose only (still list matrix rows).
+            hiddenVenues={disabledVenues}
           />
           <SpreadMatrix
             pairs={pairs}
             notionals={displayNotionals}
             venues={venues}
+            // Dim + never best; rows remain listed (WHI-892 list, do not omit).
+            disabledVenues={disabledVenues}
             sideView={sideView}
             metric={section.cellMetric}
             venueLabels={venueLabels}

@@ -17,6 +17,8 @@ AssetCategory = Literal["crypto_blue_chip", "stock", "other"]
 FormId = Literal["perp", "bstock", "ondo", "xstock", "xstock_cex"]
 FormClass = Literal["perp", "tokenized"]
 FormCoverage = Literal["live", "unverified", "absent"]
+# live = default fan-out; unverified = catalog retained; absent = probed-and-routeless.
+# Display contract: docs/research/WHI-799-spread-fee-data-model.md §6.1.1 (WHI-892).
 
 # Closed vocabulary (WHI-798 §4.6). New issuer families extend this tuple only.
 FORM_IDS: Final[tuple[FormId, ...]] = (
@@ -176,7 +178,7 @@ _STOCK_ROWS: Final[tuple[AssetInfo, ...]] = (
                 {"bybit": "NVDAXUSDT"},
                 coverage="unverified",
             ),
-            _form("xstock", {}, coverage="unverified"),
+            _form("xstock", {}, coverage="absent"),  # WHI-890 §6.2 / WHI-892
         ),
     ),
     AssetInfo(
@@ -207,7 +209,7 @@ _STOCK_ROWS: Final[tuple[AssetInfo, ...]] = (
                 {"bybit": "TSLAXUSDT"},
                 coverage="unverified",
             ),
-            _form("xstock", {}, coverage="unverified"),
+            _form("xstock", {}, coverage="absent"),  # WHI-890 §6.2 / WHI-892
             _form("ondo", {}, coverage="unverified"),
         ),
     ),
@@ -239,7 +241,7 @@ _STOCK_ROWS: Final[tuple[AssetInfo, ...]] = (
                 {"bybit": "AAPLXUSDT"},
                 coverage="unverified",
             ),
-            _form("xstock", {}, coverage="unverified"),
+            _form("xstock", {}, coverage="absent"),  # WHI-890 §6.2 / WHI-892
             _form("ondo", {}, coverage="unverified"),
         ),
     ),
@@ -266,7 +268,7 @@ _STOCK_ROWS: Final[tuple[AssetInfo, ...]] = (
                     "pancakeswap_bsc": "MSFTB",
                 },
             ),
-            _form("xstock", {}, coverage="unverified"),
+            _form("xstock", {}, coverage="absent"),  # WHI-890 §6.2 / WHI-892
         ),
     ),
     AssetInfo(
@@ -292,7 +294,7 @@ _STOCK_ROWS: Final[tuple[AssetInfo, ...]] = (
                     # HL has only proxy xyz:XYZ100 — never exact QQQ (WHI-883).
                 },
             ),
-            _form("xstock", {}, coverage="unverified"),
+            _form("xstock", {}, coverage="absent"),  # WHI-890 §6.2 / WHI-892
         ),
     ),
     AssetInfo(
@@ -313,7 +315,7 @@ _STOCK_ROWS: Final[tuple[AssetInfo, ...]] = (
                 {"bybit": "SPCXXUSDT"},
                 coverage="unverified",
             ),
-            _form("xstock", {}, coverage="unverified"),
+            _form("xstock", {}, coverage="absent"),  # WHI-890 §6.2 / WHI-892
         ),
     ),
 
@@ -344,7 +346,7 @@ _STOCK_ROWS: Final[tuple[AssetInfo, ...]] = (
                 coverage="unverified",
             ),
             _form("ondo", {}, coverage="unverified"),
-            _form("xstock", {}, coverage="unverified"),
+            _form("xstock", {}, coverage="absent"),  # WHI-890 §6.2 / WHI-892
         ),
     ),
     AssetInfo(
@@ -375,7 +377,7 @@ _STOCK_ROWS: Final[tuple[AssetInfo, ...]] = (
                 {"bybit": "GOOGLXUSDT"},
             ),
             _form("ondo", {}, coverage="unverified"),
-            _form("xstock", {}, coverage="unverified"),
+            _form("xstock", {}, coverage="absent"),  # WHI-890 §6.2 / WHI-892
         ),
     ),
     AssetInfo(
@@ -401,7 +403,7 @@ _STOCK_ROWS: Final[tuple[AssetInfo, ...]] = (
                 coverage="unverified",
             ),
             _form("ondo", {}, coverage="unverified"),
-            _form("xstock", {}, coverage="unverified"),
+            _form("xstock", {}, coverage="absent"),  # WHI-890 §6.2 / WHI-892
         ),
     ),
     AssetInfo(
@@ -426,7 +428,7 @@ _STOCK_ROWS: Final[tuple[AssetInfo, ...]] = (
                 coverage="unverified",
             ),
             _form("ondo", {}, coverage="unverified"),
-            _form("xstock", {}, coverage="unverified"),
+            _form("xstock", {}, coverage="absent"),  # WHI-890 §6.2 / WHI-892
         ),
     ),
     AssetInfo(
@@ -457,7 +459,7 @@ _STOCK_ROWS: Final[tuple[AssetInfo, ...]] = (
                 {"bybit": "METAXUSDT"},
             ),
             _form("ondo", {}, coverage="unverified"),
-            _form("xstock", {}, coverage="unverified"),
+            _form("xstock", {}, coverage="absent"),  # WHI-890 §6.2 / WHI-892
         ),
     ),
     AssetInfo(
@@ -488,9 +490,9 @@ _STOCK_ROWS: Final[tuple[AssetInfo, ...]] = (
                 {"bybit": "AMZNXUSDT"},
             ),
             _form("ondo", {}, coverage="unverified"),
-            # Mint exists; Sol prop probed NO_ROUTES (WHI-883). Catalog form,
-            # no fan-out (survey §5.2 — keep coverage=unverified, not absent).
-            _form("xstock", {}, coverage="unverified"),
+            # Mint exists; Sol props probed NO_ROUTES (WHI-883 / WHI-890 §6.2).
+            # coverage=absent + empty venues (WHI-892 honesty; no phantom props).
+            _form("xstock", {}, coverage="absent"),
         ),
     ),
     AssetInfo(
@@ -517,7 +519,7 @@ _STOCK_ROWS: Final[tuple[AssetInfo, ...]] = (
                 },
             ),
             _form("ondo", {}, coverage="unverified"),
-            _form("xstock", {}, coverage="unverified"),
+            _form("xstock", {}, coverage="absent"),  # WHI-890 §6.2 / WHI-892
         ),
     ),
     AssetInfo(
@@ -540,7 +542,7 @@ _STOCK_ROWS: Final[tuple[AssetInfo, ...]] = (
                 {"binance": "MSTRBUSDT"},
             ),
             _form("ondo", {}, coverage="unverified"),
-            _form("xstock", {}, coverage="unverified"),
+            _form("xstock", {}, coverage="absent"),  # WHI-890 §6.2 / WHI-892
         ),
     ),
 )

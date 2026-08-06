@@ -36,8 +36,23 @@ defines none: `docs/GIT_WORKFLOW.md` § High-risk paths), **Medium**
   `config/poller.yaml` jupiter group / `prop_jupiter` — WHI-883 §6 + WHI-890 §6:
   Free-plan budget cannot absorb xStock × 3 prop × tiers × sides; reconfirmed
   all 14 underlyings × 3 props = `absent_no_route` (WHI-891 left Jupiter +0).
-  Forms stay `unverified` / venue-less. Fix: green re-probe with mint decimals
+  Forms are now `coverage=absent` + venue-less (WHI-892 honesty chrome);
+  still no poller membership. Fix: green re-probe with mint decimals
   then a named Free-plan offset before any poller membership.
+
+- **Non-live stock matrix cells share the `no_quote` dash glyph** (Low, WHI-892).
+  `frontend/src/lib/status.ts` / `StatusCell` — WHI-799 §6.1.1 maps
+  never-promoted forms to row-label coverage badges (`unverified` / `no
+  route`); cells for venue-bearing non-live rows stay empty ("—") because
+  default fan-out is live-only. Distinct from pull-poller `not_sampled`.
+  Fix if product wants a cell-level "not quoted" badge: inject synthetic
+  status or a StatusCell empty-state keyed by form coverage.
+
+- **Catalog↔adapter resolvability test reaches private token helpers** (Low, WHI-892).
+  `tests/test_assets_catalog.py::test_catalog_stock_venues_adapter_resolvable`
+  — Pancake/Tessera branches call `_base_token` / `_token_for_form`.
+  Acceptable until adapters grow a public resolve seam; fail-closed
+  `else: raise` on unknown venue slugs is the main guarantee.
 
 - **BSC RPC bucket shared by poller sweep and live `/simulate`** (Medium, WHI-891).
   `config/poller.yaml` rpc group / `config/rpc.yaml` `BSC_RPC_URL` — WHI-891

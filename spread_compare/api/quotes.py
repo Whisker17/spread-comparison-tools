@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from decimal import Decimal, InvalidOperation
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
@@ -76,7 +76,8 @@ class FormInfoResponse(BaseModel):
     id: str
     form_class: str
     representations: dict[str, str]
-    coverage: str
+    # Closed vocabulary (spread_compare.assets.FormCoverage / WHI-799 §6.1.1).
+    coverage: Literal["live", "unverified", "absent"]
 
 
 class AssetResponse(BaseModel):

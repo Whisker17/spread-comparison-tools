@@ -88,13 +88,43 @@ export const FORM_DISPLAY_ORDER: readonly StockFormId[] = [
   "xstock",
 ];
 
+/** Form-level coverage (mirrors GET /assets FormInfo.coverage / WHI-799 §6.1.1). */
+export type FormCoverage = "live" | "unverified" | "absent";
+
 export type StockFormDef = {
   id: StockFormId;
   form_class: FormClass;
   /** Venue slug → representation label. */
   representations: Readonly<Record<string, string>>;
-  coverage: "live" | "unverified" | "absent";
+  coverage: FormCoverage;
 };
+
+/**
+ * Synthetic venue slug for venue-less forms (summary row only).
+ * Never sent to /quotes or stream filters (WHI-892 §6.1.1).
+ */
+export const CATALOG_SUMMARY_VENUE = "catalog" as const;
+
+/** Non-live forms never win §5.2 best (WHI-892). Live-only eligibility. */
+export function isBestEligibleCoverage(coverage: FormCoverage): boolean {
+  return coverage === "live";
+}
+
+/** Human chrome for form coverage on row labels (SSOT for coverage copy). */
+export function coverageBadgeLabel(coverage: FormCoverage): string | null {
+  if (coverage === "unverified") return "unverified";
+  if (coverage === "absent") return "no route";
+  return null;
+}
+
+/** Representation text for venue-less summary rows (SSOT with badge labels). */
+export function coverageSummaryRepresentation(
+  coverage: FormCoverage,
+): string {
+  if (coverage === "absent") return "no route (surveyed)";
+  if (coverage === "unverified") return "not verified";
+  return "—";
+}
 
 /**
  * Static live-form fallback when `GET /assets` is unavailable.
@@ -474,11 +504,47 @@ export type StockMatrixRow = {
   form: StockFormId;
   formClass: FormClass;
   representation: string;
+  coverage: FormCoverage;
   /** Instrument type for label chrome (perp form → perp, tokenized → spot on CEX). */
   instrumentType?: InstrumentType;
+  /** True when this is a venue-less form summary row (no adapter). */
+  isCatalogSummary: boolean;
 };
 
-/** Parse live forms from GET /assets, falling back to static catalog. */
+function parseCoverage(raw: string | undefined | null): FormCoverage {
+  if (raw === "unverified" || raw === "absent" || raw === "live") return raw;
+  // Unknown wire values fail closed to unverified (never silently live).
+  return "unverified";
+}
+
+function mapWireForm(f: {
+  id: string;
+  form_class?: string;
+  coverage?: string;
+  representations?: Record<string, string> | null;
+}): StockFormDef | null {
+  const id = f.id.toLowerCase() as StockFormId;
+  const wireClass =
+    f.form_class === "perp" || f.form_class === "tokenized"
+      ? (f.form_class as FormClass)
+      : formClassOf(id);
+  if (!wireClass) return null;
+  return {
+    id,
+    form_class: wireClass,
+    // Carry wire coverage through — never stamp "live" (WHI-892 defect 2).
+    coverage: parseCoverage(f.coverage),
+    representations: f.representations ?? {},
+  };
+}
+
+/**
+ * Parse forms from GET /assets (all coverages), falling back to static live.
+ *
+ * WHI-892: list, do not omit — unverified/absent forms render with badges.
+ * Static fallback stays live-only (offline shell) when the assets query has
+ * not loaded; once the API responds, wire forms replace static entirely.
+ */
 export function resolveStockForms(
   underlying: string,
   assets: readonly AssetResponse[] | undefined | null,
@@ -486,31 +552,14 @@ export function resolveStockForms(
   const key = underlying.toUpperCase();
   const fromApi = assets?.find((a) => a.id.toUpperCase() === key);
   if (fromApi?.forms != null) {
-    // Catalog row present: use live forms only (may be empty if demoted).
-    // Do NOT fall back to static when the API deliberately returns 0 live forms.
-    // Unverified forms stay on GET /assets for discovery, not the matrix
-    // (matches backend resolve_forms_filter → live).
-    const live = fromApi.forms
-      .filter((f) => f.coverage === "live")
-      .map((f): StockFormDef | null => {
-        const id = f.id.toLowerCase() as StockFormId;
-        // Prefer wire form_class; fall back to closed vocabulary.
-        const wireClass =
-          f.form_class === "perp" || f.form_class === "tokenized"
-            ? (f.form_class as FormClass)
-            : formClassOf(id);
-        if (!wireClass) return null;
-        return {
-          id,
-          form_class: wireClass,
-          coverage: "live",
-          representations: f.representations ?? {},
-        };
-      })
+    // Catalog row present: use every form the wire lists (may be empty).
+    // Do NOT fall back to static when the API returns forms (even 0 live).
+    const mapped = fromApi.forms
+      .map((f) => mapWireForm(f))
       .filter((f): f is StockFormDef => f !== null);
-    return sortForms(live);
+    return sortForms(mapped);
   }
-  // Underlying absent from GET /assets (or assets not loaded yet) → static.
+  // Underlying absent from GET /assets (or assets not loaded yet) → static live.
   const staticForms =
     STOCK_FORMS_STATIC[key as StockUnderlying] ?? ([] as StockFormDef[]);
   return sortForms([...staticForms].filter((f) => f.coverage === "live"));
@@ -524,8 +573,9 @@ function sortForms(forms: StockFormDef[]): StockFormDef[] {
 }
 
 /**
- * Expand live forms into matrix row keys, stable order:
- * form display order, then venue slug.
+ * Expand forms into matrix row keys, stable order: form display order, then
+ * venue slug. Venue-less forms get one ``catalog|<form>`` summary row
+ * (WHI-892 §6.1.1) so "no route" / "unverified" are visible.
  */
 export function buildStockMatrixRows(
   forms: readonly StockFormDef[],
@@ -533,6 +583,18 @@ export function buildStockMatrixRows(
   const rows: StockMatrixRow[] = [];
   for (const form of forms) {
     const venues = Object.keys(form.representations).sort();
+    if (venues.length === 0) {
+      rows.push({
+        rowKey: makeRowKey(CATALOG_SUMMARY_VENUE, form.id),
+        venue: CATALOG_SUMMARY_VENUE,
+        form: form.id,
+        formClass: form.form_class,
+        representation: coverageSummaryRepresentation(form.coverage),
+        coverage: form.coverage,
+        isCatalogSummary: true,
+      });
+      continue;
+    }
     for (const venue of venues) {
       const rep = form.representations[venue] ?? "";
       const instrumentType: InstrumentType | undefined =
@@ -547,14 +609,19 @@ export function buildStockMatrixRows(
         form: form.id,
         formClass: form.form_class,
         representation: rep,
+        coverage: form.coverage,
         instrumentType,
+        isCatalogSummary: false,
       });
     }
   }
   return rows;
 }
 
-/** Union of venue slugs across live forms (for stream /quotes filter). */
+/**
+ * Real venue slugs for stream /quotes filters.
+ * Excludes the synthetic catalog summary venue.
+ */
 export function venuesFromForms(forms: readonly StockFormDef[]): string[] {
   const set = new Set<string>();
   for (const form of forms) {
@@ -565,13 +632,41 @@ export function venuesFromForms(forms: readonly StockFormDef[]): string[] {
   return [...set].sort();
 }
 
-/** True when any live form is bstock (show rebase footnote). */
+/**
+ * Live form ids with at least one real venue — default quote fan-out only.
+ * Unverified/absent stay matrix chrome (badge / summary row) without stream
+ * requests (WHI-799 §6.1.1 default fan-out = live; WHI-892 out of scope to
+ * widen sampling).
+ */
+export function liveQuoteableFormIds(forms: readonly StockFormDef[]): string[] {
+  return forms
+    .filter(
+      (f) =>
+        f.coverage === "live" && Object.keys(f.representations).length > 0,
+    )
+    .map((f) => f.id);
+}
+
+/** Row keys that must never win §5.2 best (non-live coverage). */
+export function nonLiveRowKeys(rows: readonly StockMatrixRow[]): string[] {
+  return rows
+    .filter((r) => !isBestEligibleCoverage(r.coverage))
+    .map((r) => r.rowKey);
+}
+
+/** True when any form is bstock (show rebase footnote). */
 export function hasBstockForm(forms: readonly StockFormDef[]): boolean {
   return forms.some((f) => f.id === "bstock");
 }
 
+function rowFormBadge(row: StockMatrixRow): string {
+  const form = formBadgeLabel(row.form);
+  const cov = coverageBadgeLabel(row.coverage);
+  return cov ? `${form} · ${cov}` : form;
+}
+
 /**
- * Matrix / TOB row labels with form badge + venue symbol.
+ * Matrix / TOB row labels with form badge + venue symbol + coverage chrome.
  * Keys are form-aware row keys (`venue|form`).
  */
 export function buildStocksVenueLabels(
@@ -579,11 +674,15 @@ export function buildStocksVenueLabels(
 ): Record<string, string> {
   const out: Record<string, string> = {};
   for (const row of rows) {
+    if (row.isCatalogSummary) {
+      out[row.rowKey] = `${rowFormBadge(row)} · ${row.representation}`;
+      continue;
+    }
     out[row.rowKey] = buildVenueRowLabels([row.venue], {
       representations: { [row.venue]: row.representation },
       instrumentType: row.instrumentType,
       includeOrderbookSymbol: true,
-      formBadge: formBadgeLabel(row.form),
+      formBadge: rowFormBadge(row),
     })[row.venue]!;
   }
   return out;
@@ -595,11 +694,15 @@ export function stocksVenueSummaryLabels(
 ): Record<string, string> {
   const out: Record<string, string> = {};
   for (const row of rows) {
+    if (row.isCatalogSummary) {
+      out[row.rowKey] = `${rowFormBadge(row)} · ${row.representation}`;
+      continue;
+    }
     out[row.rowKey] = buildVenueSummaryLabel(row.venue, {
       representations: { [row.venue]: row.representation },
       instrumentType: row.instrumentType,
       includeOrderbookSymbol: true,
-      formBadge: formBadgeLabel(row.form),
+      formBadge: rowFormBadge(row),
     });
   }
   return out;
@@ -609,7 +712,9 @@ export function stocksVenueSummaryLabels(
 export function orderbookRows(
   rows: readonly StockMatrixRow[],
 ): StockMatrixRow[] {
-  return rows.filter((r) => isOrderbookVenue(r.venue));
+  return rows.filter(
+    (r) => !r.isCatalogSummary && isOrderbookVenue(r.venue),
+  );
 }
 
 /** Persistent bStocks footnote (WHI-798 §8 Q14). */
