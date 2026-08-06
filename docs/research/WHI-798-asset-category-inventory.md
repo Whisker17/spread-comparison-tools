@@ -253,7 +253,7 @@ v1 从「预设 venue 集合的交集」出发，交集为空即降级——被�
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | Invesco QQQ | QQQB | ✅ | ✅（24h ~$23M） | **✅ 直连** | — | ⛔ | ⛔ | QQQx `Xs8S…WHZ` | ⛔ |
 | SpaceX | SPCXB | ✅ | ✅（~$10M） | **✅ 直连** | — | ⛔ | ✅ `SPCXXUSDT` | SPCXx | ⛔ |
-| NVIDIA | NVDAB | ✅ | ✅（~$12M） | **✅ 直连** | NVDAon（BSC/ETH/Sol） | ✅ NVDAon 池 | ✅ `NVDAXUSDT` | NVDAx `Xsc9…qEh` | ⛔（复测） |
+| NVIDIA | NVDAB | ✅ | ✅（~$12M；**WHI-883 注**：2026-08-06 Gecko 顶池为 NVDAB/**GPU** 非 USDT，Phase-1 NVDAB/USDT 池未在该日复钉） | **✅ 直连** | NVDAon（BSC/ETH/Sol） | ✅ NVDAon 池 | ✅ `NVDAXUSDT` | NVDAx `Xsc9…qEh` | ⛔（复测 HumidiFi；其它 prop 见 WHI-883） |
 | SK Hynix | SKHYB | ✅ | ✅ | ⛔（4000） | SKHYon | ⛔ | ⛔ | SKHYx | ⛔ |
 | Micron | MUB | ✅ | ✅ | ⛔ | MUon | 未验证 | ⛔ | — | ⛔ |
 | SanDisk | SNDKB | ✅ | ✅ | ⛔ | SNDKon | ⛔ | ⛔ | SNDK（Backpack） | ⛔ |

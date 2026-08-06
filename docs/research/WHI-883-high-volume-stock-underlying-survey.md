@@ -20,7 +20,7 @@
 ## 1. 结论摘要（TL;DR）
 
 1. **13 个候选 underlying 全部有可交易的 equity perp 路径**（Binance TradFi + Bybit linear + Lighter + ApeX stockContract；HL `xyz:` exact 除 SPY/QQQ 外全有）。相对 Phase-1 仅 4 个 perp ticker，扩容空间很大。
-2. **bStocks（`*B`）Binance spot 对本名单全覆盖**——含 WHI-798 快照中曾记为 absent 的 **`AMDB`**（本轮 `AMDBUSDT` TRADING，24h quote ≈ $4.5M）。Pancake v3 池对多数 `*B` 可搜到，但 **TVL/成交量高度不均**（QQQB/SPYB/NVDAB 厚；AVGOB/AMDB 等极薄）。
+2. **bStocks（`*B`）Binance spot 对本名单全覆盖**——含 WHI-798 快照中曾记为 absent 的 **`AMDB`**（本轮 `AMDBUSDT` TRADING，24h quote ≈ $4.5M）。Pancake 侧约半数 `*B` 有可标 `live` 的 v3 池，其余 `unverified`/`live_thin`/非 v3；**TVL/成交量高度不均**（QQQB/SPYB 厚；AVGOB/AMDB 等极薄；NVDAB 顶池可能是 GPU 对）。
 3. **Bybit xStock spot（`*X`）是子集**：AMZN/GOOGL/META/COIN/HOOD/CRCL（+ 锚点 TSLA/NVDA/AAPL）live；**AMD / PLTR / MSTR / AVGO / ORCL / SPY / QQQ 无 `*X`**。
 4. **Solana xStocks mint 全员有**（Jupiter tokens v2）。Prop 抽检：**`AMZNx` × HumidiFi/TesseraV/BisonFi** → 全部 `NO_ROUTES_FOUND`（`absent_no_route`）；**`NVDAx` × HumidiFi only** → `NO_ROUTES_FOUND`（其它 prop **未测**，正文不写「三家」）。**其余 xStock prop 列为 `unverified`**（含高 liq 的 SPYx/QQQx）——不得外推，也**不得**在未逐 mint 复测前塞进 Jupiter poller。
 5. **Tessera BSC** 已知 live 子集仍是 **QQQB / SPCXB / NVDAB / NVDAon**（本轮 Kyber 复测 QQQB ✅）。其它 `*B`/`*on` 一律 **`unverified`**（Gecko pool-detail 429 阻断批量拿合约地址），**不**写成 absent。
