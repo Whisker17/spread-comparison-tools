@@ -192,9 +192,11 @@ class DefaultMarkProvider:
         try:
             resolved = resolve_hl_coin(asset)
         except UnsupportedPerpSymbolError:
-            resolved = None
-        coin = resolved.venue_symbol if resolved is not None else asset.upper()
-        mult = resolved.multiplier if resolved is not None else Decimal(1)
+            # Fail closed for proxy-only equities (SPY/QQQ) and bad dex prefixes —
+            # never fall back to a bare main-book coin (WHI-883 §5.4).
+            return None
+        coin = resolved.venue_symbol
+        mult = resolved.multiplier
         dex = coin.split(":", 1)[0] if ":" in coin else ""
         body: dict[str, object] = {"type": "metaAndAssetCtxs"}
         if dex:

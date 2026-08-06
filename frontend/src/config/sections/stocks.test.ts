@@ -88,9 +88,7 @@ describe("stocks section config (WHI-882 underlying-first)", () => {
 
   it("CRCL / AMD / SPY static live forms match WHI-884 survey fan-out", () => {
     const crcl = resolveStockForms("CRCL", null);
-    expect(crcl.map((f) => f.id).sort()).toEqual(
-      ["bstock", "perp", "xstock_cex"].sort(),
-    );
+    expect(crcl.map((f) => f.id).sort()).toEqual(["bstock", "perp"].sort());
     const amd = resolveStockForms("AMD", null);
     const amdPerp = amd.find((f) => f.id === "perp")!;
     expect(amdPerp.representations.bybit).toBe("AMDSTOCKUSDT");

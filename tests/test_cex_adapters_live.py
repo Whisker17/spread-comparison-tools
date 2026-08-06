@@ -166,10 +166,7 @@ async def test_live_whi884_crcl_perp_and_amd_bybit_wire() -> None:
                 f"{slug} CRCL perp: {quote.status} {quote.error_message}"
             )
             assert quote.form == "perp"
-            if slug == "binance":
-                assert quote.venue_symbol == "CRCLUSDT"
-            else:
-                assert quote.venue_symbol == "CRCLUSDT"
+            assert quote.venue_symbol == "CRCLUSDT"
         finally:
             await adapter.aclose()
 

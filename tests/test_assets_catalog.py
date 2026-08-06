@@ -131,12 +131,13 @@ def test_stock_perp_underlyings_mid_seed() -> None:
 
 def test_whi884_p0_live_forms() -> None:
     """WHI-884 P0 underlyings expose verified venues as coverage=live."""
-    # CRCL: 5 exact perps + BN bstock + Bybit *X.
+    # CRCL: 5 exact perps + BN bstock; *X catalogued but not live fan-out.
     crcl_live = {f.id: f for f in live_forms("CRCL")}
-    assert set(crcl_live) == {"perp", "bstock", "xstock_cex"}
+    assert set(crcl_live) == {"perp", "bstock"}
     assert crcl_live["perp"].representations["hyperliquid"] == "xyz:CRCL"
     assert crcl_live["bstock"].representations == {"binance": "CRCLBUSDT"}
-    assert crcl_live["xstock_cex"].representations == {"bybit": "CRCLXUSDT"}
+    crcl_x = get_form("CRCL", "xstock_cex")
+    assert crcl_x is not None and crcl_x.coverage == "unverified"
 
     # AMD Bybit wire is AMDSTOCKUSDT (not AMDUSDT).
     amd_perp = get_form("AMD", "perp")
@@ -154,12 +155,15 @@ def test_whi884_p0_live_forms() -> None:
     # QQQ still keeps live bstock (Phase-1).
     assert "bstock" in {f.id for f in live_forms("QQQ")}
 
-    # AMZN xstock: prop NO_ROUTES → coverage=absent (still catalogued).
+    # AMZN xstock: mint exists, prop NO_ROUTES → unverified (still catalogued).
     amzn = get_asset("AMZN")
     assert amzn is not None and amzn.forms is not None
     xstock = next(f for f in amzn.forms if f.id == "xstock")
-    assert xstock.coverage == "absent"
+    assert xstock.coverage == "unverified"
     assert "xstock" not in {f.id for f in live_forms("AMZN")}
+    # GOOGL/META/AMZN *X are live fan-out; CRCL *X is not (survey §5.2).
+    assert "xstock_cex" in {f.id for f in live_forms("GOOGL")}
+    assert "xstock_cex" not in {f.id for f in live_forms("CRCL")}
 
     # AMD/PLTR bstock catalogued but not live fan-out (survey §5.2).
     amd_bstock = get_form("AMD", "bstock")

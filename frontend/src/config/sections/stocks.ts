@@ -232,12 +232,6 @@ export const STOCK_FORMS_STATIC: Readonly<
       coverage: "live",
       representations: { binance: "CRCLBUSDT" },
     },
-    {
-      id: "xstock_cex",
-      form_class: "tokenized",
-      coverage: "live",
-      representations: { bybit: "CRCLXUSDT" },
-    },
   ],
   GOOGL: [
     {
@@ -393,7 +387,7 @@ export const STOCK_ASSET_SUBTITLES: Readonly<Record<string, string>> = {
   MSFT: "Microsoft · equity perp",
   QQQ: "Invesco QQQ · equity perp + bStocks (BSC)",
   SPCX: "SpaceX · bStocks (BSC)",
-  CRCL: "Circle · equity perp + bStocks + xStocks CEX",
+  CRCL: "Circle · equity perp + bStocks",
   GOOGL: "Alphabet · equity perp + bStocks + xStocks CEX",
   AMD: "AMD · equity perp (Bybit AMDSTOCKUSDT)",
   PLTR: "Palantir · equity perp",

@@ -334,6 +334,8 @@ _STOCK_ROWS: Final[tuple[AssetInfo, ...]] = (
             _form(
                 "xstock_cex",
                 {"bybit": "CRCLXUSDT"},
+                # Survey §5.2 row 1: catalog *X, not fan-out (unlike GOOGL/META/AMZN).
+                coverage="unverified",
             ),
             _form("ondo", {}, coverage="unverified"),
             _form("xstock", {}, coverage="unverified"),
@@ -468,9 +470,9 @@ _STOCK_ROWS: Final[tuple[AssetInfo, ...]] = (
                 {"bybit": "AMZNXUSDT"},
             ),
             _form("ondo", {}, coverage="unverified"),
-            # Prop routes probed NO_ROUTES (WHI-883 absent_no_route); form
-            # remains listed with coverage=absent (not silent drop).
-            _form("xstock", {}, coverage="absent"),
+            # Mint exists; Sol prop probed NO_ROUTES (WHI-883). Catalog form,
+            # no fan-out (survey §5.2 — keep coverage=unverified, not absent).
+            _form("xstock", {}, coverage="unverified"),
         ),
     ),
     AssetInfo(

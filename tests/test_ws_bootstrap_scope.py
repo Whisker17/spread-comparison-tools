@@ -64,7 +64,8 @@ def test_cex_ws_includes_p0_books_and_amd_bybit_wire() -> None:
     by_spot = _cex_symbols(
         "spot", venue="bybit", tokenized_forms=("xstock_cex",)
     )
-    assert "CRCLXUSDT" in by_spot
+    # CRCL *X is unverified (survey §5.2); GOOGL/META/AMZN *X are live.
+    assert "CRCLXUSDT" not in by_spot
     assert "GOOGLXUSDT" in by_spot
     # bStocks never on Bybit spot subscribe.
     assert "CRCLBUSDT" not in by_spot
