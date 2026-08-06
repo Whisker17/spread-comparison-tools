@@ -452,9 +452,12 @@ SSOT 落地位置：`spread_compare/assets.py`（实现 issue [WHI-881](https://
 | **TSLA** | `xstock` | tokenized | — | — | — | — | — | — | — | 📗 TSLAx mint；Sol prop ⛔ |
 | **TSLA** | `ondo` | tokenized | — | — | — | — | — | 📌 | 📌 | §4.3 未逐池钉死 |
 | **AAPL** | `perp` | perp | ✅ | ✅ | ✅ xyz:AAPL | ✅ | ✅ | — | — | Phase-1 live |
+| **AAPL** | `bstock` | tokenized | 📗 AAPLBUSDT | — | — | — | — | 📌 | 📌 | §4.3 BN spot ✅；Pancake/Tessera 未钉 |
+| **AAPL** | `ondo` | tokenized | — | — | — | — | — | 📌 | 📌 | AAPLon；另 Uniswap ETH 可选（未列列） |
 | **AAPL** | `xstock_cex` | tokenized | — | 📗 AAPLXUSDT | — | — | — | — | — | |
 | **AAPL** | `xstock` | tokenized | — | — | — | — | — | — | — | 📗 AAPLx mint |
 | **MSFT** | `perp` | perp | ✅ | ✅ | ✅ xyz:MSFT | ✅ | ✅ | — | — | Phase-1 live |
+| **MSFT** | `bstock` | tokenized | 📗 MSFTBUSDT | — | — | — | — | 📌 | 📌 | §4.3 BN spot ✅ |
 | **MSFT** | `xstock` | tokenized | — | — | — | — | — | — | — | 📗 MSFTx mint；无 Bybit `*X` |
 | **QQQ** | `bstock` | tokenized | ✅ QQQBUSDT s | — | — | — | — | ✅ QQQB | ✅ QQQB | 旧 id `QQQB` |
 | **QQQ** | `perp` | perp | 📗 QQQUSDT p | 📗 | ⛔ proxy-only xyz:XYZ100 | 📗 | 📗 | — | — | §4.4 四 venue live；HL **禁止** exact `xyz:QQQ` |
@@ -622,7 +625,7 @@ P2: JUP, venue-specific high-vol (HYPE, PUMP) — flagged
 | WHI-809 | 只做 BTC/ETH/SOL；用 §3.3 映射；SOL 不含 EVM AMM；**v2：BTC/ETH 的 prop AMM 报价点扩展到 Tessera Base/BSC** |
 | WHI-810 / FE stocks | **v3**：section 以 underlying 列表驱动；forms 来自 `GET /assets`；旧 `TOKENIZED_STOCK_ASSETS`/`EQUITY_PERP_ASSETS` 双板作废（FE issue 跟 WHI-881） |
 | WHI-881 | **实现** underlying-first catalog + `Quote.form` + 共享 mid + API + stream 行键含 form（本文件 §4.6/§6.2 + WHI-799 §3.3/§5.2/§6 为 SSOT） |
-| WHI-883 | 高成交量 stock underlying 扩表 survey — **必须**采用 §4.6 form 分类法；v2 P1/P2 名单（§4.5 / 下文）不得静默丢弃 |
+| WHI-883 | 高成交量 stock underlying 扩表 survey — **必须**采用 §4.6 form 分类法；v2 P1/P2 名单（§4.5 / §6.2.2）不得静默丢弃 |
 | WHI-811 | P0 八个非 meme L1/大盘；P1 缩放 meme；**不要**对 Solana prop 扫 meme；v2：Base Tessera 增量资产 AERO/VIRTUAL/EURC 可选入观察仓 |
 | WHI-806 | 资产侧：Solana 三 pair 之外，**新增 Tessera EVM（KyberSwap）**：Base WETH/cbBTC/AERO/VIRTUAL/EURC vs USDC；BSC BTCB + **forms** `bstock`/`ondo` under QQQ/SPCX/NVDA vs USDT |
 
@@ -635,3 +638,4 @@ P2: JUP, venue-specific high-vol (HYPE, PUMP) — flagged
 | 2026-08-03 | 初版 + v2 asset-first Stocks 重做（bStocks / Tessera BSC） |
 | 2026-08-06 | **v3 / WHI-880**：underlying-first；§1.2 / §4.6 form 分类法；§6.2 改为 underlying×form×venue；§7.2 与下游交接更新；legacy id breaking rename 表；Q17/Q18 |
 | 2026-08-06 | Review r1：§ 编号修正（修订记录在 §11 后）；覆盖图例拆分；恢复 P1/P2 名单；修正 §6.2.1 与 §4.3 live 证据对齐 |
+| 2026-08-06 | Review r2：补 AAPL/MSFT `bstock`（及 AAPL `ondo`）📗/📌 行；交接交叉引用 §6.2.2 |

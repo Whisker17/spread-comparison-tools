@@ -135,8 +135,14 @@ fetch/subscribe (no SizeSelector `All`).
 Unsampled tier status (WHI-865): pull-store misses emit
 `status=not_sampled` (not `error`); WHI-799 §6.1/§6.6 + FE StatusCell
 muted "not sampled"; Jupiter sample anchors `$100/$1k/$10k` (both sides).
+Underlying-first stock model **spec** (WHI-880): WHI-798 §1.2/§4.6/§6.2
++ WHI-799 §3.3/§5.2.1/§6.2/§6.7 amended — one logical asset per equity
+underlying, forms as a dimension (`perp`/`bstock`/`ondo`/`xstock`/
+`xstock_cex`), shared mid, form_class best; **code still per-token
+catalog** until WHI-881.
 
-**Not implemented:** remaining venue adapters (WHI-805), collector.
+**Not implemented:** remaining venue adapters (WHI-805), collector;
+underlying-first catalog/API/stream (WHI-881).
 Do not assume a module exists until its issue lands.
 
 **Blocking gap:** `docs/DESIGN.md` is still mostly the empty template stub (§4.2 module

@@ -133,9 +133,15 @@ Staleness 语义：
 | --- | --- | --- | --- |
 | **P0** | `cex_tradfi_index` | CEX TradFi / stock-perp **index**（优先 Binance stock/TradFi index；字段以 adapter 实测为准，如 premiumIndex / 专用 TradFi ticker 的 index 侧） | 该 underlying 有可用 equity/TradFi index |
 | **P1** | `proxy_perp_mark_median` | **Binance + Bybit + Hyperliquid + Lighter + ApeX** 上该 underlying **perp form** 可用 mark 的中位数；偶数样本 → 中间两档算术平均（与现 `median_marks` 一致） | P0 失败 |
-| **P2** | `binance_spot_tob` 或 `bybit_spot_tob` | **Tokenized CEX spot TOB fallback**（不是「按 form 分 mid」）。**固定尝试序**（第一个成功即停，**不**按实时深度动态排序）：① `bstock` @ Binance spot（`{TICKER}BUSDT`，如 `NVDABUSDT` / `QQQBUSDT` / `SPCXBUSDT`）→ `mid_source=binance_spot_tob`；② 否则 `xstock_cex` @ Bybit spot（`{TICKER}XUSDT`，如 `NVDAXUSDT`）→ `mid_source=bybit_spot_tob` | P0/P1 皆失败（常见：无 perp 的 underlying，或私募无 index） |
+| **P2** | `binance_spot_tob` 或 `bybit_spot_tob` | **Tokenized CEX spot TOB fallback**（不是「按 form 分 mid」）。**固定尝试序**（第一个成功即停，**不**按实时深度动态排序）：① `bstock` @ Binance spot → `mid_source=binance_spot_tob`；② 否则 `xstock_cex` @ Bybit spot → `mid_source=bybit_spot_tob`。Wire symbol **只** 从 catalog / `cex_symbols` 的 `(asset, form)` 映射取（如 `NVDABUSDT`），**禁止**靠 `{TICKER}B` 字符串模板猜（反例：命名不规则资产） | P0/P1 皆失败（常见：无 perp 的 underlying，或私募无 index） |
 
-**Config 表面（WHI-881）**：废除按旧 token id 键控的 `TOKENIZED_CEX_SPOT` / `TOKENIZED_UNDERLYING`。改为 underlying 级 mid 策略字段（或等价表）：`stock_mid_p2_order: list[(form, venue)]`，默认 `[(bstock, binance), (xstock_cex, bybit)]`；`SPCX` 等同默认但跳过 P0/P1。符号解析走 `(asset, form)` → venue symbol。
+**Config 表面（WHI-881）**：废除按旧 token id 键控的 `TOKENIZED_CEX_SPOT` / `TOKENIZED_UNDERLYING`。在 `config/mid.yaml`（或等价 typed settings）增加 underlying 级：
+
+| 键 | 默认 | 标注 |
+| --- | --- | --- |
+| `mid.stock_mid_p2_order` | `[{form: bstock, venue: binance}, {form: xstock_cex, venue: bybit}]` | **unvalidated** pending `docs/DESIGN.md` §2 |
+
+`SPCX` 等同默认但跳过 P0/P1。P1 mark 采样：允许读 **catalog 中存在的** perp venue 符号，即使该 form 当前 `coverage=unverified` / 未 fan-out 到 dashboard（mark 拉取样 ≠ quote fan-out）。
 
 **刻意推翻 v2 的点**：v2 让 `NVDAB` 用 `NVDABUSDT` TOB、`NVDAON` 用 equity ref、`NVDA` perp 用 mark median——**三个 mid**，bps 不可比。v3 只保留 **underlying 一个 mid**；tokenized CEX TOB 降为 **P2 fallback**（及 basis 的本地锚，见下），不再是 bstock 行的专属 mid。
 
@@ -164,9 +170,9 @@ spread_bps = (P* − mid) / mid * 10_000   # buy
 | 规则 | 口径 |
 | --- | --- |
 | 分解（展示） | `basis_bps = (local_anchor - mid) / mid * 10_000`（与 `costs.basis_bps` 同形）≈ **结构性** wrapper/NAV/形态基差；`spread_bps − basis_bps`（若两者皆非 null）≈ 相对 **该 form 本地锚** 的执行偏离——**仅诊断**，不另立排序主键 |
-| `local_anchor` 优先级 | ① orderbook：`venue_mark` 或 local TOB mid；② AMM/prop：尽可能小名义的 mid 等价或上游 mark；③ 否则 `basis_bps=null` |
+| `local_anchor` | **Phase 1**：仅 orderbook 行填 — `venue_mark` 或 local TOB mid。AMM / prop：**`basis_bps=null`**（不为分解再打一枪 quoter；避免 WHI-864 Jupiter 预算被吃穿）。后续若要 AMM basis，另开 issue + 配置 notional（须 `unvalidated` + DESIGN.md §2） |
 | **禁止双重计数** | **不得**再把 `basis_bps` 加进 `total_cost_bps`（total 已含相对 fair mid 的 all-in 偏离 + 显式费） |
-| **排序主键** | 默认仍 `total_cost_bps`（§5.2）；它回答「相对 fair mid 谁更便宜」。同一 `form_class` 内跨 form 比较时，**用户应同时看 `basis_bps`**——较低 total 可能来自较负的形态基差而非更薄的盘口 |
+| **排序主键** | 默认仍 `total_cost_bps`（§5.2）；它回答「相对 fair mid 谁更便宜」。同一 `form_class` 内跨 form 比较时，**用户应同时看 `basis_bps`**（orderbook 行）——较低 total 可能来自较负的形态基差而非更薄的盘口 |
 | Rebase | bStocks rebase 日：同一 `snapshot_id` 内自洽；**跨快照**历史对比（WHI-817）按 rebase 事件分段，公司行动日异常不入窗口统计（实现 WHI-816/817） |
 
 **废弃**：`equity_ref_same_as_perp` 作为「某 tokenized token 的独立 mid 源」。实现 **删除** 对该源的分 asset 解析路径（与 legacy asset id 一样做 breaking 清理，不留静默 alias）。若枚举值暂留在 `MidSource` 类型里仅为反序列化旧缓存，不得再写出新 Quote。
@@ -389,12 +395,7 @@ else:
 
 #### 5.2.1 Stocks：跨 form 的 `best` 语义（v3 / WHI-880）
 
-产品问题「哪里买 NVIDIA 暴露最便宜」同时碰到两类**不同暴露**：
-
-| `form_class` | forms | 暴露 |
-| --- | --- | --- |
-| `perp` | `perp` | 保证金 + funding；无托管证书 |
-| `tokenized` | `bstock`, `ondo`, `xstock`, `xstock_cex` | 托管/证书/包装现货；无 funding |
+`form_class` 成员与暴露定义见 **WHI-798 §4.6**（此处不重抄表）。产品问题「哪里买 NVIDIA 暴露最便宜」同时碰到 `perp` vs `tokenized` 两类不同暴露。
 
 **拍板（默认 + 可选）**：
 
@@ -542,6 +543,17 @@ Quote {
 **禁止**假设 `(venue, asset)` 或 `(venue, asset, instrument_type)` 唯一——反例：`tessera_bsc` + `NVDA` 同时有 `bstock` 与 `ondo`（二者常同为 `prop_amm`）。
 
 **Stream / cache / store 键（WHI-848 / WHI-846 / WHI-843）**：所有把 pair 压成字符串键的路径（至少 `stream.py` delta key、`quote_store`、orderbook cache、poller 矩阵）**必须**纳入 `form`（null 时用哨兵如 `-`）。今日 `f"{venue}|{notional}|{instrument_type}"` 在双 form 同 instrument_type 时会静默互相覆盖——WHI-881 必改。
+
+**`instrument_type` 派生（唯一规则）**：
+
+| Venue class | 规则 |
+| --- | --- |
+| CEX (`binance`, `bybit`) | `form_class=perp` → `perp`；`form_class=tokenized` → `spot` |
+| Perp DEX | 恒 `perp`（仅 `form=perp` 有意义） |
+| AMM DEX | 恒 `amm_pool` |
+| Prop AMM | 恒 `prop_amm` |
+
+Adapter **不得**另立推导；catalog 只提供 form + venue 覆盖，不覆盖上表。
 
 **不变量**：
 
@@ -755,7 +767,7 @@ FormInfo {
 | `asset` | **Required.** Underlying id（`NVDA` / `QQQ` / `SPCX` / …）。 |
 | `forms` | Optional. 逗号分隔 form id 过滤；缺省 = 该 asset 全部 **live** forms。 |
 | `notional` / `notionals` | 不变（WHI-843）。 |
-| `venues` / `instrument_type` | 保持现有过滤能力；`instrument_type` 与 form 默认值叠加（equity 路径常 `perp`）。 |
+| `venues` / `instrument_type` | 保持现有过滤能力；与上表 `instrument_type` 派生叠加。 |
 
 **响应**：
 
@@ -772,13 +784,25 @@ QuotesResponse {
 
 **不变量**：一次 `asset=NVDA` 响应内，所有 form 行共享同一 `ReferenceMid`（在各自 `snapshot_id` 规则下）；`tessera_bsc` 可出现 **两条** pair（`form=bstock` 与 `form=ondo`）。
 
+#### 6.7.2b `WS /stream`（WHI-848；dashboard 主路径）
+
+| 项 | 口径 |
+| --- | --- |
+| Subscribe filter | 在现有 asset/venues/notionals 上增加可选 `forms`（与 HTTP 同语义；缺省 = live forms） |
+| Delta / snapshot 行 | 每条 pair 带 `form`；coalesce 键含 form（§6.2） |
+| Resnapshot | 同 filter 全量重发 |
+
+#### 6.7.2c `POST /simulate`（WHI-881 顺带；非本 issue 实现）
+
+可选 body/query 字段 `form`（单值）或 `forms`（列表）。缺省 = 扩全部 live forms；§5.2.1 form_class 分区排名。形状细节留给实现 issue，但 **不得** 无 form 维度地混排。
+
 #### 6.7.3 Breaking renames（asset id + category）
 
 | 决策 | **Breaking，不做静默 alias 双写**（pre-v1 可接受） |
 | --- | --- |
 | 废除 top-level asset | `NVDAB`, `NVDAON`, `QQQB`, `SPCXB` |
 | 迁移 | WHI-798 §4.6 → `(NVDA,bstock)` / `(NVDA,ondo)` / `(QQQ,bstock)` / `(SPCX,bstock)`；旧 `equity_perp` 行 `TSLA|NVDA|AAPL|MSFT` → 同 id + `form=perp` |
-| 请求旧 id | `GET /quotes?asset=NVDAB` → **404**（或 422）+ 机读 `error_code: legacy_asset_id` + `message` 含目标 `asset`+`form` |
+| 请求旧 id | **HTTP 422** + 机读 body：`error_code: legacy_asset_id`，`message` 含目标 `asset`+`form`（与 WHI-815 结构化 422 一致；**不用** 404） |
 | `GET /assets` | **不**再列出旧 id 行 |
 | **Category 枚举** | 废除 `tokenized_stock` 与 `equity_perp`；stock underlyings 统一 `category="stock"`。`crypto_blue_chip` / `other` 不变 |
 | Mid 枚举 | 停止写出 `equity_ref_same_as_perp` 作为新 mid 源（§3.3.3） |
@@ -936,3 +960,4 @@ bps API 保留 4 位小数；展示可再圆整到 2 位。
 | 2026-08-05 | **WHI-865**：§6.1 / §6.6 增 `not_sampled`（pull poller 稀疏矩阵未采 / 本进程尚未采样；非 transport 失败）。§5.2 best 仍仅 `status=ok` 且 `total_cost_bps` 非 null；不计入 error-rate / WHI-819 失败信号。Jupiter 采样档改 `$100/$1k/$10k`（见 `config/poller.yaml` 算术注释） |
 | 2026-08-06 | **v3 / WHI-880**：underlying-first stocks。§2.2 增 `form`/`form_class`；§3.3 重写为单一 underlying mid 链 + SPCX 特例 + `basis_bps` 规则（推翻 v2 分 form mid）；§5.2.1 best 按 form_class；§6.2/6.3/6.4 增 `form` 与行身份；§6.7 API 草案 + legacy breaking rename。公式算术不变 |
 | 2026-08-06 | Review r1：P2 mid 固定尝试序 + config 表面；澄清 spread 含形态基差但禁止双重计数；stream/store 键必含 form；`FormInfo` 去掉错误的单一 `instrument_type`；stock `representations` 强制 null；category/`equity_ref` breaking 表；simulate 标为 WHI-881 顺带 |
+| 2026-08-06 | Review r2：`stock_mid_p2_order` 标 unvalidated；P1 mark 可读未 fan-out perp；AMM basis Phase1=null；instrument_type 派生表；stream `forms` 过滤；legacy 固定 422；符号只走 catalog 映射 |
