@@ -140,22 +140,24 @@ def _cex_symbols(
     ``tokenized_forms`` adds live stock spot forms (``bstock`` on Binance,
     ``xstock_cex`` on Bybit). Empty → crypto/perp books only.
     """
-    from spread_compare.assets import get_form, is_stock_asset
+    from spread_compare.assets import get_form
 
     out: list[str] = []
+    # Crypto / others: form=None (cex_symbols flat map).
+    # Stock perps: form-aware API only (never bare-asset alias — WHI-881).
     for asset in supported_cex_assets(book_side):  # type: ignore[arg-type]
-        # Stock underlyings require form for resolution (WHI-881). Crypto stays form=None.
-        if is_stock_asset(asset):
-            if book_side != "perp":
-                continue
-            form: str | None = "perp"
-        else:
-            form = None
-        sym = resolve_cex_symbol(
-            asset, book_side, form=form, venue=venue  # type: ignore[arg-type]
-        )
+        if get_form(asset, "perp") is not None:
+            continue  # handled below via form="perp"
+        sym = resolve_cex_symbol(asset, book_side, venue=venue)  # type: ignore[arg-type]
         if sym:
             out.append(sym)
+    if book_side == "perp":
+        for asset in supported_cex_assets("perp", form="perp"):
+            sym = resolve_cex_symbol(
+                asset, "perp", form="perp", venue=venue
+            )
+            if sym:
+                out.append(sym)
     if book_side == "spot":
         for form_id in tokenized_forms:
             for asset in supported_cex_assets("spot", form=form_id):

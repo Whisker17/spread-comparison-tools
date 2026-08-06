@@ -111,10 +111,16 @@ class UnsupportedPerpSymbolError(ValueError):
     """Logical asset / coin form is not allowed on this venue map."""
 
 
+# Underlyings with only HL proxy indices (xyz:SP500 / xyz:XYZ100) — never
+# exact tickers. Bare resolution must fail closed (WHI-883 §5.4 / R4).
+_HL_NO_EXACT: Final[frozenset[str]] = frozenset({"SPY", "QQQ"})
+
+
 def resolve_hl_coin(asset: str) -> PerpVenueSymbol:
     """Map logical asset → Hyperliquid coin form + multiplier.
 
-    Rejects disallowed HIP-3 dex prefixes (only ``xyz`` + main book).
+    Rejects disallowed HIP-3 dex prefixes (only ``xyz`` + main book) and
+    equity underlyings with proxy-only HL markets (SPY/QQQ).
     """
     key = asset.strip()
     if ":" in key:
@@ -126,6 +132,11 @@ def resolve_hl_coin(asset: str) -> PerpVenueSymbol:
             )
         return PerpVenueSymbol(f"{dex_l}:{name.upper()}")
     upper = key.upper()
+    if upper in _HL_NO_EXACT:
+        raise UnsupportedPerpSymbolError(
+            f"hyperliquid has no exact market for {upper} "
+            f"(proxy index only — do not map as exact)"
+        )
     if upper in _HL_OVERRIDES:
         return _HL_OVERRIDES[upper]
     return PerpVenueSymbol(upper)

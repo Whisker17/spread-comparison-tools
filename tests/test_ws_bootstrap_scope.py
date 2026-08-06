@@ -13,6 +13,7 @@ import pytest
 from spread_compare.perp_symbols import (
     HL_PHASE1_ASSETS,
     PERP_DEX_SERVED_ASSETS,
+    UnsupportedPerpSymbolError,
     resolve_hl_coin,
 )
 from spread_compare.ws_bootstrap import (
@@ -41,6 +42,10 @@ def test_hl_coins_are_exact_product_markets_not_full_meta() -> None:
     # Bound well below the 300+ full-meta count that shipped broken.
     assert len(coins) <= len(HL_PHASE1_ASSETS)
     assert len(coins) < 50
+    # Structural: bare SPY/QQQ must not resolve to a fake main-book coin.
+    for bare in ("SPY", "QQQ"):
+        with pytest.raises(UnsupportedPerpSymbolError):
+            resolve_hl_coin(bare)
 
 
 def test_cex_ws_includes_p0_books_and_amd_bybit_wire() -> None:
