@@ -24,7 +24,7 @@
     "pool_url": "https://dexscreener.com/bsc/0x8fb4243b553ac29ba088acf00b9b7da24bd6690c",
     "n_pairs": 30,
     "fee_tier": "0.25%",
-    "fee_tier_provenance": "geckoterminal pool name / first-pass survey (see gecko_pools.json where present)"
+    "fee_tier_provenance": "geckoterminal pool name 'NVDAB / USDT 0.25%' (gecko_pools.json)"
   },
   "NVDAON": {
     "address": "0xa9ee28c80f960b889dfbd1902055218cba016f75",
@@ -51,7 +51,7 @@
     "pool_url": "https://dexscreener.com/bsc/0xb90bdbfbdffd4af5a636b5805539edeafb969308",
     "n_pairs": 7,
     "fee_tier": "1%",
-    "fee_tier_provenance": "geckoterminal pool name / first-pass survey (see gecko_pools.json where present)"
+    "fee_tier_provenance": "geckoterminal pool name 'NVDAon / USDT 1%' (gecko_pools.json)"
   },
   "TSLAB": {
     "address": "0x5b1910eaad6450e50f816082aa078c41f10c292f",
@@ -78,7 +78,7 @@
     "pool_url": "https://dexscreener.com/bsc/0xb0f5e5400e8f0f7c242f2b7740c004f020579c41",
     "n_pairs": 30,
     "fee_tier": "0.25%",
-    "fee_tier_provenance": "geckoterminal pool name / first-pass survey (see gecko_pools.json where present)"
+    "fee_tier_provenance": "geckoterminal pool name 'TSLAB / USDT 0.25%' (gecko_pools.json)"
   },
   "TSLAON": {
     "address": "0x2494b603319d4d9f9715c9f4496d9e0364b59d93",
@@ -105,7 +105,8 @@
     "price_usd": "317.20",
     "pool_url": "https://dexscreener.com/bsc/0x4b7c3542ff4f63c44a5711755e7727e71138e74b",
     "n_pairs": 4,
-    "fee_tier": null
+    "fee_tier": "0.25%",
+    "fee_tier_provenance": "geckoterminal pool name 'TSLAon / USDT 0.25%' (gecko_pools.json)"
   },
   "AAPLB": {
     "address": "0x431a3bee82e2ca41e49895cbece5bb0f76a89b7a",
@@ -132,7 +133,7 @@
     "pool_url": "https://dexscreener.com/bsc/0xe9b9998b2ec5430d2246c7f1f8d9f298c97d7365",
     "n_pairs": 30,
     "fee_tier": "0.25%",
-    "fee_tier_provenance": "geckoterminal pool name / first-pass survey (see gecko_pools.json where present)"
+    "fee_tier_provenance": "geckoterminal pool name 'AAPLB / USDT 0.25%' (gecko_pools.json)"
   },
   "QQQB": {
     "address": "0x205812cdbed920aff76c6580abd681a46d11efc7",
@@ -159,8 +160,8 @@
     "pool_is_usdt": true,
     "pool_url": "https://dexscreener.com/bsc/0xe531fcb1f5a195de7608b9f4f9518544c2cdb693",
     "n_pairs": 30,
-    "fee_tier": "0.25%",
-    "fee_tier_provenance": "geckoterminal pool name / first-pass survey (see gecko_pools.json where present)"
+    "fee_tier": "unverified",
+    "fee_tier_provenance": "no gecko_pools.json name this round; do not invent"
   },
   "SPCXB": {
     "address": "0xbe9d156892e55e7154bcd3cb0fea677f9d3103e1",
@@ -186,8 +187,8 @@
     "pool_is_usdt": true,
     "pool_url": "https://dexscreener.com/bsc/0x977daffc095b33872e2741c19568925015c35b4d",
     "n_pairs": 30,
-    "fee_tier": "0.25%",
-    "fee_tier_provenance": "geckoterminal pool name / first-pass survey (see gecko_pools.json where present)"
+    "fee_tier": "unverified",
+    "fee_tier_provenance": "no gecko_pools.json name this round; do not invent"
   },
   "AAPLON": {
     "address": "0x390a684ef9cade28a7ad0dfa61ab1eb3842618c4",
@@ -213,8 +214,8 @@
     "pool_is_usdt": true,
     "pool_url": "https://dexscreener.com/bsc/0x8dcba688219dc5ee6dbf74ee2f74045e2a07c79c",
     "n_pairs": 5,
-    "fee_tier": "0.218%",
-    "fee_tier_provenance": "geckoterminal name 'AAPLon / USDT 0.218%'"
+    "fee_tier": "unverified",
+    "fee_tier_provenance": "no gecko_pools.json name this round; do not invent"
   },
   "MSFTB": {
     "address": "0x80106cb3ead06659a5ad19df39d9b4733863b9b0",
@@ -241,8 +242,8 @@
     "pool_is_usdt": true,
     "pool_url": "https://dexscreener.com/bsc/0x58e44c2e5b17ef40915b4b3ae8451b6b87285b44",
     "n_pairs": 30,
-    "fee_tier": "0.25%",
-    "fee_tier_provenance": "geckoterminal pool name / first-pass survey (see gecko_pools.json where present)"
+    "fee_tier": "unverified",
+    "fee_tier_provenance": "no gecko_pools.json name this round; do not invent"
   },
   "MSFTON": {
     "address": "0x6bfe75d1ad432050ea973c3a3dcd88f02e2444c3",
@@ -268,7 +269,8 @@
     "pool_is_usdt": true,
     "pool_url": "https://dexscreener.com/bsc/0xfb3beb765210975e49448af9f2c037896b044277",
     "n_pairs": 3,
-    "fee_tier": null
+    "fee_tier": "unverified",
+    "fee_tier_provenance": "no gecko_pools.json name this round; do not invent"
   },
   "QQQON": {
     "address": "0x0cde6936d305d5b34667fc46425e852efd73559a",
@@ -294,7 +296,8 @@
     "n_pairs": 3,
     "fee_tier": "unverified",
     "rejected": false,
-    "symbol_match_ok": true
+    "symbol_match_ok": true,
+    "fee_tier_provenance": "no gecko_pools.json name this round; do not invent"
   },
   "SPCXON": {
     "address": "0xd0a58bc9d88d3ff48c0294cb7e45937d0e41a928",
@@ -320,7 +323,8 @@
     "pool_is_usdt": false,
     "pool_url": "https://dexscreener.com/bsc/0xa8e8a29e8c88b5a1cdeed34b6da90d0801adb0aa",
     "n_pairs": 10,
-    "fee_tier": null
+    "fee_tier": "unverified",
+    "fee_tier_provenance": "no gecko_pools.json name this round; do not invent"
   },
   "CRCLB": {
     "address": "0x80f3d493ebce97e343c53d29a137942416b4ffc0",
@@ -346,8 +350,8 @@
     "pool_is_usdt": true,
     "pool_url": "https://dexscreener.com/bsc/0xa7edabea8ae776264b6abe4383606456d3e79168",
     "n_pairs": 2,
-    "fee_tier": "0.3%",
-    "fee_tier_provenance": "geckoterminal name 'CRCLB / BNB 0.3%'"
+    "fee_tier": "unverified",
+    "fee_tier_provenance": "no gecko_pools.json name this round; do not invent"
   },
   "CRCLON": {
     "address": "0x992879cd8ce0c312d98648875b5a8d6d042cbf34",
@@ -373,8 +377,8 @@
     "pool_is_usdt": false,
     "pool_url": "https://dexscreener.com/bsc/0xc1d141d6a9f8e8eb7b9ce1aecd4a8932f047c075",
     "n_pairs": 2,
-    "fee_tier": "24.5%",
-    "fee_tier_provenance": "geckoterminal name 'CRCLon / USDT 24.5%'"
+    "fee_tier": "unverified",
+    "fee_tier_provenance": "no gecko_pools.json name this round; do not invent"
   },
   "GOOGLB": {
     "address": "0x3f53de71c126bdabae20f9cd64848d317f6c3238",
@@ -401,8 +405,8 @@
     "pool_is_usdt": true,
     "pool_url": "https://dexscreener.com/bsc/0x89001d846f7ca36ee089f73eefc25657e1798144",
     "n_pairs": 5,
-    "fee_tier": "0.25%",
-    "fee_tier_provenance": "geckoterminal pool name / first-pass survey (see gecko_pools.json where present)"
+    "fee_tier": "unverified",
+    "fee_tier_provenance": "no gecko_pools.json name this round; do not invent"
   },
   "GOOGLON": {
     "address": "0x091fc7778e6932d4009b087b191d1ee3bac5729a",
@@ -428,8 +432,8 @@
     "pool_is_usdt": true,
     "pool_url": "https://dexscreener.com/bsc/0x6731932c92e882cc22a10749324c70a7d6adde60",
     "n_pairs": 2,
-    "fee_tier": "0.168%",
-    "fee_tier_provenance": "geckoterminal name 'GOOGLon / USDT 0.168%'"
+    "fee_tier": "unverified",
+    "fee_tier_provenance": "no gecko_pools.json name this round; do not invent"
   },
   "METAB": {
     "address": "0x7425889fe94f9d693e8daefe88bcced6acfef4c0",
@@ -456,8 +460,8 @@
     "pool_is_usdt": true,
     "pool_url": "https://dexscreener.com/bsc/0xc2151a561e928d16576d75ea88544543ac63d80b",
     "n_pairs": 1,
-    "fee_tier": "0.25%",
-    "fee_tier_provenance": "geckoterminal pool name / first-pass survey (see gecko_pools.json where present)"
+    "fee_tier": "unverified",
+    "fee_tier_provenance": "no gecko_pools.json name this round; do not invent"
   },
   "AMZNB": {
     "address": "0x1a4b499833a79a09ad7cf1d42d7dacf71e92eb00",
@@ -483,8 +487,8 @@
     "pool_is_usdt": true,
     "pool_url": "https://dexscreener.com/bsc/0x7530beb7bde5843f668cf31b996fa1f748c9b6b1",
     "n_pairs": 1,
-    "fee_tier": "0.25%",
-    "fee_tier_provenance": "geckoterminal pool name / first-pass survey (see gecko_pools.json where present)"
+    "fee_tier": "unverified",
+    "fee_tier_provenance": "no gecko_pools.json name this round; do not invent"
   },
   "AMZNON": {
     "address": "0x4553cfe1c09f37f38b12dc509f676964e392f8fc",
@@ -510,7 +514,8 @@
     "pool_is_usdt": false,
     "pool_url": "https://dexscreener.com/bsc/0x8617ba6deee616694601adc41ab7ffe0e610907e",
     "n_pairs": 1,
-    "fee_tier": null
+    "fee_tier": "unverified",
+    "fee_tier_provenance": "no gecko_pools.json name this round; do not invent"
   },
   "SPYB": {
     "address": "0x7138b48df7d98d7e3cc221bfe7192d0a178182d8",
@@ -537,8 +542,8 @@
     "pool_is_usdt": true,
     "pool_url": "https://dexscreener.com/bsc/0x7aa6d92fc369a8c1edc631a3aac44efb0808ddbf",
     "n_pairs": 30,
-    "fee_tier": "0.01%",
-    "fee_tier_provenance": "geckoterminal pool name / first-pass survey (see gecko_pools.json where present)"
+    "fee_tier": "unverified",
+    "fee_tier_provenance": "no gecko_pools.json name this round; do not invent"
   },
   "SPYON": {
     "address": "0x6a708ead771238919d85930b5a0f10454e1c331a",
@@ -564,7 +569,8 @@
     "pool_is_usdt": true,
     "pool_url": "https://dexscreener.com/bsc/0x3b31ad84092cefefc71f71a8f84aace37aca3ee1",
     "n_pairs": 1,
-    "fee_tier": null
+    "fee_tier": "unverified",
+    "fee_tier_provenance": "no gecko_pools.json name this round; do not invent"
   },
   "MSTRON": {
     "address": "0xb7ad2d5caf33a577281aba41ddd2eb6fb3217777",
@@ -599,7 +605,9 @@
     "provenance": "pancakeswap-extended tokenlist (AMDB) https://tokens.pancakeswap.finance/pancakeswap-extended.json",
     "rejected": false,
     "symbol_match_ok": true,
-    "n_pairs": 0
+    "n_pairs": 0,
+    "fee_tier": "unverified",
+    "fee_tier_provenance": "no gecko_pools.json name this round; do not invent"
   },
   "MSTRB": {
     "address": "0xe87afb3076aeb0f9b14e368de8145ae6a2826a14",
@@ -613,7 +621,9 @@
     "provenance": "pancakeswap-extended tokenlist (MSTRB) https://tokens.pancakeswap.finance/pancakeswap-extended.json",
     "rejected": false,
     "symbol_match_ok": true,
-    "n_pairs": 0
+    "n_pairs": 0,
+    "fee_tier": "unverified",
+    "fee_tier_provenance": "no gecko_pools.json name this round; do not invent"
   },
   "PLTRB": {
     "address": "0x0ca5d51d0277bd006fd9607d3e560785ebad8222",
@@ -627,6 +637,8 @@
     "provenance": "pancakeswap-extended tokenlist (PLTRB) https://tokens.pancakeswap.finance/pancakeswap-extended.json",
     "rejected": false,
     "symbol_match_ok": true,
-    "n_pairs": 0
+    "n_pairs": 0,
+    "fee_tier": "unverified",
+    "fee_tier_provenance": "no gecko_pools.json name this round; do not invent"
   }
 }

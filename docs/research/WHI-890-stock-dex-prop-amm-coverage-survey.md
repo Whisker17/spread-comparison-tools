@@ -62,7 +62,7 @@ Status vocabulary (aligned with WHI-883):
 2. **PancakeSwap extended tokenlist** — `https://tokens.pancakeswap.finance/pancakeswap-extended.json` (chainId 56). Source for `AMDB` / `PLTRB` / `MSTRB` / `MSFTB` / `METAB` / `GOOGLB` / `QQQB` / `SPYB`.
 3. **DexScreener** pair search + `/token-pairs/v1/bsc/{address}` for TVL, 24h volume, fee labels.
 4. **BSC public RPC `eth_call`**: `decimals()` / `symbol()` / `name()` for every retained address.
-5. Rejected mis-hits recorded, not promoted: `SQQQon` (UltraPro Short QQQ Ondo) searched as QQQon; `Armstrong` / flapsh junk for MSTRon.
+5. Rejected mis-hits recorded in `bsc_tokens.json` (`rejected: true`), not promoted into the matrix: `SQQQon` (ProShares UltraPro Short QQQ Ondo) when searching QQQon; flapsh / non-Ondo noise on early MSTRon/TSLAON searches.
 
 GeckoTerminal was used early (then rate-limited) for pool names / fee hints; DexScreener + Pancake list were primary for addresses.
 
@@ -84,9 +84,9 @@ All decimals measured **18** via `eth_call`. Listed symbol is on-chain `symbol()
 | METAB | bstock | `0x7425889fe94f9d693e8daefe88bcced6acfef4c0` | 18 | Meta Platforms | Pancake extended |
 | AMZNB | bstock | `0x1a4b499833a79a09ad7cf1d42d7dacf71e92eb00` | 18 | Amazon | DexScreener + on-chain |
 | CRCLB | bstock | `0x80f3d493ebce97e343c53d29a137942416b4ffc0` | 18 | Circle Internet Group Inc. | DexScreener + on-chain |
-| AMDB | bstock | `0x75fd4cf6f8392e41e70391d60c90c0d5211603a1` | 18 | Advanced Micro Devices Inc | Pancake extended only |
-| PLTRB | bstock | `0x0ca5d51d0277bd006fd9607d3e560785ebad8222` | 18 | Palantir Technologies | Pancake extended only |
-| MSTRB | bstock | `0xe87afb3076aeb0f9b14e368de8145ae6a2826a14` | 18 | Strategy Inc. | Pancake extended only |
+| AMDB | bstock | `0x75fd4cf6f8392e41e70391d60c90c0d5211603a1` | 18 | Advanced Micro Devices Inc | Pancake extended tokenlist + on-chain; **0** DexScreener pairs |
+| PLTRB | bstock | `0x0ca5d51d0277bd006fd9607d3e560785ebad8222` | 18 | Palantir Technologies | Pancake extended tokenlist + on-chain; **0** pairs |
+| MSTRB | bstock | `0xe87afb3076aeb0f9b14e368de8145ae6a2826a14` | 18 | Strategy Inc. | Pancake extended tokenlist + on-chain; **0** pairs |
 | TSLAON | ondo | `0x2494b603319d4d9f9715c9f4496d9e0364b59d93` | 18 | Tesla (Ondo Tokenized) | DexScreener base + on-chain |
 | AAPLON | ondo | `0x390a684ef9cade28a7ad0dfa61ab1eb3842618c4` | 18 | Apple (Ondo Tokenized) | DexScreener + on-chain |
 | MSFTON | ondo | `0x6bfe75d1ad432050ea973c3a3dcd88f02e2444c3` | 18 | Microsoft (Ondo Tokenized) | DexScreener + on-chain |
@@ -96,9 +96,9 @@ All decimals measured **18** via `eth_call`. Listed symbol is on-chain `symbol()
 | SPYON | ondo | `0x6a708ead771238919d85930b5a0f10454e1c331a` | 18 | SPDR S&P 500 ETF (Ondo Tokenized) | DexScreener + on-chain |
 | SPCXON | ondo | `0xd0a58bc9d88d3ff48c0294cb7e45937d0e41a928` | 18 | SpaceX (Ondo Tokenized) | DexScreener + on-chain |
 
-| QQQon | ondo | `0x0cde6936d305d5b34667fc46425e852efd73559a` | 18 | Invesco QQQ (Ondo Tokenized) | DexScreener exact + on-chain (USDC pool, thin) |
+| QQQON | ondo | `0x0cde6936d305d5b34667fc46425e852efd73559a` | 18 | Invesco QQQ (Ondo Tokenized) | DexScreener exact + on-chain (USDC pool, thin) |
 
-**Still `unverified` (no trustworthy BSC address this round):** `METAon`, `MSTRon`, `AMDon`, `PLTRon` — CoinGecko + DexScreener exact-symbol hunt in `missing_hunt.json` found no clean BSC hit. Earlier false positives (`SQQQon` inverse ETF; flapsh `Armstrong`) were rejected and **must not** appear as pool stats for those rows.
+**Still `unverified` (no trustworthy BSC address this round):** `METAon`, `MSTRon`, `AMDon`, `PLTRon` — CoinGecko + DexScreener exact-symbol hunt in `missing_hunt.json` found no clean BSC hit.
 
 Address SSOT for implementation: [`samples/whi-890-raw/bsc_tokens.json`](./samples/whi-890-raw/bsc_tokens.json).  
 Drop-in Python fragment: [`samples/whi-890-raw/bsc_tokens_transcription.py.txt`](./samples/whi-890-raw/bsc_tokens_transcription.py.txt).
@@ -109,34 +109,34 @@ Drop-in Python fragment: [`samples/whi-890-raw/bsc_tokens_transcription.py.txt`]
 
 Bar (WHI-883 §6.4 phase B, unvalidated product tunable): **TVL ≳ $10 000** on a **v3 + USDT** pool. Measured numbers below are DexScreener `liquidity.usd` / `volume.h24` at survey time — auditable in `bsc_tokens.json`.
 
-Fee tiers below come from GeckoTerminal pool **names** (e.g. `NVDAB / USDT 0.25%`) when DexScreener JSON only exposed `labels: ["v3"]`. Recorded in `bsc_tokens.json` as `fee_tier` + `fee_tier_provenance`. WHI-891 should still treat fee tier as a quoter probe input (adapter already multi-tier probes), not as a single hard-coded tier.
+Fee tiers: **only** values with a name in `gecko_pools.json` are recorded (e.g. `NVDAB / USDT 0.25%`). Everything else is `fee_tier=unverified` — DexScreener JSON only returned `labels: ["v3"]` without a fee. WHI-891 must not hard-code a single tier; the Pancake adapter already multi-probes fee tiers.
 
 ### 4.1 Clears bar → `live` (fan-out candidates)
 
-| ticker | TVL (USD) | 24h vol (USD) | fee (name) | pair (DexScreener) |
+| ticker | TVL (USD) | 24h vol (USD) | fee (evidenced) | pair (DexScreener) |
 | --- | --- | --- | --- | --- |
-| SPCXB | **4 197 265** | 20 289 494 | 0.25% | already live |
-| QQQB | **2 404 454** | 128 654 761 | 0.25% | already live |
-| NVDAB | **1 255 015** | 5 474 809 | 0.25% | already live |
-| SPYB | **794 898** | 11 558 443 | **0.01%** | **new** |
-| AAPLB | **308 675** | 788 523 | 0.25% | **new** |
-| TSLAB | **218 943** | 427 768 | 0.25% | **new** |
-| MSFTB | **110 612** | 41 146 | 0.25% | **new** |
-| GOOGLB | **105 357** | 75 602 | 0.25% | **new** |
-| METAB | **45 772** | 8 380 | 0.25% | **new** |
-| AMZNB | **44 735** | 35 789 | 0.25% | **new** |
-| NVDAON | **10 526** | 3 531 | 1% | already live (just above bar) |
+| SPCXB | **4 197 265** | 20 289 494 | unverified | already live |
+| QQQB | **2 404 454** | 128 654 761 | unverified | already live |
+| NVDAB | **1 255 015** | 5 474 809 | **0.25%** | already live |
+| SPYB | **794 898** | 11 558 443 | unverified | **new** |
+| AAPLB | **308 675** | 788 523 | **0.25%** | **new** |
+| TSLAB | **218 943** | 427 768 | **0.25%** | **new** |
+| MSFTB | **110 612** | 41 146 | unverified | **new** |
+| GOOGLB | **105 357** | 75 602 | unverified | **new** |
+| METAB | **45 772** | 8 380 | unverified | **new** |
+| AMZNB | **44 735** | 35 789 | unverified | **new** |
+| NVDAON | **10 526** | 3 531 | **1%** | already live (just above bar) |
 
 ### 4.2 Below bar / wrong quote → `live_thin` (catalog only)
 
 | ticker | TVL | Note |
 | --- | --- | --- |
 | GOOGLON | 2 191 | v3/USDT thin |
-| QQQon | 1 641 | v3/**USDC** (not USDT) thin — address verified |
+| QQQON | 1 641 | v3/**USDC** (not USDT) thin — address verified |
 | SPYON | 1 061 | v3/USDT thin |
 | AMZNON | 5 898 | best pool WBNB, not USDT |
-| CRCLON | 2 888 | non-USDT quote |
-| TSLAON | 178 | non-USDT quote |
+| CRCLON | 2 888 | non-USDT quote (DexScreener quote symbol `比特币` — unvetted; TVL not USDT-comparable) |
+| TSLAON | 178 | non-USDT quote (same `比特币` caveat) |
 | SPCXON | 485 | non-USDT quote |
 | AAPLON | 23 | v3/USDT dust |
 | MSFTON | ~0 | listed pool, effectively empty book |
@@ -172,7 +172,9 @@ Gas is stable on green routes (`gasUsd` ≈ $0.41). **No green route at $1M eith
 
 ### 5.2 Everything else → `absent_no_route`
 
-Including thick Pancake names (`SPYB`, `AAPLB`, `TSLAB`, `GOOGLB`, …) and newly verified `QQQon`: Kyber returned **`route not found`** (code 4008) on all probed tiers/sides. That is the “per-token Kyber green” gate from WHI-883 §6.4 — **failed** for expansion.
+Including thick Pancake names (`SPYB`, `AAPLB`, `TSLAB`, `GOOGLB`, …) and newly verified `QQQON`: Kyber returned **`route not found`** (code 4008) on all probed tiers/sides (USDT in/out, matching production Tessera adapter quote asset). That is the “per-token Kyber green” gate from WHI-883 §6.4 — **failed** for expansion.
+
+**QQQON caveat:** its best public pool is **USDC**-quoted; Tessera probes used **USDT** (same as `BSC_TOKENS["USDT"]` / production). A USDC-native Tessera path was not separately probed — still no reason to add QQQON to the Tessera map without a green USDT or intentional USDC adapter change.
 
 ---
 
@@ -293,7 +295,7 @@ Full TSV: [`samples/WHI-890-underlying-form-venue-matrix.tsv`](./samples/WHI-890
 | underlying | ticker | Pancake | Tessera | Note |
 | --- | --- | --- | --- | --- |
 | NVDA | NVDAON | live | live | only ondo already in production |
-| QQQ | QQQon | live_thin (USDC) | absent_no_route | address verified; thin |
+| QQQ | QQQON | live_thin (USDC) | absent_no_route | address verified; thin; Tessera probed USDT |
 | others with address | *ON | live_thin or dust | absent_no_route | do not fan out |
 | META / MSTR / AMD / PLTR | — | unverified | unverified | no trusted address (`missing_hunt.json`) |
 
@@ -325,23 +327,24 @@ Implement **in order**; do not skip ahead.
 
 Keep existing: NVDAB, QQQB, SPCXB, NVDAON.
 
-**RPC / poller cost (computed, not deferred):**
+**RPC / poller cost (computed bound, with Multicall caveat):**
 
 | Quantity | Today (order of mag.) | After +7 Phase A tokens |
 | --- | --- | --- |
 | `rpc` group pacing | `max_rps: 5`, `interval_sec: 30` (`config/poller.yaml`) | same |
-| Comment in poller | “Full matrix ≈100 calls → ~20 s start-spacing” | — |
-| Marginal cost model | per extra token ≈ full §4.1 × both sides through quoter path | **+7 × ~10 ≈ +70 calls** if linear in tokens |
-| Start-spacing @ 5 RPS | 100/5 ≈ 20 s | 170/5 ≈ **34 s** |
-| vs `interval_sec` 30 | 1.5× headroom | **~0.88× — expected in-flight skip / overlap** |
+| Poller comment baseline | “Full matrix ≈100 calls → ~20 s start-spacing” | unvalidated engineering estimate |
+| Naive linear model | per extra token ≈ full §4.1 × sides | **+7 × ~10 ≈ +70 eth_call-equivalents** if unbatched |
+| Start-spacing @ 5 RPS (naive) | 100/5 ≈ 20 s | 170/5 ≈ **34 s** vs 30 s interval |
 
-**Named offset before shipping all 7 (pick one):**
+**Multicall3 (WHI-842)** batches fee-tier probes per RPC endpoint, so wall-clock growth is **sub-linear** in fee tiers — but **not free**: each new token still adds work (more Multicall payloads, more rate-limiter tokens, more fail paths). The naive 34 s figure is an **upper-bound go/no-go signal**, not a stopwatch measurement.
 
-1. **Ship A1–A3 only first** (SPYB, AAPLB, TSLAB) → +~30 calls → ~26 s start-spacing (still fits 30 s with thin headroom), then a follow-up for A4–A7 after measuring production skip counts; or  
-2. Raise `rpc.interval_sec` 30 → **45** (and `max_quote_age_for_best_sec` / `max_stale_sec` in proportion); or  
+**Named offset before shipping all 7 (pick one — still required):**
+
+1. **Ship A1–A3 only first** (SPYB, AAPLB, TSLAB), measure `/health` skip_count + sweep wall on production, then A4–A7; or  
+2. Raise `rpc.interval_sec` 30 → **45** (and age/stale gates in proportion); or  
 3. Sample fewer notionals on AMM the way Jupiter already does (3 tiers not 5) — product trade-off.
 
-Do not land all seven without one of the above.
+Do not land all seven with zero measurement and zero offset.
 
 **Not in Phase A:** CRCLB (empty pool), AMDB/PLTRB/MSTRB (zero pairs), all thin ondo except keep NVDAON.
 
@@ -361,7 +364,7 @@ Do not land all seven without one of the above.
 
 | Item | Action |
 | --- | --- |
-| Ondo tokens other than NVDAON | Keep addresses in research artifact; do not fan out until **USDT** v3 TVL ≥ $10k **and** (if Tessera desired) Kyber green. QQQon is verified but USDC/thin |
+| Ondo tokens other than NVDAON | Keep addresses in research artifact; do not fan out until **USDT** v3 TVL ≥ $10k **and** (if Tessera desired) Kyber green. QQQON is verified but USDC/thin |
 | AMDB / PLTRB / MSTRB | Address known; re-check pairs later; no quoter wire |
 | METAon / MSTRon / AMDon / PLTRon | Remain `unverified` (`missing_hunt.json`) |
 | Solana xStock props | Re-probe (with mint decimals) before any poller discussion; if green, apply §6.3 offset table |
