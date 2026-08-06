@@ -32,6 +32,15 @@ defines none: `docs/GIT_WORKFLOW.md` § High-risk paths), **Medium**
 
 ## Open
 
+- **Stock quote payload has no `form_class`; FE re-derives it** (Low, WHI-882).
+  `frontend/src/lib/pairIdentity.ts::formClassOf` /
+  `frontend/src/lib/summary.ts::bestVenuePerTier` — §5.2 form_class best uses a
+  FE-local form id set, while `GET /assets` already returns wire `form_class`.
+  A future form id not in the FE set can render a matrix row but never win best.
+  Deferred: Phase-1 forms are all known; adding `form_class` on `Quote` /
+  `SizeQuotePair` is a backend wire change (out of WHI-882 scope). Fix: stamp
+  `form_class` on pairs at fan-out, or thread catalog class into ranking.
+
 - **Frontend requires an absolute API origin (no same-origin relative base)** (Medium, WHI-857).
   `frontend/src/lib/apiBaseUrl.ts::resolveApiBaseUrl` only accepts absolute
   `http(s)` origins so production builds cannot bake loopback. Same-origin
