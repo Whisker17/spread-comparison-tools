@@ -147,6 +147,6 @@ async def test_live_pancake_phase_a_bstock_spy() -> None:
             assert quote.status == "ok", quote.error_message
             assert quote.effective_price is not None
             assert quote.qty_base is not None
-            assert quote.form == "bstock"
+            assert quote.venue_symbol is not None and "SPYB" in quote.venue_symbol
     finally:
         await adapter.aclose()

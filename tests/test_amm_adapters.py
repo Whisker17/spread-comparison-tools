@@ -156,22 +156,22 @@ def test_pancakeswap_supports_stock_underlyings() -> None:
     assert pcs._base_token("SPCX", form="bstock").address == BSC_TOKENS["SPCXB"].address
     assert pcs._base_token("NVDA", form="bstock").address == BSC_TOKENS["NVDAB"].address
     assert pcs._base_token("NVDA", form="ondo").address == BSC_TOKENS["NVDAON"].address
-    # WHI-890 Phase A addresses (survey §3.2).
+    # WHI-890 Phase A addresses (survey §3.2); form is always bstock.
     phase_a = {
-        "SPY": ("bstock", "SPYB", "0x7138b48df7d98d7e3cc221bfe7192d0a178182d8"),
-        "AAPL": ("bstock", "AAPLB", "0x431a3bee82e2ca41e49895cbece5bb0f76a89b7a"),
-        "TSLA": ("bstock", "TSLAB", "0x5b1910eaad6450e50f816082aa078c41f10c292f"),
-        "MSFT": ("bstock", "MSFTB", "0x80106cb3ead06659a5ad19df39d9b4733863b9b0"),
-        "GOOGL": ("bstock", "GOOGLB", "0x3f53de71c126bdabae20f9cd64848d317f6c3238"),
-        "META": ("bstock", "METAB", "0x7425889fe94f9d693e8daefe88bcced6acfef4c0"),
-        "AMZN": ("bstock", "AMZNB", "0x1a4b499833a79a09ad7cf1d42d7dacf71e92eb00"),
+        "SPY": ("SPYB", "0x7138b48df7d98d7e3cc221bfe7192d0a178182d8"),
+        "AAPL": ("AAPLB", "0x431a3bee82e2ca41e49895cbece5bb0f76a89b7a"),
+        "TSLA": ("TSLAB", "0x5b1910eaad6450e50f816082aa078c41f10c292f"),
+        "MSFT": ("MSFTB", "0x80106cb3ead06659a5ad19df39d9b4733863b9b0"),
+        "GOOGL": ("GOOGLB", "0x3f53de71c126bdabae20f9cd64848d317f6c3238"),
+        "META": ("METAB", "0x7425889fe94f9d693e8daefe88bcced6acfef4c0"),
+        "AMZN": ("AMZNB", "0x1a4b499833a79a09ad7cf1d42d7dacf71e92eb00"),
     }
-    for underlying, (form, ticker, address) in phase_a.items():
-        assert BSC_STOCK_FORM_TICKER[(underlying, form)] == ticker
+    for underlying, (ticker, address) in phase_a.items():
+        assert BSC_STOCK_FORM_TICKER[(underlying, "bstock")] == ticker
         tok = BSC_TOKENS[ticker]
         assert tok.address.lower() == address.lower()
         assert tok.decimals == 18
-        assert pcs._base_token(underlying, form=form).address == tok.address
+        assert pcs._base_token(underlying, form="bstock").address == tok.address
 
 
 def test_tessera_bsc_stock_whitelist_unchanged() -> None:
@@ -498,6 +498,57 @@ async def test_pancake_btc_buy_exact_out(
         assert quote.qty_base == pytest.approx(q_star)
         assert quote.fee_breakdown.gas_unknown is False
         assert quote.fee_breakdown.gas_usd is not None
+    finally:
+        await adapter.aclose()
+
+
+@pytest.mark.asyncio
+async def test_pancake_phase_a_spy_bstock_buy_exact_out(
+    eth_rpc_env: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """WHI-891: offline quoter path for Phase-A bStock (SPYB) at $1k."""
+    adapter = PancakeSwapBscAdapter()
+    await adapter.startup()
+
+    mid = ReferenceMid(
+        snapshot_id="s-spy",
+        asset="SPY",
+        mid=Decimal("600"),
+        mid_source="proxy_perp_mark_median",
+        timestamp=datetime(2026, 8, 3, tzinfo=UTC),
+    )
+    q_star = Decimal("1000") / mid.mid
+    usdt_in = int(Decimal("1005") * Decimal(10**18))
+
+    async def handler(to: str, data: bytes) -> bytes:
+        assert to.lower() == "0xb048bbc1ee6b733fffcfb9e9cef7375518e25997"
+        if data[:4].hex() == "bd21704a":
+            return _encode_quoter_result(usdt_in, gas_estimate=140_000)
+        raise AssertionError(data[:4].hex())
+
+    adapter._rpc = _FakeRpc(call_handler=handler)  # type: ignore[assignment]
+
+    async def fake_mid(http: Any, symbol: str) -> Decimal:
+        assert symbol == "BNBUSDT"
+        return Decimal("600")
+
+    monkeypatch.setattr(
+        "spread_compare.adapters._amm_common.fetch_binance_mid",
+        fake_mid,
+    )
+    try:
+        quote = await adapter.get_quote(
+            "SPY", "buy", Decimal("1000"), mid=mid, form="bstock"
+        )
+        assert quote.status == "ok"
+        assert quote.venue == "pancakeswap_bsc"
+        assert quote.asset == "SPY"
+        # Form is stamped by the aggregator pair, not the AMM builder.
+        assert quote.venue_symbol is not None and "SPYB" in quote.venue_symbol
+        assert quote.qty_base == pytest.approx(q_star)
+        assert quote.effective_price is not None
+        assert quote.fee_breakdown.gas_unknown is False
     finally:
         await adapter.aclose()
 

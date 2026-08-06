@@ -32,15 +32,12 @@ defines none: `docs/GIT_WORKFLOW.md` § High-risk paths), **Medium**
 
 ## Open
 
-- **P0 stock bStocks lack Pancake/Tessera rows despite surveyed pools** (Medium, WHI-884)
-  — **resolved by WHI-891** for Pancake Phase A (SPY/AAPL/TSLA/MSFT/GOOGL/META/AMZN
-  + existing quartet). Tessera stays the green quartet only (WHI-890 §5.2); thin/
-  zero-pool bStocks (CRCL/AMD/PLTR/MSTR) and non-NVDA Ondo remain catalog-only.
-
-- **Solana xStocks stay off Jupiter poller after P0 catalog expansion** (Medium, WHI-884)
-  — **reconfirmed by WHI-890 / WHI-891**: all 14 underlyings × 3 props =
-  `absent_no_route`; Jupiter poller unchanged (+0 assets, no budget offset). Re-open
-  only after a green re-probe with mint decimals + a named Free-plan offset.
+- **Solana xStocks stay off Jupiter poller after P0 catalog expansion** (Medium, WHI-884).
+  `config/poller.yaml` jupiter group / `prop_jupiter` — WHI-883 §6 + WHI-890 §6:
+  Free-plan budget cannot absorb xStock × 3 prop × tiers × sides; reconfirmed
+  all 14 underlyings × 3 props = `absent_no_route` (WHI-891 left Jupiter +0).
+  Forms stay `unverified` / venue-less. Fix: green re-probe with mint decimals
+  then a named Free-plan offset before any poller membership.
 
 - **Stock quote payload has no `form_class`; FE re-derives it** (Low, WHI-882).
   `frontend/src/lib/pairIdentity.ts::formClassOf` /
@@ -264,6 +261,13 @@ defines none: `docs/GIT_WORKFLOW.md` § High-risk paths), **Medium**
 ---
 
 ## Resolved
+
+- **P0 stock bStocks lack Pancake/Tessera rows despite surveyed pools**
+  (Medium, WHI-884 → fixed in WHI-891).
+  `spread_compare/assets.py` / `adapters/_prop_common.BSC_TOKENS` — Phase-A
+  Pancake bStocks (SPYB/AAPLB/TSLAB/MSFTB/GOOGLB/METAB/AMZNB + existing
+  quartet) wired with `coverage=live`. Tessera stays the green quartet only
+  (WHI-890 §5.2); thin/zero-pool bStocks and non-NVDA Ondo remain catalog-only.
 
 - **`probe_min_healthy_books` is a process-level floor, not per-stream**
   (Low, WHI-819 → fixed in WHI-856). `probe_min_healthy_books_per_stream` plus

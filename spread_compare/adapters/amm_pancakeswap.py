@@ -34,23 +34,9 @@ _QUOTER_V2 = "0xB048Bbc1Ee6b733FFfCFb9e9CeF7375518e25997"
 
 # Bridged ETH on BSC (not in prop BSC table): WHI-798 §3.2.
 _ETH = TokenInfo("0x2170Ed0880ac9A755fd29B2688956BD959F933F8", 18, "ETH")
-# Token table stays ticker-keyed (QQQB/NVDAB/…); underlyings resolve via form.
-_TOKEN_BY_TICKER: Final[dict[str, TokenInfo]] = {
-    "BTC": BSC_TOKENS["BTC"],
-    "ETH": _ETH,
-    "QQQB": BSC_TOKENS["QQQB"],
-    "SPCXB": BSC_TOKENS["SPCXB"],
-    "NVDAB": BSC_TOKENS["NVDAB"],
-    "NVDAON": BSC_TOKENS["NVDAON"],
-    # WHI-891 / WHI-890 Phase A (Pancake TVL bar).
-    "SPYB": BSC_TOKENS["SPYB"],
-    "AAPLB": BSC_TOKENS["AAPLB"],
-    "TSLAB": BSC_TOKENS["TSLAB"],
-    "MSFTB": BSC_TOKENS["MSFTB"],
-    "GOOGLB": BSC_TOKENS["GOOGLB"],
-    "METAB": BSC_TOKENS["METAB"],
-    "AMZNB": BSC_TOKENS["AMZNB"],
-}
+# BSC_TOKENS is the address SSOT; ETH is the only Pancake-local override.
+# Stock underlyings resolve form → ticker via BSC_STOCK_FORM_TICKER, then here.
+_TOKEN_BY_TICKER: Final[dict[str, TokenInfo]] = {**BSC_TOKENS, "ETH": _ETH}
 _USDT = BSC_TOKENS["USDT"]
 
 

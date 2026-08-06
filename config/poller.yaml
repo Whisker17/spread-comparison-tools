@@ -78,11 +78,12 @@ groups:
   rpc:
     # On-chain quoter eth_call budget is shared per RPC endpoint (WHI-842).
     # WHI-891: +7 Phase-A Pancake bStocks (WHI-890 §8). Naive linear upper
-    # bound at 5 RPS grew past the old 30 s interval (~34 s); Multicall3 is
-    # sub-linear but not free. Named offset: interval_sec 30 → 45 (1.5×) and
-    # age/stale gates in proportion so skip_count stays flat under the wider
-    # matrix. Tessera/Kyber and Jupiter loads unchanged (no Tessera expansion;
-    # Solana xStock props all absent_no_route).
+    # bound at 5 RPS ≈ 34 s start-spacing (was ~20 s). Named offset: raise
+    # interval_sec 30 → 45 so wall-clock still fits with ~11 s headroom
+    # (was 10 s at 20/30; not a 1.5× headroom keep). Age/stale gates scale
+    # with the new interval (2× / 4×). Multicall3 is sub-linear so real wall
+    # is below the naive bound. Tessera/Kyber and Jupiter loads unchanged
+    # (no Tessera expansion; Solana xStock props all absent_no_route).
     notionals_usd:
       - 100
       - 1000

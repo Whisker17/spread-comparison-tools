@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import spread_compare.adapters  # noqa: F401 — ensure registration
+from spread_compare.adapters import get as get_adapter
 from spread_compare.assets import (
     ASSETS,
     CRYPTO_BLUE_CHIPS,
@@ -213,6 +215,47 @@ def test_whi891_pancake_phase_a_bstock_live() -> None:
         assert "pancakeswap_bsc" not in bstock.representations
         if underlying in ("AMD", "PLTR"):
             assert bstock.coverage == "unverified"
+
+
+def test_catalog_bsc_stock_venues_no_phantoms() -> None:
+    """WHI-891 AC: catalogued Pancake/Tessera stock rows are adapter-supported.
+
+    Scoped to the BSC venues this ticket expands — cold CEX/perp adapters
+    only advertise blue chips until market load, so a full-catalog scan would
+    false-positive. Guards phantom rows where GET /assets advertises a venue
+    the adapter cannot resolve.
+    """
+    bsc_venues = frozenset({"pancakeswap_bsc", "tessera_bsc"})
+    for asset in list_assets():
+        if asset.category != "stock":
+            continue
+        for form in live_forms(asset.id):
+            for venue in form.representations:
+                if venue not in bsc_venues:
+                    continue
+                adapter = get_adapter(venue)
+                supported = {a.upper() for a in adapter.supported_assets()}
+                assert asset.id.upper() in supported, (
+                    f"{asset.id}/{form.id} catalogs {venue} but adapter "
+                    f"supported_assets()={sorted(supported)}"
+                )
+                # Adapter must also resolve the form → token path.
+                if venue == "pancakeswap_bsc":
+                    from spread_compare.adapters.amm_pancakeswap import (
+                        PancakeSwapBscAdapter,
+                    )
+
+                    assert isinstance(adapter, PancakeSwapBscAdapter)
+                    token = adapter._base_token(asset.id, form=form.id)
+                    assert token.address
+                else:
+                    from spread_compare.adapters.prop_kyberswap import (
+                        TesseraBscAdapter,
+                    )
+
+                    assert isinstance(adapter, TesseraBscAdapter)
+                    token = adapter._token_for_form(asset.id, form=form.id)
+                    assert token is not None
 
 
 def test_tradeable_stables_subset_of_peg_set() -> None:

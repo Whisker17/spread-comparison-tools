@@ -425,16 +425,16 @@ export const STOCK_ASSET_SUBTITLES: Readonly<Record<string, string>> = {
   TSLA: "Tesla · equity perp + bStocks (BN + Pancake)",
   AAPL: "Apple · equity perp + bStocks (BN + Pancake)",
   MSFT: "Microsoft · equity perp + bStocks (BN + Pancake)",
-  QQQ: "Invesco QQQ · equity perp + bStocks (BSC triple)",
-  SPCX: "SpaceX · bStocks (BSC triple)",
-  CRCL: "Circle · equity perp + bStocks (BN only)",
+  QQQ: "Invesco QQQ · equity perp + bStocks (BSC)",
+  SPCX: "SpaceX · bStocks (BSC)",
+  CRCL: "Circle · equity perp + bStocks",
   GOOGL: "Alphabet · equity perp + bStocks (BN + Pancake) + xStocks CEX",
   AMD: "AMD · equity perp (Bybit AMDSTOCKUSDT)",
   PLTR: "Palantir · equity perp",
   META: "Meta · equity perp + bStocks (BN + Pancake) + xStocks CEX",
   AMZN: "Amazon · equity perp + bStocks (BN + Pancake) + xStocks CEX",
   SPY: "SPDR S&P 500 · equity perp (no HL exact) + bStocks (BN + Pancake)",
-  MSTR: "MicroStrategy · equity perp + bStocks (BN only)",
+  MSTR: "MicroStrategy · equity perp + bStocks",
 };
 
 /**
