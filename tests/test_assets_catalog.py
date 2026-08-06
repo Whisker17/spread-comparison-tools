@@ -218,18 +218,21 @@ def test_whi891_pancake_phase_a_bstock_live() -> None:
 
 
 def test_catalog_bsc_stock_venues_no_phantoms() -> None:
-    """WHI-891 AC: catalogued Pancake/Tessera stock rows are adapter-supported.
+    """WHI-891 AC: any catalogued Pancake/Tessera stock row is adapter-supported.
 
-    Scoped to the BSC venues this ticket expands — cold CEX/perp adapters
-    only advertise blue chips until market load, so a full-catalog scan would
-    false-positive. Guards phantom rows where GET /assets advertises a venue
-    the adapter cannot resolve.
+    Iterates *all* forms (not only coverage=live): an unverified form can still
+    carry a representation and be requested via ``forms=`` on GET /quotes
+    (venues_for_form ignores coverage). Pre-PR TSLA/bstock was the phantom
+    shape — ``pancakeswap_bsc`` listed without a resolvable token path.
+
+    Scoped to BSC venues this ticket expands; cold CEX/perp adapters only
+    advertise blue chips until market load.
     """
     bsc_venues = frozenset({"pancakeswap_bsc", "tessera_bsc"})
     for asset in list_assets():
-        if asset.category != "stock":
+        if asset.category != "stock" or asset.forms is None:
             continue
-        for form in live_forms(asset.id):
+        for form in asset.forms:
             for venue in form.representations:
                 if venue not in bsc_venues:
                     continue
@@ -239,23 +242,9 @@ def test_catalog_bsc_stock_venues_no_phantoms() -> None:
                     f"{asset.id}/{form.id} catalogs {venue} but adapter "
                     f"supported_assets()={sorted(supported)}"
                 )
-                # Adapter must also resolve the form → token path.
-                if venue == "pancakeswap_bsc":
-                    from spread_compare.adapters.amm_pancakeswap import (
-                        PancakeSwapBscAdapter,
-                    )
+                # supported_assets membership is the public contract; token
+                # resolution is covered by test_amm_adapters form→ticker map.
 
-                    assert isinstance(adapter, PancakeSwapBscAdapter)
-                    token = adapter._base_token(asset.id, form=form.id)
-                    assert token.address
-                else:
-                    from spread_compare.adapters.prop_kyberswap import (
-                        TesseraBscAdapter,
-                    )
-
-                    assert isinstance(adapter, TesseraBscAdapter)
-                    token = adapter._token_for_form(asset.id, form=form.id)
-                    assert token is not None
 
 
 def test_tradeable_stables_subset_of_peg_set() -> None:
