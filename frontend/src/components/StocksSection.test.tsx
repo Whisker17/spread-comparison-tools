@@ -167,12 +167,25 @@ describe("StocksSection (WHI-882)", () => {
     expect(ondoRow?.textContent).toContain("NVDAon");
   });
 
-  it("shows the bStocks rebase footnote once when any bstock form is live", () => {
+  it("attaches the bStocks rebase footnote only to boards with bstock forms", () => {
     render(<StocksSection />, { wrapper: Wrapper });
 
-    const footnotes = screen.getAllByTestId("bstocks-rebase-footnote");
-    expect(footnotes).toHaveLength(1);
-    expect(footnotes[0]?.textContent).toContain(BSTOCKS_REBASE_FOOTNOTE);
+    // NVDA / QQQ / SPCX have live bstock; TSLA / AAPL / MSFT do not.
+    expect(
+      within(screen.getByTestId("stocks-board-NVDA")).getByTestId(
+        "bstocks-rebase-footnote",
+      ).textContent,
+    ).toContain(BSTOCKS_REBASE_FOOTNOTE);
+    expect(
+      within(screen.getByTestId("stocks-board-QQQ")).getByTestId(
+        "bstocks-rebase-footnote",
+      ),
+    ).toBeTruthy();
+    expect(
+      within(screen.getByTestId("stocks-board-TSLA")).queryByTestId(
+        "bstocks-rebase-footnote",
+      ),
+    ).toBeNull();
   });
 
   it("renders the US market-hours badge in the page header", () => {

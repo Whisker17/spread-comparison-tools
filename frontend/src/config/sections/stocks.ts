@@ -54,6 +54,19 @@ export const FORM_BADGE_LABELS: Readonly<Record<StockFormId, string>> = {
   xstock_cex: "xStocks CEX",
 };
 
+/** Badge for a form id; unknown ids fall back to the raw id. */
+export function formBadgeLabel(formId: string): string {
+  const key = formId.toLowerCase() as StockFormId;
+  return FORM_BADGE_LABELS[key] ?? formId;
+}
+
+/** Matrix column header for form-aware boards. */
+export const STOCKS_MATRIX_ROW_HEADER = "Venue · form";
+
+/** Best-highlight footnote for form_class grouping (WHI-799 §5.2 v3). */
+export const STOCKS_BEST_NOTE =
+  "stocks best is per form_class (perp vs tokenized)";
+
 /** Preferred form display order within a matrix. */
 export const FORM_DISPLAY_ORDER: readonly StockFormId[] = [
   "perp",
@@ -246,16 +259,20 @@ export function resolveStockForms(
   const key = underlying.toUpperCase();
   const fromApi = assets?.find((a) => a.id.toUpperCase() === key);
   if (fromApi?.forms && fromApi.forms.length > 0) {
+    // Live only: matches backend default fan-out (resolve_forms_filter → live).
+    // Unverified catalog forms stay on GET /assets for discovery, not the matrix.
     const live = fromApi.forms
       .filter((f) => f.coverage === "live")
       .map((f): StockFormDef | null => {
         const id = f.id.toLowerCase() as StockFormId;
-        if (!(id in FORM_BADGE_LABELS)) return null;
-        const fc = formClassOf(id);
-        if (!fc) return null;
+        // Prefer wire form_class; fall back to closed vocabulary.
+        const wireClass = f.form_class === "perp" || f.form_class === "tokenized"
+          ? (f.form_class as FormClass)
+          : formClassOf(id);
+        if (!wireClass) return null;
         return {
-          id,
-          form_class: fc,
+          id: id in FORM_BADGE_LABELS ? id : (f.id.toLowerCase() as StockFormId),
+          form_class: wireClass,
           coverage: "live",
           representations: f.representations ?? {},
         };
@@ -331,7 +348,7 @@ export function buildStocksVenueLabels(
 ): Record<string, string> {
   const out: Record<string, string> = {};
   for (const row of rows) {
-    const badge = FORM_BADGE_LABELS[row.form] ?? row.form;
+    const badge = formBadgeLabel(row.form);
     // Reuse helper shape per form (instrument + rep) then inject form badge.
     const base = buildVenueRowLabels([row.venue], {
       representations: { [row.venue]: row.representation },
@@ -385,7 +402,7 @@ export function stocksVenueSummaryLabels(
 ): Record<string, string> {
   const out: Record<string, string> = {};
   for (const row of rows) {
-    const badge = FORM_BADGE_LABELS[row.form] ?? row.form;
+    const badge = formBadgeLabel(row.form);
     const base = buildVenueSummaryLabel(row.venue, {
       representations: { [row.venue]: row.representation },
       instrumentType: row.instrumentType,

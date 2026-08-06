@@ -97,6 +97,10 @@ export type AssetSpreadBlockProps = {
    * forms on the backend for stock underlyings.
    */
   forms?: readonly string[];
+  /** Matrix first-column header (section product copy). */
+  matrixRowHeaderLabel?: string;
+  /** Extra best-highlight footnote (section product copy). */
+  matrixBestNoteExtra?: string;
 };
 
 export function AssetSpreadBlock({
@@ -116,6 +120,8 @@ export function AssetSpreadBlock({
   venueDisplayNames,
   instrumentType,
   forms,
+  matrixRowHeaderLabel,
+  matrixBestNoteExtra,
 }: AssetSpreadBlockProps) {
   const [sideView, setSideView] = useState<SideView>(section.defaultSideView);
 
@@ -448,6 +454,8 @@ export function AssetSpreadBlock({
             venueLabels={venueLabels}
             showDetailColumns={true}
             onRetry={() => refetch()}
+            rowHeaderLabel={matrixRowHeaderLabel}
+            bestNoteExtra={matrixBestNoteExtra}
           />
           {section.showTopOfBook && orderbookVenues.length > 0 && (
             <TopOfBookRow

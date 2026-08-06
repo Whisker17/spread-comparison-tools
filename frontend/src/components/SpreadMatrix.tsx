@@ -29,7 +29,7 @@ import {
 } from "@/lib/format";
 import { heatClass, heatRange, type HeatRange } from "@/lib/heat";
 import { detailFromPair } from "@/lib/matrixDetail";
-import { pairRowKey, pairsHaveForms } from "@/lib/pairIdentity";
+import { pairRowKey, parseRowKey } from "@/lib/pairIdentity";
 import {
   includeQuoteInHeat,
   isEligibleForBest,
@@ -74,6 +74,16 @@ export type SpreadMatrixProps = {
   emptyMessage?: string;
   /** Retry handler for error-status cells. */
   onRetry?: () => void;
+  /**
+   * First-column header label. Sections pass product copy (e.g. stocks
+   * "Venue · form"); default stays "Venue" so shared boards are unchanged.
+   */
+  rowHeaderLabel?: string;
+  /**
+   * Extra footnote fragment after the standard best/heat note (section-owned
+   * product text — never hardcode stock domain copy here).
+   */
+  bestNoteExtra?: string;
 };
 
 export function SpreadMatrix({
@@ -91,6 +101,8 @@ export function SpreadMatrix({
   className,
   emptyMessage = "No quote data",
   onRetry,
+  rowHeaderLabel = "Venue",
+  bestNoteExtra,
 }: SpreadMatrixProps) {
   const hidden = useMemo(() => new Set(hiddenVenues), [hiddenVenues]);
   const disabled = useMemo(() => new Set(disabledVenues), [disabledVenues]);
@@ -108,8 +120,6 @@ export function SpreadMatrix({
   const detailMode = showDetailColumns && notionals.length === 1;
   // Round-trip has no single effective price — hide that column (fees remain).
   const showEffectiveColumn = detailMode && sideView !== "round_trip";
-
-  const formAware = useMemo(() => pairsHaveForms(pairs), [pairs]);
 
   const venues = useMemo(() => {
     if (venuesProp && venuesProp.length > 0) {
@@ -198,7 +208,7 @@ export function SpreadMatrix({
         <thead>
           <tr className="border-b border-zinc-200 dark:border-zinc-800">
             <th className="sticky left-0 bg-white py-2 pr-3 text-left text-xs font-medium uppercase tracking-wide text-zinc-500 dark:bg-zinc-950">
-              {formAware ? "Venue · form" : "Venue"}
+              {rowHeaderLabel}
             </th>
             {notionals.map((n) => (
               <th
@@ -223,6 +233,7 @@ export function SpreadMatrix({
         <tbody>
           {venues.map((rowKey) => {
             const isDisabled = disabled.has(rowKey);
+            const { venue: venueSlug } = parseRowKey(rowKey);
             return (
               <tr
                 key={rowKey}
@@ -230,7 +241,7 @@ export function SpreadMatrix({
                   "border-b border-zinc-100 dark:border-zinc-900",
                   isDisabled && "opacity-40",
                 )}
-                data-venue={rowKey}
+                data-venue={venueSlug}
                 data-row-key={rowKey}
                 data-disabled={isDisabled ? "true" : "false"}
               >
@@ -301,9 +312,7 @@ export function SpreadMatrix({
       <p className="mt-2 text-[11px] text-zinc-500">
         Cells: {metric.replace(/_/g, " ")} · view: {sideView.replace("_", " ")} ·
         best highlight excludes gas_unknown / non-ok (WHI-799 §5.2)
-        {formAware
-          ? " · stocks best is per form_class (perp vs tokenized)"
-          : ""}
+        {bestNoteExtra ? ` · ${bestNoteExtra}` : ""}
         {detailMode
           ? " · single size — effective price and fee breakdown as columns; venue labels carry representation (WHI-798 §3.3)"
           : ""}

@@ -18,13 +18,14 @@ import {
   STOCK_ASSET_SUBTITLES,
   STOCK_ASSET_TITLES,
   STOCK_UNDERLYINGS,
+  STOCKS_BEST_NOTE,
+  STOCKS_MATRIX_ROW_HEADER,
   STOCKS_MID_SOURCE_HINT,
   stocksBoard,
   stocksPageHeader,
   stocksVenueSummaryLabels,
   venuesFromForms,
   type StockFormDef,
-  type StockMatrixRow,
 } from "@/config/sections/stocks";
 import { useNotionalSize } from "@/hooks/useNotionalSize";
 import {
@@ -114,12 +115,6 @@ function StocksStreamBody({
   formsByUnderlying: Map<string, StockFormDef[]>;
 }) {
   const stream = useQuotesStream();
-  const anyBstock = useMemo(() => {
-    for (const forms of formsByUnderlying.values()) {
-      if (hasBstockForm(forms)) return true;
-    }
-    return false;
-  }, [formsByUnderlying]);
 
   return (
     <div className="space-y-8">
@@ -154,16 +149,6 @@ function StocksStreamBody({
           </strong>{" "}
           applies to every board over one live WebSocket (WHI-848).
         </p>
-        {anyBstock ? (
-          <p
-            className="max-w-3xl rounded-md border border-sky-200 bg-sky-50/70 px-3 py-2 text-xs text-sky-950 dark:border-sky-900 dark:bg-sky-950/40 dark:text-sky-100"
-            data-testid="bstocks-rebase-footnote"
-            role="note"
-          >
-            <strong className="font-medium">bStocks rebase.</strong>{" "}
-            {BSTOCKS_REBASE_FOOTNOTE}
-          </p>
-        ) : null}
       </header>
 
       <div className="space-y-8" data-testid="stocks-boards">
@@ -233,74 +218,44 @@ function UnderlyingBoard({
     [rows],
   );
   const formIds = useMemo(() => forms.map((f) => f.id), [forms]);
-  const formBadgeList = useMemo(
-    () =>
-      forms
-        .map((f) => f.id)
-        .join(","),
-    [forms],
-  );
+  const showBstockNote = hasBstockForm(forms);
 
   return (
     <section
       className="space-y-3"
       data-testid={`stocks-board-${underlying}`}
-      data-forms={formBadgeList}
+      data-forms={formIds.join(",")}
       aria-labelledby={`stocks-board-${underlying}-title`}
     >
+      {showBstockNote ? (
+        <p
+          className="max-w-3xl rounded-md border border-sky-200 bg-sky-50/70 px-3 py-2 text-xs text-sky-950 dark:border-sky-900 dark:bg-sky-950/40 dark:text-sky-100"
+          data-testid="bstocks-rebase-footnote"
+          role="note"
+        >
+          <strong className="font-medium">bStocks rebase.</strong>{" "}
+          {BSTOCKS_REBASE_FOOTNOTE}
+        </p>
+      ) : null}
       <div className="sr-only" id={`stocks-board-${underlying}-title`}>
         {STOCK_ASSET_TITLES[underlying] ?? underlying}
       </div>
-      <StocksAssetBlock
-        underlying={underlying}
-        rows={rows}
-        rowKeys={rowKeys}
-        venueLabels={venueLabels}
-        summaryLabels={summaryLabels}
-        orderbookRowKeys={orderbookRowKeys}
-        formIds={formIds}
+      <AssetSpreadBlock
+        section={stocksBoard}
+        asset={underlying}
         notional={notional}
+        assetTitle={STOCK_ASSET_TITLES[underlying] ?? underlying}
+        assetSubtitle={STOCK_ASSET_SUBTITLES[underlying]}
+        venues={rowKeys}
+        venueLabels={venueLabels}
+        summaryVenueLabels={summaryLabels}
+        orderbookVenues={orderbookRowKeys}
+        forms={formIds.length > 0 ? formIds : undefined}
+        emphasizeMidSource
+        midSourceHint={STOCKS_MID_SOURCE_HINT}
+        matrixRowHeaderLabel={STOCKS_MATRIX_ROW_HEADER}
+        matrixBestNoteExtra={STOCKS_BEST_NOTE}
       />
     </section>
-  );
-}
-
-function StocksAssetBlock({
-  underlying,
-  rows,
-  rowKeys,
-  venueLabels,
-  summaryLabels,
-  orderbookRowKeys,
-  formIds,
-  notional,
-}: {
-  underlying: string;
-  rows: readonly StockMatrixRow[];
-  rowKeys: readonly string[];
-  venueLabels: Readonly<Record<string, string>>;
-  summaryLabels: Readonly<Record<string, string>>;
-  orderbookRowKeys: readonly string[];
-  formIds: readonly string[];
-  notional: string;
-}) {
-  // Silence unused — rows kept for future form-badge chrome in block header.
-  void rows;
-
-  return (
-    <AssetSpreadBlock
-      section={stocksBoard}
-      asset={underlying}
-      notional={notional}
-      assetTitle={STOCK_ASSET_TITLES[underlying] ?? underlying}
-      assetSubtitle={STOCK_ASSET_SUBTITLES[underlying]}
-      venues={rowKeys}
-      venueLabels={venueLabels}
-      summaryVenueLabels={summaryLabels}
-      orderbookVenues={orderbookRowKeys}
-      forms={formIds.length > 0 ? formIds : undefined}
-      emphasizeMidSource
-      midSourceHint={STOCKS_MID_SOURCE_HINT}
-    />
   );
 }
