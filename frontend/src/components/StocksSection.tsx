@@ -10,22 +10,22 @@ import { StreamStatusBadge } from "@/components/StreamStatusBadge";
 import { UsMarketHoursIndicator } from "@/components/UsMarketHoursIndicator";
 import {
   BSTOCKS_REBASE_FOOTNOTE,
+  buildStockMatrixRows,
   buildStocksVenueLabels,
-  equityPerpsBoard,
+  hasBstockForm,
+  orderbookRows,
+  resolveStockForms,
   STOCK_ASSET_SUBTITLES,
-  STOCK_ASSET_TITLES,
+  STOCK_UNDERLYINGS,
+  STOCKS_BEST_NOTE,
+  STOCKS_MATRIX_ROW_HEADER,
   STOCKS_MID_SOURCE_HINT,
+  stocksBoard,
   stocksPageHeader,
-  stocksVenueSummaryLabel,
-  tokenizedStocksBoard,
-  type StocksBoardKind,
-  type StocksLabelContext,
+  stocksVenueSummaryLabels,
+  venuesFromForms,
+  type StockFormDef,
 } from "@/config/sections/stocks";
-import {
-  isOrderbookVenue,
-  venuesForAsset,
-} from "@/config/sections/helpers";
-import type { SectionConfig } from "@/config/sections/types";
 import { useNotionalSize } from "@/hooks/useNotionalSize";
 import {
   QuotesStreamProvider,
@@ -36,12 +36,12 @@ import { formatNotional } from "@/lib/format";
 import type { StreamFilter } from "@/lib/streamQuotes";
 
 /**
- * Full `/stocks` content (WHI-810): P0-A tokenized three-way + P0-B equity perps.
- * Owns section-config helpers so AssetSpreadBlock stays section-agnostic.
+ * Full `/stocks` content (WHI-882): one matrix per underlying, rows =
+ * venue × form sharing a single mid.
  *
- * WHI-841: one page-level size selector shared by both boards.
- * Boards must declare the same `notionals` / `defaultNotional` (asserted below).
- * WHI-848: one WebSocket with multi-filter subscribe (spot + equity perps).
+ * WHI-841: page-level size selector.
+ * WHI-848: one WebSocket with all underlyings (no instrument_type pin —
+ * backend expands live forms via form_class).
  */
 export function StocksSection() {
   return (
@@ -54,21 +54,9 @@ export function StocksSection() {
 }
 
 function StocksSectionInner() {
-  // Page-level `?size=` — both boards' SectionConfig fields must agree.
-  if (
-    process.env.NODE_ENV !== "production" &&
-    (tokenizedStocksBoard.defaultNotional !==
-      equityPerpsBoard.defaultNotional ||
-      tokenizedStocksBoard.notionals.join(",") !==
-        equityPerpsBoard.notionals.join(","))
-  ) {
-    console.warn(
-      "[stocks] tokenized and equity boards disagree on size config; using tokenized board",
-    );
-  }
   const { notional, setNotional } = useNotionalSize({
-    allowed: tokenizedStocksBoard.notionals,
-    defaultNotional: tokenizedStocksBoard.defaultNotional,
+    allowed: stocksBoard.notionals,
+    defaultNotional: stocksBoard.defaultNotional,
   });
 
   const assetsQuery = useQuery({
@@ -77,39 +65,40 @@ function StocksSectionInner() {
     staleTime: 60_000,
   });
 
-  const repsByAsset = useMemo(() => {
-    const map = new Map<string, Readonly<Record<string, string>>>();
-    for (const row of assetsQuery.data ?? []) {
-      map.set(row.id.toUpperCase(), row.representations);
+  const formsByUnderlying = useMemo(() => {
+    const map = new Map<string, StockFormDef[]>();
+    for (const underlying of STOCK_UNDERLYINGS) {
+      map.set(underlying, resolveStockForms(underlying, assetsQuery.data));
     }
     return map;
   }, [assetsQuery.data]);
 
   const streamFilters = useMemo<StreamFilter[]>(() => {
-    const boards = [tokenizedStocksBoard, equityPerpsBoard];
-    return boards.map((board) => {
-      const venueSet = new Set<string>();
-      for (const asset of board.assets) {
-        for (const v of venuesForAsset(board, asset)) {
-          venueSet.add(v);
-        }
+    // Single filter: all underlyings, all live-form venues, no instrument pin.
+    const venueSet = new Set<string>();
+    for (const forms of formsByUnderlying.values()) {
+      for (const v of venuesFromForms(forms)) {
+        venueSet.add(v);
       }
-      return {
-        assets: [...board.assets],
+    }
+    return [
+      {
+        assets: [...STOCK_UNDERLYINGS],
         // WHI-864: subscribe only the visible tier.
         notionals: [notional],
         venues: [...venueSet],
-        instrument_type: board.instrumentType,
-      };
-    });
-  }, [notional]);
+        // Default forms = all live (backend); omit instrument_type so form
+        // expansion picks spot vs perp per form_class (WHI-881).
+      },
+    ];
+  }, [notional, formsByUnderlying]);
 
   return (
     <QuotesStreamProvider filters={streamFilters}>
       <StocksStreamBody
         notional={notional}
         setNotional={setNotional}
-        repsByAsset={repsByAsset}
+        formsByUnderlying={formsByUnderlying}
       />
     </QuotesStreamProvider>
   );
@@ -118,13 +107,14 @@ function StocksSectionInner() {
 function StocksStreamBody({
   notional,
   setNotional,
-  repsByAsset,
+  formsByUnderlying,
 }: {
   notional: string;
   setNotional: (v: string) => void;
-  repsByAsset: Map<string, Readonly<Record<string, string>>>;
+  formsByUnderlying: Map<string, StockFormDef[]>;
 }) {
   const stream = useQuotesStream();
+
   return (
     <div className="space-y-8">
       <header className="space-y-3">
@@ -140,7 +130,7 @@ function StocksStreamBody({
           <div className="flex flex-wrap items-start gap-3">
             <StreamStatusBadge status={stream.status} />
             <SizeSelector
-              tiers={tokenizedStocksBoard.notionals}
+              tiers={stocksBoard.notionals}
               value={notional}
               onChange={setNotional}
             />
@@ -151,176 +141,141 @@ function StocksStreamBody({
           Reference mids for stocks use a weaker chain than crypto P0 (
           <code className="text-[11px]">cex_tradfi_index</code>,{" "}
           <code className="text-[11px]">proxy_perp_mark_median</code>, or CEX
-          spot TOB — WHI-799 §3.3). Each asset block highlights its mid source.
-          Size{" "}
+          spot TOB — WHI-799 §3.3). All forms of an underlying share one mid so
+          bps are comparable. Size{" "}
           <strong className="font-medium text-zinc-700 dark:text-zinc-300">
             {formatNotional(notional)}
           </strong>{" "}
-          applies to both boards over one live WebSocket (WHI-848).
+          applies to every board over one live WebSocket (WHI-848).
         </p>
       </header>
 
-      <Board
-        board={tokenizedStocksBoard}
-        kind="tokenized"
-        notional={notional}
-        repsByAsset={repsByAsset}
-        footnote={BSTOCKS_REBASE_FOOTNOTE}
-      />
-
-      <Board
-        board={equityPerpsBoard}
-        kind="equity_perp"
-        notional={notional}
-        repsByAsset={repsByAsset}
-      />
+      <div className="space-y-8" data-testid="stocks-boards">
+        {STOCK_UNDERLYINGS.map((underlying) => {
+          const forms = formsByUnderlying.get(underlying) ?? [];
+          return (
+            <UnderlyingBoard
+              key={underlying}
+              underlying={underlying}
+              forms={forms}
+              notional={notional}
+            />
+          );
+        })}
+      </div>
 
       <footer className="space-y-2 border-t border-zinc-200 pt-4 text-xs text-zinc-500 dark:border-zinc-800">
         <p>
           <strong className="font-medium text-zinc-700 dark:text-zinc-300">
-            Scope.
+            Forms.
           </strong>{" "}
-          P0-A is bStocks on BSC only. P0-B is exact-ticker equity perps — no
-          SPY/QQQ Hyperliquid proxy rows (ETF cross-form is P1-lite). Cross-issuer
-          basis (NVDAB / NVDAx / NVDAON) and xStocks paths are out of scope for
-          this page (WHI-798 §4.5).
+          Each row is a (venue, form) pair — e.g. NVDA shows equity perps and
+          bStocks / Ondo token rows in one table. Form badges (Perp / bStocks /
+          Ondo / xStocks) distinguish issuers when the same venue lists two
+          forms (tessera_bsc × NVDAB vs NVDAon).
         </p>
         <p>
           <strong className="font-medium text-zinc-700 dark:text-zinc-300">
-            Missing Tessera pools.
+            Best.
           </strong>{" "}
-          Tessera BSC coverage is a subset of bStocks; a vanished pool returns{" "}
-          <code className="text-[11px]">no_quote</code> and renders as &quot;—&quot;,
-          not a page error.
+          Snapshot best is grouped by form_class (perp vs tokenized) per
+          WHI-799 §5.2 — a cheap perp path does not silence a tokenized winner.
+          Eligibility still requires status=ok and complete total_cost_bps
+          (gas_unknown never wins).
         </p>
         <p>
           <strong className="font-medium text-zinc-700 dark:text-zinc-300">
-            Summary.
+            Missing pools.
           </strong>{" "}
-          Best-venue sentences are point-in-time only at the selected size
-          (status=ok and complete total_cost_bps; gas_unknown never wins —
-          WHI-799 §5.2).
+          Tessera / Pancake coverage is a subset of listed forms; a vanished
+          pool returns <code className="text-[11px]">no_quote</code> and
+          renders as &quot;—&quot;, not a page error.
         </p>
       </footer>
     </div>
   );
 }
 
-function Board({
-  board,
-  kind,
+function UnderlyingBoard({
+  underlying,
+  forms,
   notional,
-  repsByAsset,
-  footnote,
 }: {
-  board: SectionConfig;
-  kind: StocksBoardKind;
+  underlying: string;
+  forms: readonly StockFormDef[];
   notional: string;
-  repsByAsset: Map<string, Readonly<Record<string, string>>>;
-  footnote?: string;
 }) {
+  const rows = useMemo(() => buildStockMatrixRows(forms), [forms]);
+  const rowKeys = useMemo(() => rows.map((r) => r.rowKey), [rows]);
+  const venueLabels = useMemo(() => buildStocksVenueLabels(rows), [rows]);
+  const summaryLabels = useMemo(
+    () => stocksVenueSummaryLabels(rows),
+    [rows],
+  );
+  const orderbookRowKeys = useMemo(
+    () => orderbookRows(rows).map((r) => r.rowKey),
+    [rows],
+  );
+  const formIds = useMemo(() => forms.map((f) => f.id), [forms]);
+  const showBstockNote = hasBstockForm(forms);
+
   return (
     <section
-      className="space-y-4"
-      data-testid={`stocks-board-${kind}`}
-      aria-labelledby={`stocks-board-${kind}-title`}
+      className="space-y-3"
+      data-testid={`stocks-board-${underlying}`}
+      data-forms={formIds.join(",")}
+      aria-labelledby={`stocks-board-${underlying}-title`}
     >
-      <div>
-        <h2
-          id={`stocks-board-${kind}-title`}
-          className="text-lg font-semibold tracking-tight"
+      {showBstockNote ? (
+        <p
+          className="max-w-3xl rounded-md border border-sky-200 bg-sky-50/70 px-3 py-2 text-xs text-sky-950 dark:border-sky-900 dark:bg-sky-950/40 dark:text-sky-100"
+          data-testid="bstocks-rebase-footnote"
+          role="note"
         >
-          {board.title}
-        </h2>
-        <p className="mt-1 max-w-3xl text-sm text-zinc-600 dark:text-zinc-400">
-          {board.description}
+          <strong className="font-medium">bStocks rebase.</strong>{" "}
+          {BSTOCKS_REBASE_FOOTNOTE}
         </p>
-        {footnote ? (
+      ) : null}
+      <div className="sr-only" id={`stocks-board-${underlying}-title`}>
+        {underlying}
+      </div>
+      {rowKeys.length === 0 ? (
+        <div
+          className="rounded-xl border border-dashed border-zinc-300 p-4 dark:border-zinc-700"
+          data-testid={`asset-block-${underlying}`}
+          data-asset={underlying}
+        >
+          <h2 className="text-lg font-semibold tracking-tight">{underlying}</h2>
+          {STOCK_ASSET_SUBTITLES[underlying] ? (
+            <p className="mt-0.5 text-xs text-zinc-600 dark:text-zinc-400">
+              {STOCK_ASSET_SUBTITLES[underlying]}
+            </p>
+          ) : null}
           <p
-            className="mt-2 max-w-3xl rounded-md border border-sky-200 bg-sky-50/70 px-3 py-2 text-xs text-sky-950 dark:border-sky-900 dark:bg-sky-950/40 dark:text-sky-100"
-            data-testid="bstocks-rebase-footnote"
-            role="note"
+            className="mt-2 text-sm text-zinc-500"
+            data-testid={`no-live-forms-${underlying}`}
           >
-            <strong className="font-medium">bStocks rebase.</strong> {footnote}
+            No live forms in the catalog for this underlying — nothing to quote.
           </p>
-        ) : null}
-      </div>
-
-      <div className="space-y-8">
-        {board.assets.map((asset) => (
-          <StocksAssetBlock
-            key={asset}
-            board={board}
-            kind={kind}
-            asset={asset}
-            notional={notional}
-            representationOverrides={repsByAsset.get(asset)}
-          />
-        ))}
-      </div>
+        </div>
+      ) : (
+        <AssetSpreadBlock
+          section={stocksBoard}
+          asset={underlying}
+          notional={notional}
+          assetTitle={underlying}
+          assetSubtitle={STOCK_ASSET_SUBTITLES[underlying]}
+          venues={rowKeys}
+          venueLabels={venueLabels}
+          summaryVenueLabels={summaryLabels}
+          orderbookVenues={orderbookRowKeys}
+          forms={formIds}
+          emphasizeMidSource
+          midSourceHint={STOCKS_MID_SOURCE_HINT}
+          matrixRowHeaderLabel={STOCKS_MATRIX_ROW_HEADER}
+          matrixBestNoteExtra={STOCKS_BEST_NOTE}
+        />
+      )}
     </section>
-  );
-}
-
-function StocksAssetBlock({
-  board,
-  kind,
-  asset,
-  notional,
-  representationOverrides,
-}: {
-  board: SectionConfig;
-  kind: StocksBoardKind;
-  asset: string;
-  notional: string;
-  representationOverrides?: Readonly<Record<string, string>>;
-}) {
-  const venues = useMemo(
-    () => venuesForAsset(board, asset),
-    [board, asset],
-  );
-
-  const labelContext: StocksLabelContext = useMemo(
-    () => ({
-      board: kind,
-      asset,
-      instrumentType: board.instrumentType,
-      representationOverrides,
-    }),
-    [kind, asset, board.instrumentType, representationOverrides],
-  );
-
-  const venueLabels = useMemo(
-    () => buildStocksVenueLabels(venues, labelContext),
-    [venues, labelContext],
-  );
-
-  const summaryVenueLabels = useMemo(() => {
-    const out: Record<string, string> = {};
-    for (const slug of venues) {
-      out[slug] = stocksVenueSummaryLabel(slug, labelContext);
-    }
-    return out;
-  }, [venues, labelContext]);
-
-  const orderbookVenues = useMemo(
-    () => venues.filter((v) => isOrderbookVenue(v)),
-    [venues],
-  );
-
-  return (
-    <AssetSpreadBlock
-      section={board}
-      asset={asset}
-      notional={notional}
-      assetTitle={STOCK_ASSET_TITLES[asset] ?? asset}
-      assetSubtitle={STOCK_ASSET_SUBTITLES[asset]}
-      venues={venues}
-      venueLabels={venueLabels}
-      summaryVenueLabels={summaryVenueLabels}
-      orderbookVenues={orderbookVenues}
-      emphasizeMidSource
-      midSourceHint={STOCKS_MID_SOURCE_HINT}
-    />
   );
 }

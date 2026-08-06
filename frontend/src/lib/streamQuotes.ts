@@ -10,6 +10,7 @@ import type {
   SizeQuotePair,
 } from "@/lib/api";
 import { getApiBaseUrl } from "@/lib/api";
+import { pairIdentityKey as pairIdentityKeyImpl } from "@/lib/pairIdentity";
 
 export type StreamConnectionStatus = "connecting" | "live" | "reconnecting";
 
@@ -19,6 +20,8 @@ export type StreamFilter = {
   venues?: readonly string[];
   side?: "buy" | "sell";
   instrument_type?: InstrumentType;
+  /** Optional stock form filter (WHI-881); default = all live forms. */
+  forms?: readonly string[];
 };
 
 export type StreamSubscribeMessage =
@@ -29,6 +32,7 @@ export type StreamSubscribeMessage =
       venues?: string[];
       side?: "buy" | "sell";
       instrument_type?: InstrumentType;
+      forms?: string[];
     }
   | {
       type: "subscribe";
@@ -38,6 +42,7 @@ export type StreamSubscribeMessage =
         venues?: string[];
         side?: "buy" | "sell";
         instrument_type?: InstrumentType;
+        forms?: string[];
       }>;
     };
 
@@ -91,8 +96,9 @@ export function streamUrl(apiBase: string = getApiBaseUrl()): string {
   return u.toString();
 }
 
+/** Delta merge identity — includes form (must match backend stream.py). */
 export function pairIdentityKey(pair: SizeQuotePair): string {
-  return `${pair.venue}|${pair.notional_usd}|${pair.instrument_type}`;
+  return pairIdentityKeyImpl(pair);
 }
 
 export function emptyAssetState(asset: string): AssetQuotesState {
@@ -137,7 +143,7 @@ export function applySnapshot(
 
 /**
  * Merge a delta into existing asset state.
- * `removed` entries are identity keys (`venue|notional|instrument`).
+ * `removed` entries are identity keys (`venue|notional|instrument|form`).
  */
 export function applyDelta(
   prev: Readonly<Record<string, AssetQuotesState>>,
@@ -204,6 +210,17 @@ export function applyServerMessage(
   }
 }
 
+function filterToWire(f: StreamFilter) {
+  return {
+    assets: f.assets.map((a) => a.toUpperCase()),
+    notionals: f.notionals.map(String),
+    venues: f.venues ? [...f.venues] : undefined,
+    side: f.side,
+    instrument_type: f.instrument_type,
+    forms: f.forms ? [...f.forms] : undefined,
+  };
+}
+
 /** Build the outbound subscribe payload from one or more filters. */
 export function buildSubscribeMessage(
   filters: readonly StreamFilter[],
@@ -212,25 +229,14 @@ export function buildSubscribeMessage(
     throw new Error("at least one stream filter is required");
   }
   if (filters.length === 1) {
-    const f = filters[0]!;
     return {
       type: "subscribe",
-      assets: f.assets.map((a) => a.toUpperCase()),
-      notionals: f.notionals.map(String),
-      venues: f.venues ? [...f.venues] : undefined,
-      side: f.side,
-      instrument_type: f.instrument_type,
+      ...filterToWire(filters[0]!),
     };
   }
   return {
     type: "subscribe",
-    filters: filters.map((f) => ({
-      assets: f.assets.map((a) => a.toUpperCase()),
-      notionals: f.notionals.map(String),
-      venues: f.venues ? [...f.venues] : undefined,
-      side: f.side,
-      instrument_type: f.instrument_type,
-    })),
+    filters: filters.map(filterToWire),
   };
 }
 

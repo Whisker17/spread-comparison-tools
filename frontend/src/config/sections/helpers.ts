@@ -184,6 +184,12 @@ export type VenueLabelOptions = {
    * symbol and repeating it adds nothing (WHI-809 crypto blue chips).
    */
   includeOrderbookSymbol?: boolean;
+  /**
+   * Optional form badge (WHI-882 stocks) inserted after the display name and
+   * replacing the CEX/perp instrument word so we never double up
+   * ("Binance · Perp · NVDAUSDT", not "Binance · perp · Perp · …").
+   */
+  formBadge?: string;
 };
 
 /** Quote currency is redundant when the shown symbol already spells it out. */
@@ -223,18 +229,29 @@ export function buildVenueRowLabels(
     let shownSymbol: string | undefined;
 
     if (venueClass && ON_CHAIN_VENUE_CLASSES.has(venueClass)) {
+      if (options.formBadge) parts.push(options.formBadge);
       if (rep) {
         parts.push(rep);
         shownSymbol = rep;
       }
     } else if (venueClass && ORDERBOOK_VENUE_CLASSES.has(venueClass)) {
-      const instrument = instrumentLabelFor(venueClass, options.instrumentType);
-      if (instrument) parts.push(instrument);
+      // Form badge replaces instrument word when present (stocks).
+      if (options.formBadge) {
+        parts.push(options.formBadge);
+      } else {
+        const instrument = instrumentLabelFor(
+          venueClass,
+          options.instrumentType,
+        );
+        if (instrument) parts.push(instrument);
+      }
       // Venue symbol / HIP-3 coin so representation is not dropped from the row.
       if (rep && options.includeOrderbookSymbol) {
         parts.push(rep);
         shownSymbol = rep;
       }
+    } else if (options.formBadge) {
+      parts.push(options.formBadge);
     }
 
     if (quote && !quoteImpliedBy(shownSymbol, quote)) {
@@ -261,16 +278,21 @@ export function buildVenueSummaryLabel(
   if (!meta) return name;
 
   const rep = options.representations?.[slug];
+  const badge = options.formBadge;
 
   if (ORDERBOOK_VENUE_CLASSES.has(meta.venueClass)) {
     const instrument =
-      instrumentLabelFor(meta.venueClass, options.instrumentType) ?? "spot";
+      badge ??
+      instrumentLabelFor(meta.venueClass, options.instrumentType) ??
+      "spot";
     return rep && options.includeOrderbookSymbol
       ? `${name} ${instrument} (${rep})`
       : `${name} ${instrument}`;
   }
-  if (rep && ON_CHAIN_VENUE_CLASSES.has(meta.venueClass)) {
-    return `${name} (${rep})`;
+  if (ON_CHAIN_VENUE_CLASSES.has(meta.venueClass)) {
+    if (rep && badge) return `${name} (${badge} ${rep})`;
+    if (rep) return `${name} (${rep})`;
+    if (badge) return `${name} (${badge})`;
   }
   return name;
 }

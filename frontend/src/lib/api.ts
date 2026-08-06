@@ -189,7 +189,15 @@ async function apiPost<T>(
   return body as T;
 }
 
-/** `GET /quotes` — one asset × one notional, optional venue/side filters. */
+function joinCsv(
+  value: readonly string[] | string | undefined,
+): string | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value === "string") return value;
+  return value.join(",");
+}
+
+/** `GET /quotes` — one asset × one notional, optional venue/side/form filters. */
 export async function fetchQuotes(
   params: {
     asset: string;
@@ -197,22 +205,18 @@ export async function fetchQuotes(
     venues?: readonly string[] | string;
     side?: "buy" | "sell";
     instrument_type?: InstrumentType;
+    /** Stock form filter (WHI-881); default = all live forms for stocks. */
+    forms?: readonly string[] | string;
   },
   options?: FetchOptions,
 ): Promise<QuotesResponse> {
-  const venues =
-    params.venues === undefined
-      ? undefined
-      : Array.isArray(params.venues)
-        ? params.venues.join(",")
-        : params.venues;
-
   const query: Record<string, string | undefined | null> = {
     asset: params.asset,
     notional: String(params.notional),
-    venues: typeof venues === "string" ? venues : undefined,
+    venues: joinCsv(params.venues),
     side: params.side,
     instrument_type: params.instrument_type,
+    forms: joinCsv(params.forms),
   };
 
   return apiGet<QuotesResponse>("/quotes", query, options);
@@ -229,6 +233,7 @@ export async function fetchQuotesMultiTier(
     venues?: readonly string[] | string;
     side?: "buy" | "sell";
     instrument_type?: InstrumentType;
+    forms?: readonly string[] | string;
   },
   options?: FetchOptions,
 ): Promise<QuotesResponse> {
@@ -244,24 +249,19 @@ export async function fetchQuotesMultiTier(
         venues: params.venues,
         side: params.side,
         instrument_type: params.instrument_type,
+        forms: params.forms,
       },
       options,
     );
   }
 
-  const venues =
-    params.venues === undefined
-      ? undefined
-      : Array.isArray(params.venues)
-        ? params.venues.join(",")
-        : params.venues;
-
   const query: Record<string, string | undefined | null> = {
     asset: params.asset,
     notionals: params.notionals.map(String).join(","),
-    venues: typeof venues === "string" ? venues : undefined,
+    venues: joinCsv(params.venues),
     side: params.side,
     instrument_type: params.instrument_type,
+    forms: joinCsv(params.forms),
   };
 
   return apiGet<QuotesResponse>("/quotes", query, options);
@@ -280,6 +280,7 @@ export async function fetchQuotesMultiNotional(
     venues?: readonly string[] | string;
     side?: "buy" | "sell";
     instrument_type?: InstrumentType;
+    forms?: readonly string[] | string;
   },
   options?: FetchOptions,
 ): Promise<{

@@ -54,19 +54,23 @@ export function SummaryStrip({
       </span>
       {picks.map((pick) => (
         <div
-          key={pick.notionalUsd}
+          key={`${pick.notionalUsd}|${pick.rowKey || "empty"}|${pick.formClass ?? ""}`}
           className="min-w-[7rem] rounded-md border border-zinc-200 bg-white px-2.5 py-1.5 dark:border-zinc-700 dark:bg-zinc-950"
           data-notional={pick.notionalUsd}
+          data-form-class={pick.formClass ?? undefined}
         >
           <div className="text-[10px] uppercase text-zinc-500">
             {formatNotional(pick.notionalUsd)}
+            {pick.formClass ? ` · ${pick.formClass}` : ""}
           </div>
           {pick.empty ? (
             <div className="text-sm text-zinc-400">—</div>
           ) : (
             <>
               <div className="text-sm font-medium">
-                {venueLabels?.[pick.venue] ?? pick.venue}
+                {venueLabels?.[pick.rowKey] ??
+                  venueLabels?.[pick.venue] ??
+                  pick.venue}
               </div>
               <div className="text-xs tabular-nums text-zinc-500">
                 {formatBps(pick.valueBps)} bps

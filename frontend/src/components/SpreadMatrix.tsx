@@ -8,6 +8,10 @@
  * previously lived only in tooltips. Multi-notional columns remain available
  * for callers that pass several tiers without detail columns.
  *
+ * WHI-882: rows are keyed by `pairRowKey` (`venue` or `venue|form`) so the same
+ * venue can appear twice for multi-form stocks. Best highlight is per
+ * form_class when forms are present (WHI-799 §5.2 v3).
+ *
  * Section agents drive venue sets / side / metric via props — they should not
  * edit this file for product content (WHI-808). Additive shared props (e.g.
  * `showDetailColumns`) may land here when every section needs them.
@@ -25,13 +29,14 @@ import {
 } from "@/lib/format";
 import { heatClass, heatRange, type HeatRange } from "@/lib/heat";
 import { detailFromPair } from "@/lib/matrixDetail";
+import { pairRowKey, parseRowKey } from "@/lib/pairIdentity";
 import {
   includeQuoteInHeat,
   isEligibleForBest,
   type MetricKey,
 } from "@/lib/status";
 import {
-  bestVenueMap,
+  bestRowKeysByNotional,
   bothLegsEligible,
   type SideView,
 } from "@/lib/summary";
@@ -42,17 +47,18 @@ export type SpreadMatrixProps = {
   /** Column order for notional tiers. Defaults to sorted unique from pairs. */
   notionals?: readonly string[];
   /**
-   * Row order for venues. Empty/undefined = union of pair venues (sorted).
-   * Section configs pass an explicit list to pin column sets.
+   * Row order: venue slugs **or** form-aware row keys (`venue|form`).
+   * Empty/undefined = union of pair row keys (sorted).
    */
   venues?: readonly string[];
-  /** Venues to omit from rows entirely. */
+  /** Row keys / venue slugs to omit from rows entirely. */
   hiddenVenues?: readonly string[];
-  /** Disabled venues still render but are dimmed and never "best". */
+  /** Disabled rows still render but are dimmed and never "best". */
   disabledVenues?: readonly string[];
   sideView?: SideView;
   /** Cell metric. Default total_cost_bps. */
   metric?: MetricKey;
+  /** Labels keyed by the same row keys as `venues`. */
   venueLabels?: Readonly<Record<string, string>>;
   /** Highlight best-eligible cells per tier (WHI-799 §5.2). Default true. */
   highlightBest?: boolean;
@@ -68,6 +74,16 @@ export type SpreadMatrixProps = {
   emptyMessage?: string;
   /** Retry handler for error-status cells. */
   onRetry?: () => void;
+  /**
+   * First-column header label. Sections pass product copy (e.g. stocks
+   * "Venue · form"); default stays "Venue" so shared boards are unchanged.
+   */
+  rowHeaderLabel?: string;
+  /**
+   * Extra footnote fragment after the standard best/heat note (section-owned
+   * product text — never hardcode stock domain copy here).
+   */
+  bestNoteExtra?: string;
 };
 
 export function SpreadMatrix({
@@ -85,6 +101,8 @@ export function SpreadMatrix({
   className,
   emptyMessage = "No quote data",
   onRetry,
+  rowHeaderLabel = "Venue",
+  bestNoteExtra,
 }: SpreadMatrixProps) {
   const hidden = useMemo(() => new Set(hiddenVenues), [hiddenVenues]);
   const disabled = useMemo(() => new Set(disabledVenues), [disabledVenues]);
@@ -107,8 +125,11 @@ export function SpreadMatrix({
     if (venuesProp && venuesProp.length > 0) {
       return venuesProp.filter((v) => !hidden.has(v));
     }
+    // Default row order from pairs — form-aware keys when form is set.
     const set = new Set(
-      pairs.map((p) => p.venue).filter((v) => !hidden.has(v)),
+      pairs
+        .map((p) => pairRowKey(p))
+        .filter((k) => !hidden.has(k)),
     );
     return [...set].sort();
   }, [venuesProp, pairs, hidden]);
@@ -116,14 +137,14 @@ export function SpreadMatrix({
   const index = useMemo(() => {
     const map = new Map<string, SizeQuotePair>();
     for (const p of pairs) {
-      map.set(`${p.venue}::${String(p.notional_usd)}`, p);
+      map.set(`${pairRowKey(p)}::${String(p.notional_usd)}`, p);
     }
     return map;
   }, [pairs]);
 
-  const best = useMemo(() => {
-    if (!highlightBest) return {};
-    return bestVenueMap(pairs, {
+  const bestKeys = useMemo(() => {
+    if (!highlightBest) return {} as Record<string, ReadonlySet<string>>;
+    return bestRowKeysByNotional(pairs, {
       side: sideView,
       metric,
       venues: venuesProp && venuesProp.length > 0 ? venuesProp : undefined,
@@ -187,7 +208,7 @@ export function SpreadMatrix({
         <thead>
           <tr className="border-b border-zinc-200 dark:border-zinc-800">
             <th className="sticky left-0 bg-white py-2 pr-3 text-left text-xs font-medium uppercase tracking-wide text-zinc-500 dark:bg-zinc-950">
-              Venue
+              {rowHeaderLabel}
             </th>
             {notionals.map((n) => (
               <th
@@ -210,28 +231,30 @@ export function SpreadMatrix({
           </tr>
         </thead>
         <tbody>
-          {venues.map((venue) => {
-            const isDisabled = disabled.has(venue);
+          {venues.map((rowKey) => {
+            const isDisabled = disabled.has(rowKey);
+            const { venue: venueSlug } = parseRowKey(rowKey);
             return (
               <tr
-                key={venue}
+                key={rowKey}
                 className={cn(
                   "border-b border-zinc-100 dark:border-zinc-900",
                   isDisabled && "opacity-40",
                 )}
-                data-venue={venue}
+                data-venue={venueSlug}
+                data-row-key={rowKey}
                 data-disabled={isDisabled ? "true" : "false"}
               >
                 <td className="sticky left-0 bg-white py-1 pr-3 font-medium text-zinc-800 dark:bg-zinc-950 dark:text-zinc-100">
-                  {venueLabels?.[venue] ?? venue}
+                  {venueLabels?.[rowKey] ?? rowKey}
                 </td>
                 {notionals.map((n) => {
-                  const pair = index.get(`${venue}::${n}`);
+                  const pair = index.get(`${rowKey}::${n}`);
                   const cell = cellFromPair(pair, sideView, metric);
                   const isBest =
                     !isDisabled &&
                     highlightBest &&
-                    best[n] === venue &&
+                    Boolean(bestKeys[n]?.has(rowKey)) &&
                     cell.eligibleBest;
                   const heatOk =
                     heat &&
@@ -258,21 +281,21 @@ export function SpreadMatrix({
                 {detailMode
                   ? (() => {
                       const n = notionals[0]!;
-                      const pair = index.get(`${venue}::${n}`);
+                      const pair = index.get(`${rowKey}::${n}`);
                       const detail = detailFromPair(pair, sideView);
                       return (
                         <>
                           {showEffectiveColumn ? (
                             <td
                               className="px-2 py-1 text-right text-xs tabular-nums text-zinc-600 dark:text-zinc-300"
-                              data-testid={`effective-${venue}`}
+                              data-testid={`effective-${rowKey}`}
                             >
                               {detail.effective}
                             </td>
                           ) : null}
                           <td
                             className="px-2 py-1 text-right text-xs tabular-nums text-zinc-500"
-                            data-testid={`fees-${venue}`}
+                            data-testid={`fees-${rowKey}`}
                             title={detail.feesTitle}
                           >
                             {detail.fees}
@@ -289,6 +312,7 @@ export function SpreadMatrix({
       <p className="mt-2 text-[11px] text-zinc-500">
         Cells: {metric.replace(/_/g, " ")} · view: {sideView.replace("_", " ")} ·
         best highlight excludes gas_unknown / non-ok (WHI-799 §5.2)
+        {bestNoteExtra ? ` · ${bestNoteExtra}` : ""}
         {detailMode
           ? " · single size — effective price and fee breakdown as columns; venue labels carry representation (WHI-798 §3.3)"
           : ""}

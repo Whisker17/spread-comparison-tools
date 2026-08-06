@@ -17,7 +17,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
   {
     href: "/stocks",
     label: "Stocks",
-    description: "Tokenized stocks + equity perps (WHI-810).",
+    description: "Underlying-first stocks: venue × form (WHI-882).",
   },
   {
     href: "/others",

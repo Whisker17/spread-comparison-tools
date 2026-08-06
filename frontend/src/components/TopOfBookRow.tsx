@@ -2,14 +2,15 @@
 
 import type { TopOfBook } from "@/lib/api";
 import { formatBps, formatPrice } from "@/lib/format";
+import { parseRowKey } from "@/lib/pairIdentity";
 import { cn } from "@/lib/utils";
 
 export type TopOfBookRowProps = {
-  /** TOB snapshots keyed by venue slug (orderbook venues only). */
+  /** TOB snapshots keyed by venue slug or form-aware row key. */
   byVenue: Readonly<Record<string, TopOfBook | null | undefined>>;
-  /** Venue row order (same as matrix). Missing venues render empty. */
+  /** Row order (same as matrix: venue slugs or `venue|form` keys). */
   venues: readonly string[];
-  /** Optional display-name map. */
+  /** Optional display-name map keyed like `venues`. */
   venueLabels?: Readonly<Record<string, string>>;
   className?: string;
 };
@@ -39,14 +40,17 @@ export function TopOfBookRow({
           </tr>
         </thead>
         <tbody>
-          {venues.map((slug) => {
-            const tob = byVenue[slug];
-            const label = venueLabels?.[slug] ?? slug;
+          {venues.map((rowKey) => {
+            const tob = byVenue[rowKey];
+            const label = venueLabels?.[rowKey] ?? rowKey;
+            const venueSlug = parseRowKey(rowKey).venue;
             if (!tob) {
               return (
                 <tr
-                  key={slug}
+                  key={rowKey}
                   className="border-b border-zinc-100 dark:border-zinc-900"
+                  data-venue={venueSlug}
+                  data-row-key={rowKey}
                 >
                   <td className="py-1.5 pr-3 font-medium text-zinc-700 dark:text-zinc-200">
                     {label}
@@ -59,9 +63,10 @@ export function TopOfBookRow({
             }
             return (
               <tr
-                key={slug}
+                key={rowKey}
                 className="border-b border-zinc-100 dark:border-zinc-900"
-                data-venue={slug}
+                data-venue={venueSlug}
+                data-row-key={rowKey}
               >
                 <td className="py-1.5 pr-3 font-medium text-zinc-700 dark:text-zinc-200">
                   {label}

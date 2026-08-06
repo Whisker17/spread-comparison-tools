@@ -2,27 +2,21 @@ import { describe, expect, it } from "vitest";
 
 import {
   BSTOCKS_REBASE_FOOTNOTE,
+  buildStockMatrixRows,
   buildStocksVenueLabels,
-  EQUITY_PERP_ASSETS,
-  EQUITY_PERP_REPRESENTATIONS,
-  EQUITY_PERP_VENUES,
-  equityPerpsBoard,
-  STOCK_ASSET_TITLES,
-  stocksVenueSummaryLabel,
-  TOKENIZED_REPRESENTATIONS,
-  TOKENIZED_STOCK_ASSETS,
-  TOKENIZED_STOCK_VENUES,
-  tokenizedStocksBoard,
+  FORM_BADGE_LABELS,
+  hasBstockForm,
+  resolveStockForms,
+  STOCK_FORMS_STATIC,
+  STOCK_UNDERLYINGS,
+  stocksBoard,
+  stocksVenueSummaryLabels,
+  venuesFromForms,
 } from "@/config/sections/stocks";
-import {
-  hiddenVenuesForAsset,
-  isOrderbookVenue,
-  venuesForAsset,
-} from "@/config/sections/helpers";
-import type { SizeQuotePair } from "@/lib/api";
-import type { Quote } from "@/lib/api";
+import { isOrderbookVenue } from "@/config/sections/helpers";
+import type { AssetResponse, Quote, SizeQuotePair } from "@/lib/api";
+import { makeRowKey } from "@/lib/pairIdentity";
 import { bestVenuePerTier, formatSnapshotSummary } from "@/lib/summary";
-import { decideCellRender } from "@/lib/status";
 
 function quote(
   overrides: Partial<Quote> & Pick<Quote, "venue" | "status">,
@@ -30,14 +24,15 @@ function quote(
   const gasUnknown = overrides.fee_breakdown?.gas_unknown ?? false;
   return {
     snapshot_id: "s1",
-    asset: "QQQB",
+    asset: "NVDA",
     instrument_type: "spot",
     side: "buy",
     notional_usd: "10000",
     mid: "500",
     mid_source: "binance_spot_tob",
     mid_timestamp: "2026-08-03T12:00:00Z",
-    mid_stale: false, quote_stale: false,
+    mid_stale: false,
+    quote_stale: false,
     timestamp: "2026-08-03T12:00:01Z",
     fee_breakdown: {
       embedded_in_price: false,
@@ -59,183 +54,240 @@ function pair(
   venue: string,
   notional: string,
   buy: Quote | null,
+  form?: string | null,
 ): SizeQuotePair {
   return {
     snapshot_id: "s1",
     venue,
-    asset: "QQQB",
-    instrument_type: "spot",
+    asset: "NVDA",
+    instrument_type: form === "perp" ? "perp" : "spot",
+    form: form ?? null,
     notional_usd: notional,
     buy,
     sell: null,
   };
 }
 
-describe("stocks section config (WHI-810)", () => {
-  it("P0-A covers QQQB/SPCXB/NVDAB/NVDAON across three BSC venues", () => {
-    expect(tokenizedStocksBoard.assets).toEqual([...TOKENIZED_STOCK_ASSETS]);
-    expect(tokenizedStocksBoard.venues).toEqual([...TOKENIZED_STOCK_VENUES]);
-    expect(venuesForAsset(tokenizedStocksBoard, "QQQB")).toEqual([
-      "binance",
-      "pancakeswap_bsc",
-      "tessera_bsc",
-    ]);
+describe("stocks section config (WHI-882 underlying-first)", () => {
+  it("lists Phase-1 underlyings (no legacy token ids)", () => {
+    expect(stocksBoard.assets).toEqual([...STOCK_UNDERLYINGS]);
+    expect(stocksBoard.assets).toContain("NVDA");
+    expect(stocksBoard.assets).toContain("QQQ");
+    expect(stocksBoard.assets).toContain("SPCX");
+    expect(stocksBoard.assets).not.toContain("NVDAB");
+    expect(stocksBoard.assets).not.toContain("NVDAON");
+    expect(stocksBoard.assets).not.toContain("QQQB");
   });
 
-  it("hides Binance for NVDAON (no CEX spot) and labels Ondo", () => {
-    expect(hiddenVenuesForAsset(tokenizedStocksBoard, "NVDAON")).toEqual([
-      "binance",
-    ]);
-    expect(venuesForAsset(tokenizedStocksBoard, "NVDAON")).toEqual([
-      "pancakeswap_bsc",
-      "tessera_bsc",
-    ]);
-    expect(STOCK_ASSET_TITLES.NVDAON).toMatch(/Ondo/i);
+  it("does not pin board-level instrumentType (form_class drives CEX)", () => {
+    expect(stocksBoard.instrumentType).toBeUndefined();
   });
 
-  it("P0-B is four equities × five venues with no SPY/QQQ", () => {
-    expect(equityPerpsBoard.assets).toEqual([...EQUITY_PERP_ASSETS]);
-    expect(equityPerpsBoard.venues).toEqual([...EQUITY_PERP_VENUES]);
-    expect(equityPerpsBoard.assets).not.toContain("SPY");
-    expect(equityPerpsBoard.assets).not.toContain("QQQ");
-    for (const asset of EQUITY_PERP_ASSETS) {
-      expect(venuesForAsset(equityPerpsBoard, asset)).toEqual([
-        ...EQUITY_PERP_VENUES,
-      ]);
+  it("NVDA static live forms cover perp + bstock + ondo", () => {
+    const forms = resolveStockForms("NVDA", null);
+    expect(forms.map((f) => f.id).sort()).toEqual(
+      ["bstock", "ondo", "perp"].sort(),
+    );
+    const rows = buildStockMatrixRows(forms);
+    const keys = rows.map((r) => r.rowKey);
+    expect(keys).toContain(makeRowKey("binance", "perp"));
+    expect(keys).toContain(makeRowKey("binance", "bstock"));
+    expect(keys).toContain(makeRowKey("tessera_bsc", "bstock"));
+    expect(keys).toContain(makeRowKey("tessera_bsc", "ondo"));
+    expect(keys).toContain(makeRowKey("pancakeswap_bsc", "ondo"));
+    // Two tessera rows are distinct by form.
+    expect(
+      keys.filter((k) => k.startsWith("tessera_bsc|")).sort(),
+    ).toEqual(["tessera_bsc|bstock", "tessera_bsc|ondo"]);
+  });
+
+  it("labels include form badges so NVDAB vs NVDAon are distinct", () => {
+    const forms = resolveStockForms("NVDA", null);
+    const rows = buildStockMatrixRows(forms);
+    const labels = buildStocksVenueLabels(rows);
+    expect(labels[makeRowKey("tessera_bsc", "bstock")]).toMatch(/bStocks/i);
+    expect(labels[makeRowKey("tessera_bsc", "bstock")]).toContain("NVDAB");
+    expect(labels[makeRowKey("tessera_bsc", "ondo")]).toMatch(/Ondo/i);
+    expect(labels[makeRowKey("tessera_bsc", "ondo")]).toContain("NVDAon");
+    expect(labels[makeRowKey("binance", "perp")]).toMatch(/Perp/i);
+    expect(labels[makeRowKey("binance", "perp")]).toContain("NVDAUSDT");
+    expect(labels[makeRowKey("binance", "bstock")]).toMatch(/bStocks/i);
+    expect(labels[makeRowKey("binance", "bstock")]).toContain("NVDABUSDT");
+    expect(FORM_BADGE_LABELS.ondo).toBe("Ondo");
+  });
+
+  it("prefers GET /assets nested forms over static fallback", () => {
+    const assets: AssetResponse[] = [
+      {
+        id: "TSLA",
+        category: "stock",
+        representations: null,
+        forms: [
+          {
+            id: "perp",
+            form_class: "perp",
+            coverage: "live",
+            representations: {
+              binance: "TSLAUSDT",
+              bybit: "TSLAUSDT",
+            },
+          },
+          {
+            id: "bstock",
+            form_class: "tokenized",
+            coverage: "unverified",
+            representations: { binance: "TSLABUSDT" },
+          },
+        ],
+      },
+    ];
+    const forms = resolveStockForms("TSLA", assets);
+    // Only live forms.
+    expect(forms.map((f) => f.id)).toEqual(["perp"]);
+    expect(venuesFromForms(forms)).toEqual(["binance", "bybit"]);
+  });
+
+  it("does not resurrect static forms when the API returns zero live forms", () => {
+    const assets: AssetResponse[] = [
+      {
+        id: "NVDA",
+        category: "stock",
+        representations: null,
+        forms: [
+          {
+            id: "perp",
+            form_class: "perp",
+            coverage: "unverified",
+            representations: { binance: "NVDAUSDT" },
+          },
+        ],
+      },
+    ];
+    expect(resolveStockForms("NVDA", assets)).toEqual([]);
+  });
+
+  it("marks only orderbook venues for TOB rows", () => {
+    const forms = resolveStockForms("NVDA", null);
+    const rows = buildStockMatrixRows(forms);
+    for (const row of rows) {
+      if (row.form === "perp") {
+        expect(isOrderbookVenue(row.venue)).toBe(true);
+      }
+      if (row.venue === "pancakeswap_bsc" || row.venue === "tessera_bsc") {
+        expect(isOrderbookVenue(row.venue)).toBe(false);
+      }
     }
   });
 
-  it("surfaces Hyperliquid xyz: representation on equity-perp labels", () => {
-    const labels = buildStocksVenueLabels([...EQUITY_PERP_VENUES], {
-      board: "equity_perp",
-      asset: "TSLA",
-      instrumentType: equityPerpsBoard.instrumentType,
-    });
-    expect(labels.hyperliquid).toContain("xyz:TSLA");
-    expect(labels.hyperliquid).toMatch(/perp/i);
-    expect(labels.binance).toMatch(/perp/i);
-    expect(labels.binance).toContain("TSLAUSDT");
-    expect(labels.hyperliquid).toMatch(/USDC/);
-    expect(EQUITY_PERP_REPRESENTATIONS.TSLA.hyperliquid).toBe("xyz:TSLA");
+  it("summary labels keep form badge + symbol", () => {
+    const forms = resolveStockForms("NVDA", null);
+    const rows = buildStockMatrixRows(forms);
+    const labels = stocksVenueSummaryLabels(rows);
+    expect(labels[makeRowKey("hyperliquid", "perp")]).toMatch(/Perp/i);
+    expect(labels[makeRowKey("hyperliquid", "perp")]).toContain("xyz:NVDA");
+    expect(labels[makeRowKey("tessera_bsc", "ondo")]).toMatch(/Ondo/i);
   });
 
-  it("drops the quote-currency part when the symbol already ends in it", () => {
-    const labels = buildStocksVenueLabels([...EQUITY_PERP_VENUES], {
-      board: "equity_perp",
-      asset: "TSLA",
-      instrumentType: equityPerpsBoard.instrumentType,
-    });
-    // No "TSLAUSDT · USDT" / "TSLA-USDT · USDT" tail.
-    expect(labels.binance).toBe("Binance · perp · TSLAUSDT");
-    expect(labels.apex).toBe("ApeX · perp · TSLA-USDT");
-    // Still annotated where the symbol does not imply the quote leg.
-    expect(labels.hyperliquid).toBe("Hyperliquid · perp · xyz:TSLA · USDC");
-    expect(labels.lighter).toBe("Lighter · perp · TSLA · USDC");
+  it("detects bstock forms for the rebase footnote", () => {
+    expect(hasBstockForm(resolveStockForms("NVDA", null))).toBe(true);
+    expect(hasBstockForm(resolveStockForms("TSLA", null))).toBe(false);
+    expect(hasBstockForm(STOCK_FORMS_STATIC.QQQ)).toBe(true);
   });
 
-  it("labels tokenized CEX as spot with venue symbol and on-chain tokens", () => {
-    const labels = buildStocksVenueLabels([...TOKENIZED_STOCK_VENUES], {
-      board: "tokenized",
-      asset: "NVDAB",
-    });
-    expect(labels.binance).toMatch(/spot/i);
-    expect(labels.binance).toContain("NVDABUSDT");
-    expect(labels.binance).toMatch(/USDT/);
-    expect(labels.pancakeswap_bsc).toBe("PancakeSwap (BSC) · NVDAB · USDT");
-    expect(labels.tessera_bsc).toBe("Tessera (BSC) · NVDAB · USDT");
-    expect(TOKENIZED_REPRESENTATIONS.NVDAON.pancakeswap_bsc).toBe("NVDAon");
-  });
-
-  it("marks only orderbook classes for TOB rows", () => {
-    expect(isOrderbookVenue("binance")).toBe(true);
-    expect(isOrderbookVenue("hyperliquid")).toBe(true);
-    expect(isOrderbookVenue("pancakeswap_bsc")).toBe(false);
-    expect(isOrderbookVenue("tessera_bsc")).toBe(false);
-  });
-
-  it("includes wrapper/symbol in on-chain and CEX summary labels", () => {
-    expect(
-      stocksVenueSummaryLabel("tessera_bsc", {
-        board: "tokenized",
-        asset: "QQQB",
-      }),
-    ).toBe("Tessera (BSC) (QQQB)");
-    expect(
-      stocksVenueSummaryLabel("binance", {
-        board: "tokenized",
-        asset: "QQQB",
-      }),
-    ).toBe("Binance spot (QQQBUSDT)");
-    expect(
-      stocksVenueSummaryLabel("binance", {
-        board: "equity_perp",
-        asset: "TSLA",
-        instrumentType: "perp",
-      }),
-    ).toBe("Binance perp (TSLAUSDT)");
-    expect(
-      stocksVenueSummaryLabel("hyperliquid", {
-        board: "equity_perp",
-        asset: "AAPL",
-      }),
-    ).toBe("Hyperliquid perp (xyz:AAPL)");
-  });
-
-  it("ships a persistent bStocks rebase footnote for P0-A", () => {
+  it("ships a persistent bStocks rebase footnote", () => {
     expect(BSTOCKS_REBASE_FOOTNOTE.toLowerCase()).toMatch(/rebase/);
   });
 
-  it("defaults poll interval to 30s on both boards", () => {
-    expect(tokenizedStocksBoard.pollIntervalMs).toBe(30_000);
-    expect(equityPerpsBoard.pollIntervalMs).toBe(30_000);
-  });
-
-  it("requests instrument_type=perp on equity-perp board so CEX resolves TradFi", () => {
-    // Without this, aggregator defaults CEX to spot and TSLA/NVDA/… are
-    // unsupported_asset on Binance/Bybit (WHI-826 _perp_only).
-    expect(equityPerpsBoard.instrumentType).toBe("perp");
-    expect(tokenizedStocksBoard.instrumentType).toBeUndefined();
+  it("defaults poll interval to 30s", () => {
+    expect(stocksBoard.pollIntervalMs).toBe(30_000);
   });
 });
 
-describe("stocks snapshot summary fixtures (WHI-799 §5.2 / WHI-810)", () => {
-  it("Tessera no_quote never wins; dash render stays non-fatal", () => {
+describe("stocks form_class best (WHI-799 §5.2 / WHI-882)", () => {
+  it("picks one best per form_class (perp vs tokenized)", () => {
     const pairs = [
       pair(
         "binance",
         "10000",
-        quote({ venue: "binance", status: "ok", total_cost_bps: "25" }),
+        quote({
+          venue: "binance",
+          status: "ok",
+          total_cost_bps: "15",
+          form: "perp",
+          instrument_type: "perp",
+        }),
+        "perp",
       ),
       pair(
-        "pancakeswap_bsc",
+        "hyperliquid",
         "10000",
         quote({
-          venue: "pancakeswap_bsc",
+          venue: "hyperliquid",
           status: "ok",
-          total_cost_bps: "40",
+          total_cost_bps: "8",
+          form: "perp",
+          instrument_type: "perp",
         }),
+        "perp",
+      ),
+      pair(
+        "binance",
+        "10000",
+        quote({
+          venue: "binance",
+          status: "ok",
+          total_cost_bps: "25",
+          form: "bstock",
+        }),
+        "bstock",
       ),
       pair(
         "tessera_bsc",
         "10000",
-        quote({ venue: "tessera_bsc", status: "no_quote", total_cost_bps: null }),
+        quote({
+          venue: "tessera_bsc",
+          status: "ok",
+          total_cost_bps: "12",
+          form: "bstock",
+        }),
+        "bstock",
       ),
     ];
 
-    const picks = bestVenuePerTier(pairs, {
-      side: "buy",
-      venues: [...TOKENIZED_STOCK_VENUES],
-    });
+    const picks = bestVenuePerTier(pairs, { side: "buy" });
+    expect(picks).toHaveLength(2);
+    const perp = picks.find((p) => p.formClass === "perp");
+    const tok = picks.find((p) => p.formClass === "tokenized");
+    expect(perp?.venue).toBe("hyperliquid");
+    expect(perp?.rowKey).toBe("hyperliquid|perp");
+    expect(tok?.venue).toBe("tessera_bsc");
+    expect(tok?.rowKey).toBe("tessera_bsc|bstock");
+  });
+
+  it("Tessera no_quote never wins; dash remains non-fatal", () => {
+    const pairs = [
+      pair(
+        "binance",
+        "10000",
+        quote({ venue: "binance", status: "ok", total_cost_bps: "25", form: "bstock" }),
+        "bstock",
+      ),
+      pair(
+        "tessera_bsc",
+        "10000",
+        quote({
+          venue: "tessera_bsc",
+          status: "no_quote",
+          total_cost_bps: null,
+          form: "bstock",
+        }),
+        "bstock",
+      ),
+    ];
+    const picks = bestVenuePerTier(pairs);
     expect(picks).toHaveLength(1);
     expect(picks[0]?.venue).toBe("binance");
-    expect(picks[0]?.empty).toBe(false);
-
-    const tesseraCell = decideCellRender(
-      quote({ venue: "tessera_bsc", status: "no_quote" }),
-    );
-    expect(tesseraCell.kind).toBe("dash");
-    expect(tesseraCell.label).toBe("—");
-    expect(tesseraCell.eligibleForBest).toBe(false);
+    expect(picks[0]?.formClass).toBe("tokenized");
   });
 
   it("gas_unknown on-chain row is excluded from best ranking", () => {
@@ -248,6 +300,7 @@ describe("stocks snapshot summary fixtures (WHI-799 §5.2 / WHI-810)", () => {
           status: "ok",
           total_cost_bps: null,
           spread_bps: "2",
+          form: "bstock",
           fee_breakdown: {
             embedded_in_price: true,
             platform_fee_bps: "0",
@@ -256,28 +309,32 @@ describe("stocks snapshot summary fixtures (WHI-799 §5.2 / WHI-810)", () => {
             gas_bps: null,
           },
         }),
+        "bstock",
       ),
       pair(
         "binance",
         "1000",
-        quote({ venue: "binance", status: "ok", total_cost_bps: "18" }),
+        quote({
+          venue: "binance",
+          status: "ok",
+          total_cost_bps: "18",
+          form: "bstock",
+        }),
+        "bstock",
       ),
     ];
-    const picks = bestVenuePerTier(pairs, {
-      venues: [...TOKENIZED_STOCK_VENUES],
-    });
+    const picks = bestVenuePerTier(pairs);
     expect(picks[0]?.venue).toBe("binance");
 
     const prose = formatSnapshotSummary(pairs, {
-      asset: "QQQB",
-      venues: [...TOKENIZED_STOCK_VENUES],
+      asset: "NVDA",
       venueLabels: {
-        binance: "Binance spot",
-        pancakeswap_bsc: "PancakeSwap (BSC)",
-        tessera_bsc: "Tessera (BSC)",
+        "binance|bstock": "Binance bStocks",
+        "tessera_bsc|bstock": "Tessera (BSC) bStocks",
       },
     });
-    expect(prose).toMatch(/Binance spot/);
+    expect(prose).toMatch(/Binance bStocks/);
     expect(prose).not.toMatch(/Tessera/);
+    expect(prose).toMatch(/tokenized/);
   });
 });

@@ -5,253 +5,379 @@ import {
 import {
   buildVenueRowLabels,
   buildVenueSummaryLabel,
+  isOrderbookVenue,
+  VENUE_META,
 } from "@/config/sections/helpers";
+// VENUE_META used by instrument-type inference in buildStockMatrixRows.
 import type { SectionConfig } from "@/config/sections/types";
-import type { InstrumentType } from "@/lib/api";
+import type { AssetResponse, InstrumentType } from "@/lib/api";
+import {
+  formClassOf,
+  makeRowKey,
+  type FormClass,
+} from "@/lib/pairIdentity";
 
 /**
- * Stocks section (WHI-810): two sub-boards.
+ * Stocks section (WHI-882): underlying-first.
  *
- * P0-A — bStocks BSC three-way (CEX spot × Pancake × Tessera BSC)
- * P0-B — equity perps across five orderbook venues
- *
- * Asset plan: `docs/research/WHI-798-asset-category-inventory.md` §4 / §6.2.
- * Keep representation labels in lockstep with `spread_compare/assets.py`.
+ * One matrix per underlying (NVDA, TSLA, …); rows are (venue, form) sharing
+ * one reference mid. Spec: WHI-798 §6.2 v3 / WHI-799 §5.2 v3 / WHI-880.
  */
 
 export const STOCKS_POLL_MS = 30_000;
 
-/** P0-A tokenized board assets (backend id NVDAON; UI labels Ondo). */
-export const TOKENIZED_STOCK_ASSETS = [
-  "QQQB",
-  "SPCXB",
-  "NVDAB",
-  "NVDAON",
+/** Phase-1 underlyings (catalog order matches assets.py / WHI-798 §6.2.1). */
+export const STOCK_UNDERLYINGS = [
+  "NVDA",
+  "TSLA",
+  "AAPL",
+  "MSFT",
+  "QQQ",
+  "SPCX",
 ] as const;
 
-export type TokenizedStockAsset = (typeof TOKENIZED_STOCK_ASSETS)[number];
+export type StockUnderlying = (typeof STOCK_UNDERLYINGS)[number];
 
-/** P0-A venues: Binance spot × Pancake BSC × Tessera BSC (all USDT quote). */
-export const TOKENIZED_STOCK_VENUES = [
-  "binance",
-  "pancakeswap_bsc",
-  "tessera_bsc",
-] as const;
+/** Closed form vocabulary (WHI-798 §4.6). */
+export type StockFormId =
+  | "perp"
+  | "bstock"
+  | "ondo"
+  | "xstock"
+  | "xstock_cex";
 
-/** P0-B equity-perp assets — exact ticker on five venues (no SPY/QQQ). */
-export const EQUITY_PERP_ASSETS = ["TSLA", "NVDA", "AAPL", "MSFT"] as const;
+/** Display badge text for form ids. */
+export const FORM_BADGE_LABELS: Readonly<Record<StockFormId, string>> = {
+  perp: "Perp",
+  bstock: "bStocks",
+  ondo: "Ondo",
+  xstock: "xStocks",
+  xstock_cex: "xStocks CEX",
+};
 
-export type EquityPerpAsset = (typeof EQUITY_PERP_ASSETS)[number];
+/** Badge for a form id; unknown ids fall back to the raw id. */
+export function formBadgeLabel(formId: string): string {
+  const key = formId.toLowerCase() as StockFormId;
+  return FORM_BADGE_LABELS[key] ?? formId;
+}
 
-export const EQUITY_PERP_VENUES = [
-  "binance",
-  "bybit",
-  "hyperliquid",
-  "lighter",
-  "apex",
-] as const;
+/** Matrix column header for form-aware boards. */
+export const STOCKS_MATRIX_ROW_HEADER = "Venue · form";
 
-/** Display titles for logical asset ids (NVDAON → Ondo annotation). */
-export const STOCK_ASSET_TITLES: Readonly<Record<string, string>> = {
-  QQQB: "QQQB",
-  SPCXB: "SPCXB",
-  NVDAB: "NVDAB",
-  NVDAON: "NVDAON · Ondo",
-  TSLA: "TSLA",
-  NVDA: "NVDA",
-  AAPL: "AAPL",
-  MSFT: "MSFT",
+/** Best-highlight footnote for form_class grouping (WHI-799 §5.2 v3). */
+export const STOCKS_BEST_NOTE =
+  "stocks best is per form_class (perp vs tokenized)";
+
+/** Preferred form display order within a matrix. */
+export const FORM_DISPLAY_ORDER: readonly StockFormId[] = [
+  "perp",
+  "bstock",
+  "ondo",
+  "xstock_cex",
+  "xstock",
+];
+
+export type StockFormDef = {
+  id: StockFormId;
+  form_class: FormClass;
+  /** Venue slug → representation label. */
+  representations: Readonly<Record<string, string>>;
+  coverage: "live" | "unverified" | "absent";
+};
+
+/**
+ * Static live-form fallback when `GET /assets` is unavailable.
+ * Keep in lockstep with `spread_compare/assets.py` coverage=live forms.
+ */
+export const STOCK_FORMS_STATIC: Readonly<
+  Record<StockUnderlying, readonly StockFormDef[]>
+> = {
+  NVDA: [
+    {
+      id: "perp",
+      form_class: "perp",
+      coverage: "live",
+      representations: {
+        binance: "NVDAUSDT",
+        bybit: "NVDAUSDT",
+        hyperliquid: "xyz:NVDA",
+        lighter: "NVDA",
+        apex: "NVDA-USDT",
+      },
+    },
+    {
+      id: "bstock",
+      form_class: "tokenized",
+      coverage: "live",
+      representations: {
+        binance: "NVDABUSDT",
+        pancakeswap_bsc: "NVDAB",
+        tessera_bsc: "NVDAB",
+      },
+    },
+    {
+      id: "ondo",
+      form_class: "tokenized",
+      coverage: "live",
+      representations: {
+        pancakeswap_bsc: "NVDAon",
+        tessera_bsc: "NVDAon",
+      },
+    },
+  ],
+  TSLA: [
+    {
+      id: "perp",
+      form_class: "perp",
+      coverage: "live",
+      representations: {
+        binance: "TSLAUSDT",
+        bybit: "TSLAUSDT",
+        hyperliquid: "xyz:TSLA",
+        lighter: "TSLA",
+        apex: "TSLA-USDT",
+      },
+    },
+  ],
+  AAPL: [
+    {
+      id: "perp",
+      form_class: "perp",
+      coverage: "live",
+      representations: {
+        binance: "AAPLUSDT",
+        bybit: "AAPLUSDT",
+        hyperliquid: "xyz:AAPL",
+        lighter: "AAPL",
+        apex: "AAPL-USDT",
+      },
+    },
+  ],
+  MSFT: [
+    {
+      id: "perp",
+      form_class: "perp",
+      coverage: "live",
+      representations: {
+        binance: "MSFTUSDT",
+        bybit: "MSFTUSDT",
+        hyperliquid: "xyz:MSFT",
+        lighter: "MSFT",
+        apex: "MSFT-USDT",
+      },
+    },
+  ],
+  QQQ: [
+    {
+      id: "bstock",
+      form_class: "tokenized",
+      coverage: "live",
+      representations: {
+        binance: "QQQBUSDT",
+        pancakeswap_bsc: "QQQB",
+        tessera_bsc: "QQQB",
+      },
+    },
+  ],
+  SPCX: [
+    {
+      id: "bstock",
+      form_class: "tokenized",
+      coverage: "live",
+      representations: {
+        binance: "SPCXBUSDT",
+        pancakeswap_bsc: "SPCXB",
+        tessera_bsc: "SPCXB",
+      },
+    },
+  ],
 };
 
 export const STOCK_ASSET_SUBTITLES: Readonly<Record<string, string>> = {
-  QQQB: "Invesco QQQ · bStocks (BSC)",
-  SPCXB: "SpaceX · bStocks (BSC)",
-  NVDAB: "NVIDIA · bStocks (BSC)",
-  NVDAON: "NVIDIA Ondo representation — not the same mint as NVDAB",
-  TSLA: "Equity perp · exact ticker on five venues",
-  NVDA: "Equity perp · exact ticker on five venues",
-  AAPL: "Equity perp · exact ticker on five venues",
-  MSFT: "Equity perp · exact ticker on five venues",
+  NVDA: "NVIDIA · equity perp + bStocks + Ondo (shared mid)",
+  TSLA: "Tesla · equity perp",
+  AAPL: "Apple · equity perp",
+  MSFT: "Microsoft · equity perp",
+  QQQ: "Invesco QQQ · bStocks (BSC)",
+  SPCX: "SpaceX · bStocks (BSC)",
 };
 
 /**
- * Static representation fallbacks (GET /assets is preferred at runtime).
- * On-chain rows must not collapse to a bare unrelated ticker.
- */
-export const TOKENIZED_REPRESENTATIONS: Readonly<
-  Record<TokenizedStockAsset, Readonly<Record<string, string>>>
-> = {
-  QQQB: {
-    binance: "QQQBUSDT",
-    pancakeswap_bsc: "QQQB",
-    tessera_bsc: "QQQB",
-  },
-  SPCXB: {
-    binance: "SPCXBUSDT",
-    pancakeswap_bsc: "SPCXB",
-    tessera_bsc: "SPCXB",
-  },
-  NVDAB: {
-    binance: "NVDABUSDT",
-    pancakeswap_bsc: "NVDAB",
-    tessera_bsc: "NVDAB",
-  },
-  NVDAON: {
-    pancakeswap_bsc: "NVDAon",
-    tessera_bsc: "NVDAon",
-  },
-};
-
-export const EQUITY_PERP_REPRESENTATIONS: Readonly<
-  Record<EquityPerpAsset, Readonly<Record<string, string>>>
-> = {
-  TSLA: {
-    binance: "TSLAUSDT",
-    bybit: "TSLAUSDT",
-    hyperliquid: "xyz:TSLA",
-    lighter: "TSLA",
-    apex: "TSLA-USDT",
-  },
-  NVDA: {
-    binance: "NVDAUSDT",
-    bybit: "NVDAUSDT",
-    hyperliquid: "xyz:NVDA",
-    lighter: "NVDA",
-    apex: "NVDA-USDT",
-  },
-  AAPL: {
-    binance: "AAPLUSDT",
-    bybit: "AAPLUSDT",
-    hyperliquid: "xyz:AAPL",
-    lighter: "AAPL",
-    apex: "AAPL-USDT",
-  },
-  MSFT: {
-    binance: "MSFTUSDT",
-    bybit: "MSFTUSDT",
-    hyperliquid: "xyz:MSFT",
-    lighter: "MSFT",
-    apex: "MSFT-USDT",
-  },
-};
-
-/**
- * Page-level header only (not a quote matrix config / not a SectionConfig).
- * Live matrices use `tokenizedStocksBoard` / `equityPerpsBoard`.
+ * Page-level header only (not a quote matrix config).
+ * Live matrices use one board per underlying via `stocksBoard` + forms.
  */
 export const stocksPageHeader = {
   id: "stocks",
   title: "Stocks",
   description:
-    "bStocks BSC three-way (CEX spot × AMM × prop AMM) plus equity perps across five orderbook venues. Where is it cheapest to buy the same exposure at your size?",
+    "One board per underlying — venue × form rows (perp, bStocks, Ondo, …) share a single reference mid so bps are comparable across tradable forms.",
 } as const;
 
 /**
- * P0-A: tokenized three-way on BSC.
- * NVDAON has no Binance spot — hide that row (WHI-798 §6.2 / assets.py).
+ * Shared section shell: assets = underlyings; venues left empty so rows are
+ * built from live forms (venue × form), not a flat venue list.
  */
-export const tokenizedStocksBoard: SectionConfig = {
-  id: "stocks-tokenized",
-  title: "bStocks BSC three-way",
-  description:
-    "Same tokenized equity across Binance spot, PancakeSwap v3, and Tessera prop AMM — all on BSC, USDT quote leg.",
-  assets: [...TOKENIZED_STOCK_ASSETS],
-  venues: [...TOKENIZED_STOCK_VENUES],
-  hiddenVenuesByAsset: {
-    NVDAON: ["binance"],
-  },
+export const stocksBoard: SectionConfig = {
+  id: "stocks",
+  title: "Stocks",
+  description: stocksPageHeader.description,
+  assets: [...STOCK_UNDERLYINGS],
+  venues: [],
   notionals: [...NOTIONAL_TIERS_USD],
   defaultNotional: DEFAULT_NOTIONAL_USD,
   defaultSideView: "buy",
   cellMetric: "total_cost_bps",
   showTopOfBook: true,
   pollIntervalMs: STOCKS_POLL_MS,
+  // No board-level instrumentType: form_class drives CEX spot vs perp (WHI-881).
 };
 
-/** P0-B: equity perps — exact tickers only (no SPY/QQQ HL proxies). */
-export const equityPerpsBoard: SectionConfig = {
-  id: "stocks-equity-perps",
-  title: "Equity perps",
-  description:
-    "TSLA / NVDA / AAPL / MSFT across Binance TradFi, Bybit, Hyperliquid HIP-3 (xyz:), Lighter, and ApeX.",
-  assets: [...EQUITY_PERP_ASSETS],
-  venues: [...EQUITY_PERP_VENUES],
-  notionals: [...NOTIONAL_TIERS_USD],
-  defaultNotional: DEFAULT_NOTIONAL_USD,
-  defaultSideView: "buy",
-  cellMetric: "total_cost_bps",
-  showTopOfBook: true,
-  pollIntervalMs: STOCKS_POLL_MS,
-  // CEX symbols for these assets are perp-only (WHI-826); without this the
-  // aggregator defaults CEX to spot and every Binance/Bybit cell is "—".
-  instrumentType: "perp",
-};
-
-export type StocksBoardKind = "tokenized" | "equity_perp";
-
-/**
- * Everything the label builders need about *where* a row is rendered — one
- * object instead of the same four fields threaded through every call site.
- */
-export type StocksLabelContext = {
-  /** Which sub-board (picks the representation table). */
-  board: StocksBoardKind;
-  /** Logical asset id, e.g. "QQQB" / "TSLA". */
-  asset: string;
-  /**
-   * Forward `section.instrumentType` so CEX labels match the quotes request
-   * (equity perps pin "perp"; the tokenized board leaves CEX on spot).
-   */
+/** One matrix row: venue + form. */
+export type StockMatrixRow = {
+  rowKey: string;
+  venue: string;
+  form: StockFormId;
+  formClass: FormClass;
+  representation: string;
+  /** Instrument type for label chrome (perp form → perp, tokenized → spot on CEX). */
   instrumentType?: InstrumentType;
-  /** Representations from `GET /assets`, merged over the static fallback. */
-  representationOverrides?: Readonly<Record<string, string>>;
 };
 
-/** Static per-board table merged under `GET /assets` overrides. */
-function representationsFor(
-  ctx: StocksLabelContext,
-): Readonly<Record<string, string>> {
-  const staticReps =
-    ctx.board === "tokenized"
-      ? TOKENIZED_REPRESENTATIONS[ctx.asset as TokenizedStockAsset]
-      : EQUITY_PERP_REPRESENTATIONS[ctx.asset as EquityPerpAsset];
-  return { ...(staticReps ?? {}), ...ctx.representationOverrides };
+/** Parse live forms from GET /assets, falling back to static catalog. */
+export function resolveStockForms(
+  underlying: string,
+  assets: readonly AssetResponse[] | undefined | null,
+): StockFormDef[] {
+  const key = underlying.toUpperCase();
+  const fromApi = assets?.find((a) => a.id.toUpperCase() === key);
+  if (fromApi?.forms != null) {
+    // Catalog row present: use live forms only (may be empty if demoted).
+    // Do NOT fall back to static when the API deliberately returns 0 live forms.
+    // Unverified forms stay on GET /assets for discovery, not the matrix
+    // (matches backend resolve_forms_filter → live).
+    const live = fromApi.forms
+      .filter((f) => f.coverage === "live")
+      .map((f): StockFormDef | null => {
+        const id = f.id.toLowerCase() as StockFormId;
+        // Prefer wire form_class; fall back to closed vocabulary.
+        const wireClass =
+          f.form_class === "perp" || f.form_class === "tokenized"
+            ? (f.form_class as FormClass)
+            : formClassOf(id);
+        if (!wireClass) return null;
+        return {
+          id,
+          form_class: wireClass,
+          coverage: "live",
+          representations: f.representations ?? {},
+        };
+      })
+      .filter((f): f is StockFormDef => f !== null);
+    return sortForms(live);
+  }
+  // Underlying absent from GET /assets (or assets not loaded yet) → static.
+  const staticForms =
+    STOCK_FORMS_STATIC[key as StockUnderlying] ?? ([] as StockFormDef[]);
+  return sortForms([...staticForms].filter((f) => f.coverage === "live"));
+}
+
+function sortForms(forms: StockFormDef[]): StockFormDef[] {
+  const order = new Map(FORM_DISPLAY_ORDER.map((id, i) => [id, i]));
+  return [...forms].sort(
+    (a, b) => (order.get(a.id) ?? 99) - (order.get(b.id) ?? 99),
+  );
 }
 
 /**
- * Matrix / TOB row labels. Shape lives in `helpers.buildVenueRowLabels`;
- * this section only supplies the representation data.
- *
- * - Tokenized on-chain: display + token symbol + USDT
- * - CEX tokenized: display + spot + venue symbol
- * - Equity perp: display + perp + venue symbol / `xyz:` coin (+ quote when
- *   the symbol does not already end in it)
+ * Expand live forms into matrix row keys, stable order:
+ * form display order, then venue slug.
+ */
+export function buildStockMatrixRows(
+  forms: readonly StockFormDef[],
+): StockMatrixRow[] {
+  const rows: StockMatrixRow[] = [];
+  for (const form of forms) {
+    const venues = Object.keys(form.representations).sort();
+    for (const venue of venues) {
+      const rep = form.representations[venue] ?? "";
+      const instrumentType: InstrumentType | undefined =
+        form.form_class === "perp"
+          ? "perp"
+          : VENUE_META[venue]?.venueClass === "cex"
+            ? "spot"
+            : undefined;
+      rows.push({
+        rowKey: makeRowKey(venue, form.id),
+        venue,
+        form: form.id,
+        formClass: form.form_class,
+        representation: rep,
+        instrumentType,
+      });
+    }
+  }
+  return rows;
+}
+
+/** Union of venue slugs across live forms (for stream /quotes filter). */
+export function venuesFromForms(forms: readonly StockFormDef[]): string[] {
+  const set = new Set<string>();
+  for (const form of forms) {
+    for (const v of Object.keys(form.representations)) {
+      set.add(v);
+    }
+  }
+  return [...set].sort();
+}
+
+/** True when any live form is bstock (show rebase footnote). */
+export function hasBstockForm(forms: readonly StockFormDef[]): boolean {
+  return forms.some((f) => f.id === "bstock");
+}
+
+/**
+ * Matrix / TOB row labels with form badge + venue symbol.
+ * Keys are form-aware row keys (`venue|form`).
  */
 export function buildStocksVenueLabels(
-  venues: readonly string[],
-  ctx: StocksLabelContext,
+  rows: readonly StockMatrixRow[],
 ): Record<string, string> {
-  return buildVenueRowLabels(venues, {
-    representations: representationsFor(ctx),
-    instrumentType: ctx.instrumentType,
-    // Stock boards show the venue symbol: the logical id (NVDAB vs NVDAon,
-    // xyz:TSLA) does not identify the traded instrument on its own.
-    includeOrderbookSymbol: true,
-  });
+  const out: Record<string, string> = {};
+  for (const row of rows) {
+    out[row.rowKey] = buildVenueRowLabels([row.venue], {
+      representations: { [row.venue]: row.representation },
+      instrumentType: row.instrumentType,
+      includeOrderbookSymbol: true,
+      formBadge: formBadgeLabel(row.form),
+    })[row.venue]!;
+  }
+  return out;
 }
 
-export function stocksVenueSummaryLabel(
-  slug: string,
-  ctx: StocksLabelContext,
-): string {
-  return buildVenueSummaryLabel(slug, {
-    representations: representationsFor(ctx),
-    instrumentType: ctx.instrumentType,
-    includeOrderbookSymbol: true,
-  });
+/** Summary prose labels (shorter; still include form badge + symbol). */
+export function stocksVenueSummaryLabels(
+  rows: readonly StockMatrixRow[],
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const row of rows) {
+    out[row.rowKey] = buildVenueSummaryLabel(row.venue, {
+      representations: { [row.venue]: row.representation },
+      instrumentType: row.instrumentType,
+      includeOrderbookSymbol: true,
+      formBadge: formBadgeLabel(row.form),
+    });
+  }
+  return out;
 }
 
-/** Persistent P0-A footnote (WHI-798 §8 Q14). */
+/** Orderbook rows only (CEX / perp DEX) for TOB strip. */
+export function orderbookRows(
+  rows: readonly StockMatrixRow[],
+): StockMatrixRow[] {
+  return rows.filter((r) => isOrderbookVenue(r.venue));
+}
+
+/** Persistent bStocks footnote (WHI-798 §8 Q14). */
 export const BSTOCKS_REBASE_FOOTNOTE =
   "bStocks handle dividends and splits by rebasing balances. Around rebase days, CEX spot and on-chain pool prices can jump relative to each other — treat large one-day basis moves with care.";
 

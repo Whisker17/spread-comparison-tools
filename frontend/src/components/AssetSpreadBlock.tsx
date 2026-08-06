@@ -24,6 +24,7 @@ import { useQuotesStreamOptional } from "@/hooks/useQuotesStream";
 import type { InstrumentType, TopOfBook } from "@/lib/api";
 import { formatNotional, formatTimestamp } from "@/lib/format";
 import { notionalsForSizeView } from "@/lib/notionalSize";
+import { pairRowKey, parseRowKey } from "@/lib/pairIdentity";
 import type { SideView } from "@/lib/summary";
 import { cn } from "@/lib/utils";
 import {
@@ -91,6 +92,15 @@ export type AssetSpreadBlockProps = {
    * adapter default.
    */
   instrumentType?: InstrumentType;
+  /**
+   * Optional stock form filter for `/quotes` (WHI-881). Default = all live
+   * forms on the backend for stock underlyings.
+   */
+  forms?: readonly string[];
+  /** Matrix first-column header (section product copy). */
+  matrixRowHeaderLabel?: string;
+  /** Extra best-highlight footnote (section product copy). */
+  matrixBestNoteExtra?: string;
 };
 
 export function AssetSpreadBlock({
@@ -109,6 +119,9 @@ export function AssetSpreadBlock({
   showVenueSymbolNote = false,
   venueDisplayNames,
   instrumentType,
+  forms,
+  matrixRowHeaderLabel,
+  matrixBestNoteExtra,
 }: AssetSpreadBlockProps) {
   const [sideView, setSideView] = useState<SideView>(section.defaultSideView);
 
@@ -117,6 +130,13 @@ export function AssetSpreadBlock({
     () => notionalsForSizeView(notional, section.notionals),
     [notional, section.notionals],
   );
+
+  // Row keys may be `venue|form` (stocks) — strip form for the venue filter.
+  const venueSlugsForRequest = useMemo(() => {
+    if (venues.length === 0) return undefined;
+    const slugs = new Set(venues.map((k) => parseRowKey(k).venue));
+    return [...slugs];
+  }, [venues]);
 
   // WHI-848: when a page-level QuotesStreamProvider is present, read pushed
   // state (zero GET /quotes polling). Otherwise fall back to HTTP poll for
@@ -127,8 +147,9 @@ export function AssetSpreadBlock({
     asset,
     notionals: displayNotionals,
     // Pin to the section venue set so we don't surface mock/other adapters.
-    venues: venues.length > 0 ? venues : undefined,
+    venues: venueSlugsForRequest,
     instrument_type: instrumentType ?? section.instrumentType,
+    forms,
     // Disable HTTP poll when the page stream owns transport.
     refetchInterval: useStream ? false : section.pollIntervalMs,
     enabled: !useStream,
@@ -177,13 +198,20 @@ export function AssetSpreadBlock({
   const tobByVenue = useMemo(() => {
     const map: Record<string, TopOfBook | null> = {};
     for (const v of orderbookVenues) map[v] = null;
-    // Prefer TOB from the smallest notional row (same book snapshot per venue).
+    // Prefer TOB from the smallest notional row (same book snapshot per row).
     const ordered = [...(data?.pairs ?? [])].sort(
       (a, b) => Number(a.notional_usd) - Number(b.notional_usd),
     );
     for (const pair of ordered) {
+      if (!pair.top_of_book) continue;
+      const key = pairRowKey(pair);
+      // Accept either form-aware row key or bare venue (crypto boards).
       if (
-        pair.top_of_book &&
+        Object.prototype.hasOwnProperty.call(map, key) &&
+        map[key] === null
+      ) {
+        map[key] = pair.top_of_book;
+      } else if (
         Object.prototype.hasOwnProperty.call(map, pair.venue) &&
         map[pair.venue] === null
       ) {
@@ -215,9 +243,10 @@ export function AssetSpreadBlock({
 
   const contractNote = useMemo(() => {
     if (!showVenueSymbolNote) return null;
-    const symbols = venueSymbolsFromPairs(pairs, venues);
+    const venueSlugs = venues.map((k) => parseRowKey(k).venue);
+    const symbols = venueSymbolsFromPairs(pairs, venueSlugs);
     const names: Record<string, string> = {};
-    for (const slug of venues) {
+    for (const slug of venueSlugs) {
       names[slug] = venueDisplayNames?.[slug] ?? slug;
     }
     return formatVenueSymbolNote(asset, symbols, names);
@@ -425,6 +454,8 @@ export function AssetSpreadBlock({
             venueLabels={venueLabels}
             showDetailColumns={true}
             onRetry={() => refetch()}
+            rowHeaderLabel={matrixRowHeaderLabel}
+            bestNoteExtra={matrixBestNoteExtra}
           />
           {section.showTopOfBook && orderbookVenues.length > 0 && (
             <TopOfBookRow
