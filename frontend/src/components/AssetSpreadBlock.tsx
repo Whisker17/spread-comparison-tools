@@ -142,17 +142,17 @@ export function AssetSpreadBlock({
   // Drop synthetic / unknown slugs (catalog summary rows are label-only, WHI-892).
   // Empty list must not become `undefined` (undefined = all venues upstream).
   const venueSlugsForRequest = useMemo(() => {
-    if (venues.length === 0) return undefined;
-    const slugs = new Set(
-      venues
-        .map((k) => parseRowKey(k).venue)
-        .filter((v) => v.length > 0 && VENUE_META[v] !== undefined),
-    );
-    // No real venues among row keys → pin to empty sentinel venue so
-    // `_resolve_venues([])` is never hit via omit; HTTP path still needs a
-    // defined list. Prefer skip: return a list that matches no adapter.
-    if (slugs.size === 0) return ["__none__"];
-    return [...slugs];
+    if (venues.length === 0) return null;
+    const slugs = [
+      ...new Set(
+        venues
+          .map((k) => parseRowKey(k).venue)
+          .filter((v) => v.length > 0 && VENUE_META[v] !== undefined),
+      ),
+    ];
+    // No real venues → skip HTTP entirely (do not invent a sentinel slug that
+    // 422s via UnknownVenueError, and do not omit → all-venues fan-out).
+    return slugs.length > 0 ? slugs : null;
   }, [venues]);
 
   // WHI-848: when a page-level QuotesStreamProvider is present, read pushed
@@ -164,12 +164,13 @@ export function AssetSpreadBlock({
     asset,
     notionals: displayNotionals,
     // Pin to the section venue set so we don't surface mock/other adapters.
-    venues: venueSlugsForRequest,
+    venues: venueSlugsForRequest ?? undefined,
     instrument_type: instrumentType ?? section.instrumentType,
     forms,
-    // Disable HTTP poll when the page stream owns transport.
+    // Disable HTTP when stream owns transport, or when rows are chrome-only
+    // (catalog summaries / non-live) with no real venue to request.
     refetchInterval: useStream ? false : section.pollIntervalMs,
-    enabled: !useStream,
+    enabled: !useStream && venueSlugsForRequest !== null,
   });
 
   const streamData = useStream ? stream.matrixFor(asset) : undefined;

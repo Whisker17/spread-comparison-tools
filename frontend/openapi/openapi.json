@@ -888,6 +888,11 @@
           },
           "coverage": {
             "type": "string",
+            "enum": [
+              "live",
+              "unverified",
+              "absent"
+            ],
             "title": "Coverage"
           }
         },

@@ -13,6 +13,7 @@ import {
   buildStockMatrixRows,
   buildStocksVenueLabels,
   hasBstockForm,
+  isBestEligibleCoverage,
   liveQuoteableFormIds,
   nonLiveRowKeys,
   orderbookRows,
@@ -87,7 +88,7 @@ function StocksSectionInner() {
     const filters: StreamFilter[] = [];
     for (const underlying of STOCK_UNDERLYINGS) {
       const forms = formsByUnderlying.get(underlying) ?? [];
-      const liveForms = forms.filter((f) => f.coverage === "live");
+      const liveForms = forms.filter((f) => isBestEligibleCoverage(f.coverage));
       const formIds = liveQuoteableFormIds(forms);
       const venues = venuesFromForms(liveForms);
       if (formIds.length === 0 || venues.length === 0) continue;
