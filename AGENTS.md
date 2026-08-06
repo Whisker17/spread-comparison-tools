@@ -156,6 +156,11 @@ only the dropped frame's asset (not every subscription); `_deliver` commits
 baseline only when the frame queues and keeps `need_snapshot` after same-asset
 drops; `StreamSettings` enforces `max_queue_depth >= max_assets_per_client`
 (`config/stream.yaml` depth 20); no `stream_overloaded` warning frame.
+Stock DEX/prop coverage survey (WHI-890): per-token BSC addresses + Pancake
+TVL bar + Tessera Kyber green gate + full Solana xStock prop matrix
+(`docs/research/WHI-890-stock-dex-prop-amm-coverage-survey.md`); Tessera stays
+4-token; Pancake has 7 new bStock live candidates; all xStock props
+`absent_no_route` (no Jupiter budget delta).
 
 **Not implemented:** remaining venue adapters (WHI-805), collector.
 Do not assume a module exists until its issue lands.

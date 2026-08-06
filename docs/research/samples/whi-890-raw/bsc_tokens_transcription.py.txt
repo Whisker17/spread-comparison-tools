@@ -1,0 +1,72 @@
+    "AAPLB": TokenInfo(
+        "0x431a3bee82e2ca41e49895cbece5bb0f76a89b7a", 18, "AAPLB"
+    ),
+    "AAPLON": TokenInfo(
+        "0x390a684ef9cade28a7ad0dfa61ab1eb3842618c4", 18, "AAPLon"
+    ),
+    "AMDB": TokenInfo(
+        "0x75fd4cf6f8392e41e70391d60c90c0d5211603a1", 18, "AMDB"
+    ),
+    "AMZNB": TokenInfo(
+        "0x1a4b499833a79a09ad7cf1d42d7dacf71e92eb00", 18, "AMZNB"
+    ),
+    "AMZNON": TokenInfo(
+        "0x4553cfe1c09f37f38b12dc509f676964e392f8fc", 18, "AMZNon"
+    ),
+    "CRCLB": TokenInfo(
+        "0x80f3d493ebce97e343c53d29a137942416b4ffc0", 18, "CRCLB"
+    ),
+    "CRCLON": TokenInfo(
+        "0x992879cd8ce0c312d98648875b5a8d6d042cbf34", 18, "CRCLon"
+    ),
+    "GOOGLB": TokenInfo(
+        "0x3f53de71c126bdabae20f9cd64848d317f6c3238", 18, "GOOGLB"
+    ),
+    "GOOGLON": TokenInfo(
+        "0x091fc7778e6932d4009b087b191d1ee3bac5729a", 18, "GOOGLon"
+    ),
+    "METAB": TokenInfo(
+        "0x7425889fe94f9d693e8daefe88bcced6acfef4c0", 18, "METAB"
+    ),
+    "MSFTB": TokenInfo(
+        "0x80106cb3ead06659a5ad19df39d9b4733863b9b0", 18, "MSFTB"
+    ),
+    "MSFTON": TokenInfo(
+        "0x6bfe75d1ad432050ea973c3a3dcd88f02e2444c3", 18, "MSFTon"
+    ),
+    "MSTRB": TokenInfo(
+        "0xe87afb3076aeb0f9b14e368de8145ae6a2826a14", 18, "MSTRB"
+    ),
+    "NVDAB": TokenInfo(
+        "0x02fca66c1d1afb4e2a7884261eb00f63598a7436", 18, "NVDAB"
+    ),
+    "NVDAON": TokenInfo(
+        "0xa9ee28c80f960b889dfbd1902055218cba016f75", 18, "NVDAon"
+    ),
+    "PLTRB": TokenInfo(
+        "0x0ca5d51d0277bd006fd9607d3e560785ebad8222", 18, "PLTRB"
+    ),
+    "QQQB": TokenInfo(
+        "0x205812cdbed920aff76c6580abd681a46d11efc7", 18, "QQQB"
+    ),
+    "QQQON": TokenInfo(
+        "0x0cde6936d305d5b34667fc46425e852efd73559a", 18, "QQQon"
+    ),
+    "SPCXB": TokenInfo(
+        "0xbe9d156892e55e7154bcd3cb0fea677f9d3103e1", 18, "SPCXB"
+    ),
+    "SPCXON": TokenInfo(
+        "0xd0a58bc9d88d3ff48c0294cb7e45937d0e41a928", 18, "SPCXon"
+    ),
+    "SPYB": TokenInfo(
+        "0x7138b48df7d98d7e3cc221bfe7192d0a178182d8", 18, "SPYB"
+    ),
+    "SPYON": TokenInfo(
+        "0x6a708ead771238919d85930b5a0f10454e1c331a", 18, "SPYon"
+    ),
+    "TSLAB": TokenInfo(
+        "0x5b1910eaad6450e50f816082aa078c41f10c292f", 18, "TSLAB"
+    ),
+    "TSLAON": TokenInfo(
+        "0x2494b603319d4d9f9715c9f4496d9e0364b59d93", 18, "TSLAon"
+    ),

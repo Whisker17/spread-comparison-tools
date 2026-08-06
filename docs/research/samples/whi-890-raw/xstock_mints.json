@@ -1,0 +1,58 @@
+{
+  "AMZN": {
+    "symbol": "AMZNx",
+    "mint": "Xs3eBt7uRfJX8QUs4suhyU8p2M6DoUDrJyWBa8LLZsg"
+  },
+  "GOOGL": {
+    "symbol": "GOOGLx",
+    "mint": "XsCPL9dNWBMvFtTmwcCA5v3xWPSMEBCszbQdiLLq6aN"
+  },
+  "META": {
+    "symbol": "METAx",
+    "mint": "Xsa62P5mvPszXL1krVUnU5ar38bBSVcWAB6fmPCo5Zu"
+  },
+  "AMD": {
+    "symbol": "AMDx",
+    "mint": "XsXcJ6GZ9kVnjqGsjBnktRcuwMBmvKWh8S93RefZ1rF"
+  },
+  "PLTR": {
+    "symbol": "PLTRx",
+    "mint": "XsoBhf2ufR8fTyNSjqfU71DYGaE6Z3SUGAidpzriAA4"
+  },
+  "MSTR": {
+    "symbol": "MSTRx",
+    "mint": "XsP7xzNPvEHS1m6qfanPUGjNmdnmsLKEoNAnHjdxxyZ"
+  },
+  "SPY": {
+    "symbol": "SPYx",
+    "mint": "XsoCS1TfEyfFhfvj8EtZ528L3CaKBDBRqRapnBbDF2W"
+  },
+  "QQQ": {
+    "symbol": "QQQx",
+    "mint": "Xs8S1uUs1zvS2p7iwtsG3b6fkhpvmwz4GYU3gWAmWHZ"
+  },
+  "CRCL": {
+    "symbol": "CRCLx",
+    "mint": "XsueG8BtpquVJX9LVLLEGuViXUungE6WmK5YZ3p3bd1"
+  },
+  "TSLA": {
+    "symbol": "TSLAx",
+    "mint": "XsDoVfqeBukxuZHWhdvWHBhgEHjGNst4MLodqsJHzoB"
+  },
+  "NVDA": {
+    "symbol": "NVDAx",
+    "mint": "Xsc9qvGR1efVDFGLrVsmkzv3qi45LTBjeUKSPmx9qEh"
+  },
+  "AAPL": {
+    "symbol": "AAPLx",
+    "mint": "XsbEhLAtcf6HdfpFZ5xEMdqW8nfAvcsP5bdudRLJzJp"
+  },
+  "MSFT": {
+    "symbol": "MSFTx",
+    "mint": "XspzcW1PRtgf6Wj92HCiZdjzKCyFekVD8P5Ueh3dRMX"
+  },
+  "SPCX": {
+    "symbol": "SPCXx",
+    "mint": "Xs3oZwbHvqis4NYcf4YKWmEia2eC84wSiVrcYcTqpH8"
+  }
+}

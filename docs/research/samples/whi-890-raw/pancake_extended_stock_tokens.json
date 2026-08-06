@@ -1,0 +1,106 @@
+[
+  {
+    "name": "Advanced Micro Devices Inc",
+    "chainId": 56,
+    "symbol": "AMDB",
+    "address": "0x75Fd4cF6f8392E41E70391D60c90C0D5211603a1",
+    "decimals": 18,
+    "logoURI": "https://tokens.pancakeswap.finance/images/0x75Fd4cF6f8392E41E70391D60c90C0D5211603a1.png",
+    "extensions": {
+      "scaledUIAmount": {
+        "enabled": true
+      }
+    }
+  },
+  {
+    "name": "Strategy Inc.",
+    "chainId": 56,
+    "symbol": "MSTRB",
+    "address": "0xE87afb3076AeB0f9B14E368DE8145ae6a2826A14",
+    "decimals": 18,
+    "logoURI": "https://tokens.pancakeswap.finance/images/0xE87afb3076AeB0f9B14E368DE8145ae6a2826A14.png",
+    "extensions": {
+      "scaledUIAmount": {
+        "enabled": true
+      }
+    }
+  },
+  {
+    "name": "Palantir Technologies",
+    "chainId": 56,
+    "symbol": "PLTRB",
+    "address": "0x0Ca5D51D0277Bd006fd9607d3E560785EBad8222",
+    "decimals": 18,
+    "logoURI": "https://bscscan.com/token/images/bstocks_pltrb_64.png",
+    "extensions": {
+      "scaledUIAmount": {
+        "enabled": true
+      }
+    }
+  },
+  {
+    "name": "Microsoft",
+    "chainId": 56,
+    "symbol": "MSFTB",
+    "address": "0x80106cb3EAD06659A5ad19DF39D9b4733863B9b0",
+    "decimals": 18,
+    "logoURI": "https://bscscan.com/token/images/bstocks_msftb_64.png",
+    "extensions": {
+      "scaledUIAmount": {
+        "enabled": true
+      }
+    }
+  },
+  {
+    "name": "Meta Platforms",
+    "chainId": 56,
+    "symbol": "METAB",
+    "address": "0x7425889FE94F9d693E8daefE88BCCed6AcFEf4c0",
+    "decimals": 18,
+    "logoURI": "https://bscscan.com/token/images/bstocks_metab_64.png",
+    "extensions": {
+      "scaledUIAmount": {
+        "enabled": true
+      }
+    }
+  },
+  {
+    "name": "Invesqo QQQ",
+    "chainId": 56,
+    "symbol": "QQQB",
+    "address": "0x205812CdBed920aFf76C6580abD681a46D11efc7",
+    "decimals": 18,
+    "logoURI": "https://bscscan.com/token/images/bstocks_qqqb_64.png",
+    "extensions": {
+      "scaledUIAmount": {
+        "enabled": true
+      }
+    }
+  },
+  {
+    "name": "SPY",
+    "chainId": 56,
+    "symbol": "SPYB",
+    "address": "0x7138b48df7D98D7e3cc221BfE7192D0a178182D8",
+    "decimals": 18,
+    "logoURI": "https://bscscan.com/token/images/bstocks_spyb_64.png",
+    "extensions": {
+      "scaledUIAmount": {
+        "enabled": true
+      }
+    }
+  },
+  {
+    "name": "Alphabet",
+    "chainId": 56,
+    "symbol": "GOOGLB",
+    "address": "0x3F53De71c126BdaBAe20f9cD64848d317f6C3238",
+    "decimals": 18,
+    "logoURI": "https://bscscan.com/token/images/bstocks_googlb_64.png",
+    "extensions": {
+      "scaledUIAmount": {
+        "enabled": true
+      }
+    }
+  }
+]
