@@ -1,0 +1,77 @@
+{
+  "NVDAB": {
+    "address": "0x02fca66c1d1afb4e2a7884261eb00f63598a7436",
+    "form": "bstock",
+    "underlying": "NVDA",
+    "ticker": "NVDAB",
+    "provenance": "geckoterminal pool bsc_0x8fb4243b553ac29ba088acf00b9b7da24bd6690c + BSC_TOKENS verified",
+    "pool_tvl_usd": 1251195.9515,
+    "pool_vol_h24_usd": 5335174.13764178,
+    "pool_is_v3": true,
+    "pool_is_usdt": true,
+    "pool_name": "NVDAB / USDT 0.25%",
+    "dex_id": "pancakeswap-v3-bsc"
+  },
+  "NVDAON": {
+    "address": "0xa9ee28c80f960b889dfbd1902055218cba016f75",
+    "form": "ondo",
+    "underlying": "NVDA",
+    "ticker": "NVDAON",
+    "provenance": "geckoterminal pool bsc_0xb90bdbfbdffd4af5a636b5805539edeafb969308 + BSC_TOKENS verified",
+    "pool_tvl_usd": 10540.2643,
+    "pool_vol_h24_usd": 3555.0087392291,
+    "pool_is_v3": true,
+    "pool_is_usdt": true,
+    "pool_name": "NVDAon / USDT 1%",
+    "dex_id": "pancakeswap-v3-bsc"
+  },
+  "TSLAB": {
+    "address": "0x5b1910eaad6450e50f816082aa078c41f10c292f",
+    "form": "bstock",
+    "underlying": "TSLA",
+    "ticker": "TSLAB",
+    "provenance": "geckoterminal pool bsc_0xb0f5e5400e8f0f7c242f2b7740c004f020579c41",
+    "pool_tvl_usd": 215661.8328,
+    "pool_vol_h24_usd": 423125.227229679,
+    "pool_is_v3": true,
+    "pool_is_usdt": true,
+    "pool_name": "TSLAB / USDT 0.25%",
+    "dex_id": "pancakeswap-v3-bsc"
+  },
+  "TSLAON": {
+    "address": "0x2494b603319d4d9f9715c9f4496d9e0364b59d93",
+    "form": "ondo",
+    "underlying": "TSLA",
+    "ticker": "TSLAON",
+    "provenance": "geckoterminal pool bsc_0xcbf32ac27661bd6a1c336b12066904aecd326c09",
+    "pool_tvl_usd": 849.1712,
+    "pool_vol_h24_usd": 0.0,
+    "pool_is_v3": true,
+    "pool_is_usdt": true,
+    "pool_name": "TSLAon / USDT 0.25%",
+    "dex_id": "pancakeswap-v3-bsc"
+  },
+  "AAPLB": {
+    "address": "0x431a3bee82e2ca41e49895cbece5bb0f76a89b7a",
+    "form": "bstock",
+    "underlying": "AAPL",
+    "ticker": "AAPLB",
+    "provenance": "geckoterminal pool bsc_0xe9b9998b2ec5430d2246c7f1f8d9f298c97d7365",
+    "pool_tvl_usd": 306947.4766,
+    "pool_vol_h24_usd": 740299.460438981,
+    "pool_is_v3": true,
+    "pool_is_usdt": true,
+    "pool_name": "AAPLB / USDT 0.25%",
+    "dex_id": "pancakeswap-v3-bsc"
+  },
+  "QQQB": {
+    "address": "0x205812cdbed920aff76c6580abd681a46d11efc7",
+    "ticker": "QQQB",
+    "provenance": "BSC_TOKENS in _prop_common.py (existing live)"
+  },
+  "SPCXB": {
+    "address": "0xbe9d156892e55e7154bcd3cb0fea677f9d3103e1",
+    "ticker": "SPCXB",
+    "provenance": "BSC_TOKENS in _prop_common.py (existing live)"
+  }
+}

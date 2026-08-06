@@ -151,6 +151,11 @@ Catalog P0 stock expansion (WHI-884): CRCL/GOOGL/AMD/PLTR/META/AMZN/SPY/MSTR
 (+ QQQ perp live); form-aware CEX maps + Bybit `AMDSTOCKUSDT` venue override;
 HL exact-only WS (no SPY/QQQ proxy); live bstock@BN + xstock_cex@Bybit; Sol
 xStocks stay unverified (zero Jupiter budget).
+Stock DEX/prop coverage survey (WHI-890): per-token BSC addresses + Pancake
+TVL bar + Tessera Kyber green gate + full Solana xStock prop matrix
+(`docs/research/WHI-890-stock-dex-prop-amm-coverage-survey.md`); Tessera stays
+4-token; Pancake has 7 new bStock live candidates; all xStock props
+`absent_no_route` (no Jupiter budget delta).
 Stream overflow resnapshot storm (WHI-888): `StreamClient.enqueue` invalidates
 only the dropped frame's asset (not every subscription); `_deliver` commits
 baseline only when the frame queues and keeps `need_snapshot` after same-asset

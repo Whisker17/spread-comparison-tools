@@ -1,0 +1,314 @@
+{
+  "NVDA|bstock": {
+    "query": "NVDAB",
+    "n_pools_raw": 20,
+    "n_pools_filtered": 20,
+    "best": {
+      "name": "NVDAB / USDT 0.25%",
+      "tvl_usd": 1251195.9515,
+      "vol_h24_usd": 5335174.13764178,
+      "is_v3": true,
+      "is_usdt": true,
+      "dex_id": "pancakeswap-v3-bsc",
+      "pool_id": "bsc_0x8fb4243b553ac29ba088acf00b9b7da24bd6690c",
+      "candidates_top3": [
+        {
+          "name": "NVDAB / USDT 0.25%",
+          "tvl": 1251195.9515,
+          "vol": 5335174.13764178,
+          "dex": "pancakeswap-v3-bsc",
+          "is_v3": true,
+          "is_usdt": true
+        },
+        {
+          "name": "NVDAB / USDT 1%",
+          "tvl": 218397.5985,
+          "vol": 232103.061202709,
+          "dex": "pancakeswap-v3-bsc",
+          "is_v3": true,
+          "is_usdt": true
+        },
+        {
+          "name": "NVDAB / GPU 0.01%",
+          "tvl": 60313.6208,
+          "vol": 13487790.7089846,
+          "dex": "pancakeswap-v3-bsc",
+          "is_v3": true,
+          "is_usdt": false
+        }
+      ]
+    },
+    "base_token_id": "bsc_0x02fca66c1d1afb4e2a7884261eb00f63598a7436",
+    "quote_token_id": "bsc_0x55d398326f99059ff775485246999027b3197955",
+    "stock_address": "0x02fca66c1d1afb4e2a7884261eb00f63598a7436",
+    "fee_tier_hint": "NVDAB / USDT 0.25%"
+  },
+  "NVDA|ondo": {
+    "query": "NVDAon",
+    "n_pools_raw": 19,
+    "n_pools_filtered": 19,
+    "best": {
+      "name": "NVDAon / USDT 1%",
+      "tvl_usd": 10540.2643,
+      "vol_h24_usd": 3555.0087392291,
+      "is_v3": true,
+      "is_usdt": true,
+      "dex_id": "pancakeswap-v3-bsc",
+      "pool_id": "bsc_0xb90bdbfbdffd4af5a636b5805539edeafb969308",
+      "candidates_top3": [
+        {
+          "name": "NVDAon / USDT 1%",
+          "tvl": 10540.2643,
+          "vol": 3555.0087392291,
+          "dex": "pancakeswap-v3-bsc",
+          "is_v3": true,
+          "is_usdt": true
+        },
+        {
+          "name": "NVDAon / USDT 0.01%",
+          "tvl": 3976.6895,
+          "vol": 34388.8877308045,
+          "dex": "pancakeswap-v3-bsc",
+          "is_v3": true,
+          "is_usdt": true
+        },
+        {
+          "name": "JPF / NVDAon 1%",
+          "tvl": 42.0319,
+          "vol": 4.8483819813,
+          "dex": "pancakeswap-v3-bsc",
+          "is_v3": true,
+          "is_usdt": false
+        }
+      ]
+    },
+    "base_token_id": "bsc_0xa9ee28c80f960b889dfbd1902055218cba016f75",
+    "quote_token_id": "bsc_0x55d398326f99059ff775485246999027b3197955",
+    "stock_address": "0xa9ee28c80f960b889dfbd1902055218cba016f75",
+    "fee_tier_hint": "NVDAon / USDT 1%"
+  },
+  "TSLA|bstock": {
+    "query": "TSLAB",
+    "n_pools_raw": 20,
+    "n_pools_filtered": 20,
+    "best": {
+      "name": "TSLAB / USDT 0.25%",
+      "tvl_usd": 215661.8328,
+      "vol_h24_usd": 423125.227229679,
+      "is_v3": true,
+      "is_usdt": true,
+      "dex_id": "pancakeswap-v3-bsc",
+      "pool_id": "bsc_0xb0f5e5400e8f0f7c242f2b7740c004f020579c41",
+      "candidates_top3": [
+        {
+          "name": "TSLAB / USDT 0.25%",
+          "tvl": 215661.8328,
+          "vol": 423125.227229679,
+          "dex": "pancakeswap-v3-bsc",
+          "is_v3": true,
+          "is_usdt": true
+        },
+        {
+          "name": "TSLAB / USDT 1%",
+          "tvl": 95317.2222,
+          "vol": 25642.0455087687,
+          "dex": "pancakeswap-v3-bsc",
+          "is_v3": true,
+          "is_usdt": true
+        },
+        {
+          "name": "TSLAB / \u5168\u8981 0.01%",
+          "tvl": 682.4022,
+          "vol": 403.3925636613,
+          "dex": "pancakeswap-v3-bsc",
+          "is_v3": true,
+          "is_usdt": false
+        }
+      ]
+    },
+    "base_token_id": "bsc_0x5b1910eaad6450e50f816082aa078c41f10c292f",
+    "quote_token_id": "bsc_0x55d398326f99059ff775485246999027b3197955",
+    "stock_address": "0x5b1910eaad6450e50f816082aa078c41f10c292f",
+    "fee_tier_hint": "TSLAB / USDT 0.25%"
+  },
+  "TSLA|ondo": {
+    "query": "TSLAon",
+    "n_pools_raw": 13,
+    "n_pools_filtered": 13,
+    "best": {
+      "name": "TSLAon / USDT 0.25%",
+      "tvl_usd": 849.1712,
+      "vol_h24_usd": 0.0,
+      "is_v3": true,
+      "is_usdt": true,
+      "dex_id": "pancakeswap-v3-bsc",
+      "pool_id": "bsc_0xcbf32ac27661bd6a1c336b12066904aecd326c09",
+      "candidates_top3": [
+        {
+          "name": "TSLAon / USDT 0.25%",
+          "tvl": 849.1712,
+          "vol": 0.0,
+          "dex": "pancakeswap-v3-bsc",
+          "is_v3": true,
+          "is_usdt": true
+        },
+        {
+          "name": "\u6bd4\u7279\u5e01 / TSLAon 0.25%",
+          "tvl": 213.4885,
+          "vol": 21.8013593113,
+          "dex": "pancakeswap-v3-bsc",
+          "is_v3": true,
+          "is_usdt": false
+        },
+        {
+          "name": "TSLAon / JPF 1%",
+          "tvl": 70.0356,
+          "vol": 26.074618698,
+          "dex": "pancakeswap-v3-bsc",
+          "is_v3": true,
+          "is_usdt": false
+        }
+      ]
+    },
+    "base_token_id": "bsc_0x2494b603319d4d9f9715c9f4496d9e0364b59d93",
+    "quote_token_id": "bsc_0x55d398326f99059ff775485246999027b3197955",
+    "stock_address": "0x2494b603319d4d9f9715c9f4496d9e0364b59d93",
+    "fee_tier_hint": "TSLAon / USDT 0.25%"
+  },
+  "AAPL|bstock": {
+    "query": "AAPLB",
+    "n_pools_raw": 20,
+    "n_pools_filtered": 20,
+    "best": {
+      "name": "AAPLB / USDT 0.25%",
+      "tvl_usd": 306947.4766,
+      "vol_h24_usd": 740299.460438981,
+      "is_v3": true,
+      "is_usdt": true,
+      "dex_id": "pancakeswap-v3-bsc",
+      "pool_id": "bsc_0xe9b9998b2ec5430d2246c7f1f8d9f298c97d7365",
+      "candidates_top3": [
+        {
+          "name": "AAPLB / USDT 0.25%",
+          "tvl": 306947.4766,
+          "vol": 740299.460438981,
+          "dex": "pancakeswap-v3-bsc",
+          "is_v3": true,
+          "is_usdt": true
+        },
+        {
+          "name": "\u5168\u8981 / AAPLB 0.01%",
+          "tvl": 685.9495,
+          "vol": 1639.3803390654,
+          "dex": "pancakeswap-v3-bsc",
+          "is_v3": true,
+          "is_usdt": false
+        },
+        {
+          "name": "googlb / AAPLB 0.25%",
+          "tvl": 103.5077,
+          "vol": 8.5686104243,
+          "dex": "pancakeswap-v3-bsc",
+          "is_v3": true,
+          "is_usdt": false
+        }
+      ]
+    },
+    "base_token_id": "bsc_0x431a3bee82e2ca41e49895cbece5bb0f76a89b7a",
+    "quote_token_id": "bsc_0x55d398326f99059ff775485246999027b3197955",
+    "stock_address": "0x431a3bee82e2ca41e49895cbece5bb0f76a89b7a",
+    "fee_tier_hint": "AAPLB / USDT 0.25%"
+  },
+  "AAPL|ondo": {
+    "error": 429,
+    "body": "{\"status\":{\"error_code\":429,\"error_message\":\"You've exceeded the Rate Limit. Please visit https://www.coingecko.com/en/api/pricing to subscribe to our API plans for higher rate limits and use the onchain endpoints: https://docs.coingecko.com/reference/endpoint-overview\"}}"
+  },
+  "MSFT|bstock": {
+    "error": 429,
+    "body": "{\"status\":{\"error_code\":429,\"error_message\":\"You've exceeded the Rate Limit. Please visit https://www.coingecko.com/en/api/pricing to subscribe to our API plans for higher rate limits and use the onchain endpoints: https://docs.coingecko.com/reference/endpoint-overview\"}}"
+  },
+  "MSFT|ondo": {
+    "error": 429,
+    "body": "{\"status\":{\"error_code\":429,\"error_message\":\"You've exceeded the Rate Limit. Please visit https://www.coingecko.com/en/api/pricing to subscribe to our API plans for higher rate limits and use the onchain endpoints: https://docs.coingecko.com/reference/endpoint-overview\"}}"
+  },
+  "QQQ|bstock": {
+    "error": 429,
+    "body": "{\"status\":{\"error_code\":429,\"error_message\":\"You've exceeded the Rate Limit. Please visit https://www.coingecko.com/en/api/pricing to subscribe to our API plans for higher rate limits and use the onchain endpoints: https://docs.coingecko.com/reference/endpoint-overview\"}}"
+  },
+  "QQQ|ondo": {
+    "error": 429,
+    "body": "{\"status\":{\"error_code\":429,\"error_message\":\"You've exceeded the Rate Limit. Please visit https://www.coingecko.com/en/api/pricing to subscribe to our API plans for higher rate limits and use the onchain endpoints: https://docs.coingecko.com/reference/endpoint-overview\"}}"
+  },
+  "SPCX|bstock": {
+    "error": 429,
+    "body": "{\"status\":{\"error_code\":429,\"error_message\":\"You've exceeded the Rate Limit. Please visit https://www.coingecko.com/en/api/pricing to subscribe to our API plans for higher rate limits and use the onchain endpoints: https://docs.coingecko.com/reference/endpoint-overview\"}}"
+  },
+  "SPCX|ondo": {
+    "error": 429,
+    "body": "{\"status\":{\"error_code\":429,\"error_message\":\"You've exceeded the Rate Limit. Please visit https://www.coingecko.com/en/api/pricing to subscribe to our API plans for higher rate limits and use the onchain endpoints: https://docs.coingecko.com/reference/endpoint-overview\"}}"
+  },
+  "CRCL|bstock": {
+    "error": 429,
+    "body": "{\"status\":{\"error_code\":429,\"error_message\":\"You've exceeded the Rate Limit. Please visit https://www.coingecko.com/en/api/pricing to subscribe to our API plans for higher rate limits and use the onchain endpoints: https://docs.coingecko.com/reference/endpoint-overview\"}}"
+  },
+  "CRCL|ondo": {
+    "error": 429,
+    "body": "{\"status\":{\"error_code\":429,\"error_message\":\"You've exceeded the Rate Limit. Please visit https://www.coingecko.com/en/api/pricing to subscribe to our API plans for higher rate limits and use the onchain endpoints: https://docs.coingecko.com/reference/endpoint-overview\"}}"
+  },
+  "GOOGL|bstock": {
+    "error": 429,
+    "body": "{\"status\":{\"error_code\":429,\"error_message\":\"You've exceeded the Rate Limit. Please visit https://www.coingecko.com/en/api/pricing to subscribe to our API plans for higher rate limits and use the onchain endpoints: https://docs.coingecko.com/reference/endpoint-overview\"}}"
+  },
+  "GOOGL|ondo": {
+    "error": 429,
+    "body": "{\"status\":{\"error_code\":429,\"error_message\":\"You've exceeded the Rate Limit. Please visit https://www.coingecko.com/en/api/pricing to subscribe to our API plans for higher rate limits and use the onchain endpoints: https://docs.coingecko.com/reference/endpoint-overview\"}}"
+  },
+  "AMD|bstock": {
+    "error": 429,
+    "body": "{\"status\":{\"error_code\":429,\"error_message\":\"You've exceeded the Rate Limit. Please visit https://www.coingecko.com/en/api/pricing to subscribe to our API plans for higher rate limits and use the onchain endpoints: https://docs.coingecko.com/reference/endpoint-overview\"}}"
+  },
+  "AMD|ondo": {
+    "error": 429,
+    "body": "{\"status\":{\"error_code\":429,\"error_message\":\"You've exceeded the Rate Limit. Please visit https://www.coingecko.com/en/api/pricing to subscribe to our API plans for higher rate limits and use the onchain endpoints: https://docs.coingecko.com/reference/endpoint-overview\"}}"
+  },
+  "PLTR|bstock": {
+    "error": 429,
+    "body": "{\"status\":{\"error_code\":429,\"error_message\":\"You've exceeded the Rate Limit. Please visit https://www.coingecko.com/en/api/pricing to subscribe to our API plans for higher rate limits and use the onchain endpoints: https://docs.coingecko.com/reference/endpoint-overview\"}}"
+  },
+  "PLTR|ondo": {
+    "error": 429,
+    "body": "{\"status\":{\"error_code\":429,\"error_message\":\"You've exceeded the Rate Limit. Please visit https://www.coingecko.com/en/api/pricing to subscribe to our API plans for higher rate limits and use the onchain endpoints: https://docs.coingecko.com/reference/endpoint-overview\"}}"
+  },
+  "META|bstock": {
+    "error": 429,
+    "body": "{\"status\":{\"error_code\":429,\"error_message\":\"You've exceeded the Rate Limit. Please visit https://www.coingecko.com/en/api/pricing to subscribe to our API plans for higher rate limits and use the onchain endpoints: https://docs.coingecko.com/reference/endpoint-overview\"}}"
+  },
+  "META|ondo": {
+    "error": 429,
+    "body": "{\"status\":{\"error_code\":429,\"error_message\":\"You've exceeded the Rate Limit. Please visit https://www.coingecko.com/en/api/pricing to subscribe to our API plans for higher rate limits and use the onchain endpoints: https://docs.coingecko.com/reference/endpoint-overview\"}}"
+  },
+  "AMZN|bstock": {
+    "error": 429,
+    "body": "{\"status\":{\"error_code\":429,\"error_message\":\"You've exceeded the Rate Limit. Please visit https://www.coingecko.com/en/api/pricing to subscribe to our API plans for higher rate limits and use the onchain endpoints: https://docs.coingecko.com/reference/endpoint-overview\"}}"
+  },
+  "AMZN|ondo": {
+    "error": 429,
+    "body": "{\"status\":{\"error_code\":429,\"error_message\":\"You've exceeded the Rate Limit. Please visit https://www.coingecko.com/en/api/pricing to subscribe to our API plans for higher rate limits and use the onchain endpoints: https://docs.coingecko.com/reference/endpoint-overview\"}}"
+  },
+  "SPY|bstock": {
+    "error": 429,
+    "body": "{\"status\":{\"error_code\":429,\"error_message\":\"You've exceeded the Rate Limit. Please visit https://www.coingecko.com/en/api/pricing to subscribe to our API plans for higher rate limits and use the onchain endpoints: https://docs.coingecko.com/reference/endpoint-overview\"}}"
+  },
+  "SPY|ondo": {
+    "error": 429,
+    "body": "{\"status\":{\"error_code\":429,\"error_message\":\"You've exceeded the Rate Limit. Please visit https://www.coingecko.com/en/api/pricing to subscribe to our API plans for higher rate limits and use the onchain endpoints: https://docs.coingecko.com/reference/endpoint-overview\"}}"
+  },
+  "MSTR|bstock": {
+    "error": 429,
+    "body": "{\"status\":{\"error_code\":429,\"error_message\":\"You've exceeded the Rate Limit. Please visit https://www.coingecko.com/en/api/pricing to subscribe to our API plans for higher rate limits and use the onchain endpoints: https://docs.coingecko.com/reference/endpoint-overview\"}}"
+  },
+  "MSTR|ondo": {
+    "error": 429,
+    "body": "{\"status\":{\"error_code\":429,\"error_message\":\"You've exceeded the Rate Limit. Please visit https://www.coingecko.com/en/api/pricing to subscribe to our API plans for higher rate limits and use the onchain endpoints: https://docs.coingecko.com/reference/endpoint-overview\"}}"
+  }
+}

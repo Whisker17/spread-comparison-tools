@@ -1,0 +1,1337 @@
+{
+  "NVDA|bstock": {
+    "query": "NVDAB",
+    "n": 29,
+    "best": {
+      "pairAddress": "0x8FB4243b553aC29BA088aCf00B9B7dA24bD6690C",
+      "dexId": "pancakeswap",
+      "labels": [
+        "v3"
+      ],
+      "stock_symbol": "NVDAB",
+      "stock_address": "0x02fca66c1d1afb4e2a7884261eb00f63598a7436",
+      "quote_symbol": "USDT",
+      "quote_address": "0x55d398326f99059ff775485246999027b3197955",
+      "liq_usd": 1258231.84,
+      "vol_h24": 5477962.72,
+      "url": "https://dexscreener.com/bsc/0x8fb4243b553ac29ba088acf00b9b7da24bd6690c",
+      "priceUsd": "219.45"
+    },
+    "top3": [
+      {
+        "pairAddress": "0x8FB4243b553aC29BA088aCf00B9B7dA24bD6690C",
+        "dexId": "pancakeswap",
+        "labels": [
+          "v3"
+        ],
+        "stock_symbol": "NVDAB",
+        "stock_address": "0x02fca66c1d1afb4e2a7884261eb00f63598a7436",
+        "quote_symbol": "USDT",
+        "quote_address": "0x55d398326f99059ff775485246999027b3197955",
+        "liq_usd": 1258231.84,
+        "vol_h24": 5477962.72,
+        "url": "https://dexscreener.com/bsc/0x8fb4243b553ac29ba088acf00b9b7da24bd6690c",
+        "priceUsd": "219.45"
+      },
+      {
+        "pairAddress": "0x18d52270d09AB842c87acd45977dCF64a82FA4ad",
+        "dexId": "pancakeswap",
+        "labels": [
+          "v3"
+        ],
+        "stock_symbol": "NVDAB",
+        "stock_address": "0x02fca66c1d1afb4e2a7884261eb00f63598a7436",
+        "quote_symbol": "USDT",
+        "quote_address": "0x55d398326f99059ff775485246999027b3197955",
+        "liq_usd": 219318.35,
+        "vol_h24": 236909.84,
+        "url": "https://dexscreener.com/bsc/0x18d52270d09ab842c87acd45977dcf64a82fa4ad",
+        "priceUsd": "221.011"
+      },
+      {
+        "pairAddress": "0xDD9d5164CcBc57bE377a964Fc064135b03D06177",
+        "dexId": "uniswap",
+        "labels": [],
+        "stock_symbol": "NVDAB",
+        "stock_address": "0x02fca66c1d1afb4e2a7884261eb00f63598a7436",
+        "quote_symbol": "USDT",
+        "quote_address": "0x55d398326f99059ff775485246999027b3197955",
+        "liq_usd": 65238.48,
+        "vol_h24": 1693545.29,
+        "url": "https://dexscreener.com/bsc/0xdd9d5164ccbc57be377a964fc064135b03d06177",
+        "priceUsd": "219.21"
+      }
+    ]
+  },
+  "NVDA|ondo": {
+    "query": "NVDAon",
+    "n": 10,
+    "best": {
+      "pairAddress": "0xB90BDBFBdfFd4Af5a636b5805539eDeafb969308",
+      "dexId": "pancakeswap",
+      "labels": [
+        "v3"
+      ],
+      "stock_symbol": "NVDAon",
+      "stock_address": "0xa9ee28c80f960b889dfbd1902055218cba016f75",
+      "quote_symbol": "USDT",
+      "quote_address": "0x55d398326f99059ff775485246999027b3197955",
+      "liq_usd": 10525.75,
+      "vol_h24": 3552.55,
+      "url": "https://dexscreener.com/bsc/0xb90bdbfbdffd4af5a636b5805539edeafb969308",
+      "priceUsd": "217.85"
+    },
+    "top3": [
+      {
+        "pairAddress": "0xB90BDBFBdfFd4Af5a636b5805539eDeafb969308",
+        "dexId": "pancakeswap",
+        "labels": [
+          "v3"
+        ],
+        "stock_symbol": "NVDAon",
+        "stock_address": "0xa9ee28c80f960b889dfbd1902055218cba016f75",
+        "quote_symbol": "USDT",
+        "quote_address": "0x55d398326f99059ff775485246999027b3197955",
+        "liq_usd": 10525.75,
+        "vol_h24": 3552.55,
+        "url": "https://dexscreener.com/bsc/0xb90bdbfbdffd4af5a636b5805539edeafb969308",
+        "priceUsd": "217.85"
+      },
+      {
+        "pairAddress": "0x127f40cB7EFE232B8FC2BAd7dACf89Cc5a229e30",
+        "dexId": "pancakeswap",
+        "labels": [
+          "v3"
+        ],
+        "stock_symbol": "NVDAon",
+        "stock_address": "0xa9ee28c80f960b889dfbd1902055218cba016f75",
+        "quote_symbol": "USDT",
+        "quote_address": "0x55d398326f99059ff775485246999027b3197955",
+        "liq_usd": 3971.51,
+        "vol_h24": 34819.17,
+        "url": "https://dexscreener.com/bsc/0x127f40cb7efe232b8fc2bad7dacf89cc5a229e30",
+        "priceUsd": "219.31"
+      },
+      {
+        "pairAddress": "0x75407341b852314978f160a543684e1AF522192c",
+        "dexId": "pancakeswap",
+        "labels": [
+          "v2"
+        ],
+        "stock_symbol": "NVDAon",
+        "stock_address": "0xa9ee28c80f960b889dfbd1902055218cba016f75",
+        "quote_symbol": "USDT",
+        "quote_address": "0x55d398326f99059ff775485246999027b3197955",
+        "liq_usd": 0.63,
+        "vol_h24": 0.0,
+        "url": "https://dexscreener.com/bsc/0x75407341b852314978f160a543684e1af522192c",
+        "priceUsd": "219.87"
+      }
+    ]
+  },
+  "TSLA|bstock": {
+    "query": "TSLAB",
+    "n": 30,
+    "best": {
+      "pairAddress": "0xB0f5E5400E8F0F7C242F2b7740C004f020579c41",
+      "dexId": "pancakeswap",
+      "labels": [
+        "v3"
+      ],
+      "stock_symbol": "TSLAB",
+      "stock_address": "0x5b1910eaad6450e50f816082aa078c41f10c292f",
+      "quote_symbol": "USDT",
+      "quote_address": "0x55d398326f99059ff775485246999027b3197955",
+      "liq_usd": 216868.63,
+      "vol_h24": 425901.5,
+      "url": "https://dexscreener.com/bsc/0xb0f5e5400e8f0f7c242f2b7740c004f020579c41",
+      "priceUsd": "322.15"
+    },
+    "top3": [
+      {
+        "pairAddress": "0xB0f5E5400E8F0F7C242F2b7740C004f020579c41",
+        "dexId": "pancakeswap",
+        "labels": [
+          "v3"
+        ],
+        "stock_symbol": "TSLAB",
+        "stock_address": "0x5b1910eaad6450e50f816082aa078c41f10c292f",
+        "quote_symbol": "USDT",
+        "quote_address": "0x55d398326f99059ff775485246999027b3197955",
+        "liq_usd": 216868.63,
+        "vol_h24": 425901.5,
+        "url": "https://dexscreener.com/bsc/0xb0f5e5400e8f0f7c242f2b7740c004f020579c41",
+        "priceUsd": "322.15"
+      },
+      {
+        "pairAddress": "0x613eBCfCf41749571d659A0BF3E2C0032Fd4859E",
+        "dexId": "pancakeswap",
+        "labels": [
+          "v3"
+        ],
+        "stock_symbol": "TSLAB",
+        "stock_address": "0x5b1910eaad6450e50f816082aa078c41f10c292f",
+        "quote_symbol": "USDT",
+        "quote_address": "0x55d398326f99059ff775485246999027b3197955",
+        "liq_usd": 95882.25,
+        "vol_h24": 25697.71,
+        "url": "https://dexscreener.com/bsc/0x613ebcfcf41749571d659a0bf3e2c0032fd4859e",
+        "priceUsd": "323.72"
+      },
+      {
+        "pairAddress": "0xAc5cb50d90A7a2Bc5DEF56194bE8D93C905bCD5F",
+        "dexId": "pancakeswap",
+        "labels": [
+          "v2"
+        ],
+        "stock_symbol": "TSLAB",
+        "stock_address": "0x5b1910eaad6450e50f816082aa078c41f10c292f",
+        "quote_symbol": "USDT",
+        "quote_address": "0x55d398326f99059ff775485246999027b3197955",
+        "liq_usd": 1.73,
+        "vol_h24": 0.0,
+        "url": "https://dexscreener.com/bsc/0xac5cb50d90a7a2bc5def56194be8d93c905bcd5f",
+        "priceUsd": "322.26"
+      }
+    ]
+  },
+  "TSLA|ondo": {
+    "query": "TSLAon",
+    "n": 6,
+    "best": {
+      "pairAddress": "0xfb9Dca2B54C24c25a4A26d30084045EBC7e68564",
+      "dexId": "flapsh",
+      "labels": [],
+      "stock_symbol": "TSLAON",
+      "stock_address": "0x95d27ddd94f731acde0ea78a734c151c93f97777",
+      "quote_symbol": "TSLAB",
+      "quote_address": "0x5b1910eaad6450e50f816082aa078c41f10c292f",
+      "liq_usd": 8104.95,
+      "vol_h24": 0.93,
+      "url": "https://dexscreener.com/bsc/0xfb9dca2b54c24c25a4a26d30084045ebc7e68564",
+      "priceUsd": "0.000003660"
+    },
+    "top3": [
+      {
+        "pairAddress": "0xfb9Dca2B54C24c25a4A26d30084045EBC7e68564",
+        "dexId": "flapsh",
+        "labels": [],
+        "stock_symbol": "TSLAON",
+        "stock_address": "0x95d27ddd94f731acde0ea78a734c151c93f97777",
+        "quote_symbol": "TSLAB",
+        "quote_address": "0x5b1910eaad6450e50f816082aa078c41f10c292f",
+        "liq_usd": 8104.95,
+        "vol_h24": 0.93,
+        "url": "https://dexscreener.com/bsc/0xfb9dca2b54c24c25a4a26d30084045ebc7e68564",
+        "priceUsd": "0.000003660"
+      },
+      {
+        "pairAddress": "0x124D306dc7f9E181D61458C5264baC4D8E98906E",
+        "dexId": "flapsh",
+        "labels": [],
+        "stock_symbol": "TSLAonSPCXonNVDAonAAPLonMSFTonGOOGLonQQQonSPYonTSLAonSPCXonNVDAonAAPLonMSFTonGOOGLonQQQonSPYonTSLAonSPCXonNVDAonAAPLonMSFTonGOOGLonQQQonSPYonTSLAonSPCXonNVDAonAAPLonMSFTonGOOGLonQQQonSPYonTSLAonSPCXonNVDAonAAPLonMSFTonGOOGLonQQQonSPYon",
+        "stock_address": "0x2396c9a56dde00f0e5f108fd824fd56d65807777",
+        "quote_symbol": "WBNB",
+        "quote_address": "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c",
+        "liq_usd": 7308.11,
+        "vol_h24": 21.36,
+        "url": "https://dexscreener.com/bsc/0x124d306dc7f9e181d61458c5264bac4d8e98906e",
+        "priceUsd": "0.000003301"
+      },
+      {
+        "pairAddress": "0x85Faa585f5F7F9922589Be0A0bf1cFb2404EBDC0",
+        "dexId": "pancakeswap",
+        "labels": [
+          "v2"
+        ],
+        "stock_symbol": "TSLAon",
+        "stock_address": "0x2494b603319d4d9f9715c9f4496d9e0364b59d93",
+        "quote_symbol": "ASX",
+        "quote_address": "0xebd3619642d78f0c98c84f6fa9a678653fb5a99b",
+        "liq_usd": 2991.57,
+        "vol_h24": 14.63,
+        "url": "https://dexscreener.com/bsc/0x85faa585f5f7f9922589be0a0bf1cfb2404ebdc0",
+        "priceUsd": "315.88"
+      }
+    ]
+  },
+  "AAPL|bstock": {
+    "query": "AAPLB",
+    "n": 30,
+    "best": {
+      "pairAddress": "0xe9b9998B2EC5430D2246c7f1F8D9f298c97D7365",
+      "dexId": "pancakeswap",
+      "labels": [
+        "v3"
+      ],
+      "stock_symbol": "AAPLB",
+      "stock_address": "0x431a3bee82e2ca41e49895cbece5bb0f76a89b7a",
+      "quote_symbol": "USDT",
+      "quote_address": "0x55d398326f99059ff775485246999027b3197955",
+      "liq_usd": 308715.94,
+      "vol_h24": 771176.84,
+      "url": "https://dexscreener.com/bsc/0xe9b9998b2ec5430d2246c7f1f8d9f298c97d7365",
+      "priceUsd": "314.71"
+    },
+    "top3": [
+      {
+        "pairAddress": "0xe9b9998B2EC5430D2246c7f1F8D9f298c97D7365",
+        "dexId": "pancakeswap",
+        "labels": [
+          "v3"
+        ],
+        "stock_symbol": "AAPLB",
+        "stock_address": "0x431a3bee82e2ca41e49895cbece5bb0f76a89b7a",
+        "quote_symbol": "USDT",
+        "quote_address": "0x55d398326f99059ff775485246999027b3197955",
+        "liq_usd": 308715.94,
+        "vol_h24": 771176.84,
+        "url": "https://dexscreener.com/bsc/0xe9b9998b2ec5430d2246c7f1f8d9f298c97d7365",
+        "priceUsd": "314.71"
+      },
+      {
+        "pairAddress": "0x36c0fc3159EB8662A2E1B84a4df518D916bce0E1",
+        "dexId": "uniswap",
+        "labels": [],
+        "stock_symbol": "AAPLB",
+        "stock_address": "0x431a3bee82e2ca41e49895cbece5bb0f76a89b7a",
+        "quote_symbol": "USDT",
+        "quote_address": "0x55d398326f99059ff775485246999027b3197955",
+        "liq_usd": 8712.33,
+        "vol_h24": 71085.25,
+        "url": "https://dexscreener.com/bsc/0x36c0fc3159eb8662a2e1b84a4df518d916bce0e1",
+        "priceUsd": "314.67"
+      },
+      {
+        "pairAddress": "0xE9A0fa4f1E30704C2f394d1053FF2C62c4D745bc",
+        "dexId": "pancakeswap",
+        "labels": [
+          "v3"
+        ],
+        "stock_symbol": "AAPLB",
+        "stock_address": "0x431a3bee82e2ca41e49895cbece5bb0f76a89b7a",
+        "quote_symbol": "USDT",
+        "quote_address": "0x55d398326f99059ff775485246999027b3197955",
+        "liq_usd": 1.0,
+        "vol_h24": 0.01,
+        "url": "https://dexscreener.com/bsc/0xe9a0fa4f1e30704c2f394d1053ff2c62c4d745bc",
+        "priceUsd": "317.53"
+      }
+    ]
+  },
+  "AAPL|ondo": {
+    "query": "AAPLon",
+    "n": 7,
+    "best": {
+      "pairAddress": "0x8dcBA688219dc5Ee6dbf74ee2F74045E2A07C79C",
+      "dexId": "pancakeswap",
+      "labels": [
+        "v3"
+      ],
+      "stock_symbol": "AAPLon",
+      "stock_address": "0x390a684ef9cade28a7ad0dfa61ab1eb3842618c4",
+      "quote_symbol": "USDT",
+      "quote_address": "0x55d398326f99059ff775485246999027b3197955",
+      "liq_usd": 22.63,
+      "vol_h24": 374.82,
+      "url": "https://dexscreener.com/bsc/0x8dcba688219dc5ee6dbf74ee2f74045e2a07c79c",
+      "priceUsd": "300.67"
+    },
+    "top3": [
+      {
+        "pairAddress": "0x8dcBA688219dc5Ee6dbf74ee2F74045E2A07C79C",
+        "dexId": "pancakeswap",
+        "labels": [
+          "v3"
+        ],
+        "stock_symbol": "AAPLon",
+        "stock_address": "0x390a684ef9cade28a7ad0dfa61ab1eb3842618c4",
+        "quote_symbol": "USDT",
+        "quote_address": "0x55d398326f99059ff775485246999027b3197955",
+        "liq_usd": 22.63,
+        "vol_h24": 374.82,
+        "url": "https://dexscreener.com/bsc/0x8dcba688219dc5ee6dbf74ee2f74045e2a07c79c",
+        "priceUsd": "300.67"
+      },
+      {
+        "pairAddress": "0xC0BFbc52dEeceE475BDb52A62f8D7cF128B59358",
+        "dexId": "pancakeswap",
+        "labels": [
+          "v3"
+        ],
+        "stock_symbol": "AAPLon",
+        "stock_address": "0x390a684ef9cade28a7ad0dfa61ab1eb3842618c4",
+        "quote_symbol": "USDT",
+        "quote_address": "0x55d398326f99059ff775485246999027b3197955",
+        "liq_usd": 5.29,
+        "vol_h24": 39.83,
+        "url": "https://dexscreener.com/bsc/0xc0bfbc52deecee475bdb52a62f8d7cf128b59358",
+        "priceUsd": "303.41"
+      },
+      {
+        "pairAddress": "0xFD76D58D404b5C8033827B0Fe1F255152996Ef1A",
+        "dexId": "pancakeswap",
+        "labels": [
+          "v2"
+        ],
+        "stock_symbol": "AAPLon",
+        "stock_address": "0x3ad9525cbe7c6bab6848ca7e57c798f2f86309bd",
+        "quote_symbol": "WBNB",
+        "quote_address": "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c",
+        "liq_usd": 14989.42,
+        "vol_h24": 4971.51,
+        "url": "https://dexscreener.com/bsc/0xfd76d58d404b5c8033827b0fe1f255152996ef1a",
+        "priceUsd": "0.00000001059"
+      }
+    ]
+  },
+  "MSFT|bstock": {
+    "query": "MSFTB",
+    "n": 29,
+    "best": {
+      "pairAddress": "0x58e44C2e5B17EF40915B4B3AE8451B6B87285B44",
+      "dexId": "pancakeswap",
+      "labels": [
+        "v3"
+      ],
+      "stock_symbol": "MSFTB",
+      "stock_address": "0x80106cb3ead06659a5ad19df39d9b4733863b9b0",
+      "quote_symbol": "USDT",
+      "quote_address": "0x55d398326f99059ff775485246999027b3197955",
+      "liq_usd": 110608.07,
+      "vol_h24": 41105.22,
+      "url": "https://dexscreener.com/bsc/0x58e44c2e5b17ef40915b4b3ae8451b6b87285b44",
+      "priceUsd": "484.23"
+    },
+    "top3": [
+      {
+        "pairAddress": "0x58e44C2e5B17EF40915B4B3AE8451B6B87285B44",
+        "dexId": "pancakeswap",
+        "labels": [
+          "v3"
+        ],
+        "stock_symbol": "MSFTB",
+        "stock_address": "0x80106cb3ead06659a5ad19df39d9b4733863b9b0",
+        "quote_symbol": "USDT",
+        "quote_address": "0x55d398326f99059ff775485246999027b3197955",
+        "liq_usd": 110608.07,
+        "vol_h24": 41105.22,
+        "url": "https://dexscreener.com/bsc/0x58e44c2e5b17ef40915b4b3ae8451b6b87285b44",
+        "priceUsd": "484.23"
+      },
+      {
+        "pairAddress": "0x5018b018cEB7645c927c5Cf246786F89ebCbe7Ea",
+        "dexId": "pancakeswap",
+        "labels": [
+          "v3"
+        ],
+        "stock_symbol": "MSFTB",
+        "stock_address": "0x80106cb3ead06659a5ad19df39d9b4733863b9b0",
+        "quote_symbol": "USDT",
+        "quote_address": "0x55d398326f99059ff775485246999027b3197955",
+        "liq_usd": 56654.54,
+        "vol_h24": 126688.44,
+        "url": "https://dexscreener.com/bsc/0x5018b018ceb7645c927c5cf246786f89ebcbe7ea",
+        "priceUsd": "486.64"
+      },
+      {
+        "pairAddress": "0x80d42C18e55c23714644a19bF88a3cCE4D7DC53C",
+        "dexId": "pancakeswap",
+        "labels": [
+          "v2"
+        ],
+        "stock_symbol": "MSFTB",
+        "stock_address": "0x80106cb3ead06659a5ad19df39d9b4733863b9b0",
+        "quote_symbol": "CLIPPY",
+        "quote_address": "0xbc50a2a47b9f218921dce2ca089f405d349e7777",
+        "liq_usd": 0.0,
+        "vol_h24": 0.0,
+        "url": "https://dexscreener.com/bsc/0x80d42c18e55c23714644a19bf88a3cce4d7dc53c",
+        "priceUsd": null
+      }
+    ]
+  },
+  "MSFT|ondo": {
+    "query": "MSFTon",
+    "n": 4,
+    "best": {
+      "pairAddress": "0xfb3bEB765210975E49448af9F2c037896b044277",
+      "dexId": "pancakeswap",
+      "labels": [
+        "v2"
+      ],
+      "stock_symbol": "MSFTon",
+      "stock_address": "0x6bfe75d1ad432050ea973c3a3dcd88f02e2444c3",
+      "quote_symbol": "USDT",
+      "quote_address": "0x55d398326f99059ff775485246999027b3197955",
+      "liq_usd": 0.47,
+      "vol_h24": 0.01,
+      "url": "https://dexscreener.com/bsc/0xfb3beb765210975e49448af9f2c037896b044277",
+      "priceUsd": "492.76"
+    },
+    "top3": [
+      {
+        "pairAddress": "0xfb3bEB765210975E49448af9F2c037896b044277",
+        "dexId": "pancakeswap",
+        "labels": [
+          "v2"
+        ],
+        "stock_symbol": "MSFTon",
+        "stock_address": "0x6bfe75d1ad432050ea973c3a3dcd88f02e2444c3",
+        "quote_symbol": "USDT",
+        "quote_address": "0x55d398326f99059ff775485246999027b3197955",
+        "liq_usd": 0.47,
+        "vol_h24": 0.01,
+        "url": "https://dexscreener.com/bsc/0xfb3beb765210975e49448af9f2c037896b044277",
+        "priceUsd": "492.76"
+      },
+      {
+        "pairAddress": "0x124D306dc7f9E181D61458C5264baC4D8E98906E",
+        "dexId": "flapsh",
+        "labels": [],
+        "stock_symbol": "TSLAonSPCXonNVDAonAAPLonMSFTonGOOGLonQQQonSPYonTSLAonSPCXonNVDAonAAPLonMSFTonGOOGLonQQQonSPYonTSLAonSPCXonNVDAonAAPLonMSFTonGOOGLonQQQonSPYonTSLAonSPCXonNVDAonAAPLonMSFTonGOOGLonQQQonSPYonTSLAonSPCXonNVDAonAAPLonMSFTonGOOGLonQQQonSPYon",
+        "stock_address": "0x2396c9a56dde00f0e5f108fd824fd56d65807777",
+        "quote_symbol": "WBNB",
+        "quote_address": "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c",
+        "liq_usd": 7308.11,
+        "vol_h24": 21.36,
+        "url": "https://dexscreener.com/bsc/0x124d306dc7f9e181d61458c5264bac4d8e98906e",
+        "priceUsd": "0.000003301"
+      },
+      {
+        "pairAddress": "0x08c2ce6e530CA82E26Ad2Fe73226D2171B9e6f8E",
+        "dexId": "pancakeswap",
+        "labels": [
+          "v2"
+        ],
+        "stock_symbol": "MSFTon",
+        "stock_address": "0x6bfe75d1ad432050ea973c3a3dcd88f02e2444c3",
+        "quote_symbol": "WBNB",
+        "quote_address": "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c",
+        "liq_usd": 41.94,
+        "vol_h24": 45.2,
+        "url": "https://dexscreener.com/bsc/0x08c2ce6e530ca82e26ad2fe73226d2171b9e6f8e",
+        "priceUsd": "473.72"
+      }
+    ]
+  },
+  "QQQ|bstock": {
+    "query": "QQQB",
+    "n": 20,
+    "best": {
+      "pairAddress": "0xe531fcb1F5a195de7608B9F4f9518544C2cdB693",
+      "dexId": "pancakeswap",
+      "labels": [
+        "v3"
+      ],
+      "stock_symbol": "QQQB",
+      "stock_address": "0x205812cdbed920aff76c6580abd681a46d11efc7",
+      "quote_symbol": "USDT",
+      "quote_address": "0x55d398326f99059ff775485246999027b3197955",
+      "liq_usd": 2382004.15,
+      "vol_h24": 127725169.51,
+      "url": "https://dexscreener.com/bsc/0xe531fcb1f5a195de7608b9f4f9518544c2cdb693",
+      "priceUsd": "715.14"
+    },
+    "top3": [
+      {
+        "pairAddress": "0xe531fcb1F5a195de7608B9F4f9518544C2cdB693",
+        "dexId": "pancakeswap",
+        "labels": [
+          "v3"
+        ],
+        "stock_symbol": "QQQB",
+        "stock_address": "0x205812cdbed920aff76c6580abd681a46d11efc7",
+        "quote_symbol": "USDT",
+        "quote_address": "0x55d398326f99059ff775485246999027b3197955",
+        "liq_usd": 2382004.15,
+        "vol_h24": 127725169.51,
+        "url": "https://dexscreener.com/bsc/0xe531fcb1f5a195de7608b9f4f9518544c2cdb693",
+        "priceUsd": "715.14"
+      },
+      {
+        "pairAddress": "0xa829a206a5346039ea0e9474BddA8aE8DD3945D2",
+        "dexId": "pancakeswap",
+        "labels": [
+          "v2"
+        ],
+        "stock_symbol": "QQQB",
+        "stock_address": "0x49df46b1348c14ac797f8bae30d7b40ab856b17e",
+        "quote_symbol": "USDT",
+        "quote_address": "0x55d398326f99059ff775485246999027b3197955",
+        "liq_usd": 24199.99,
+        "vol_h24": 4100.0,
+        "url": "https://dexscreener.com/bsc/0xa829a206a5346039ea0e9474bdda8ae8dd3945d2",
+        "priceUsd": "0.00001828"
+      },
+      {
+        "pairAddress": "0x48a7D9baf19649FfC9e1C4871A9CF0A2BE01e457",
+        "dexId": "pancakeswap",
+        "labels": [
+          "v2"
+        ],
+        "stock_symbol": "QQQB",
+        "stock_address": "0x1c96767e9cd211c279ca81c1f9d28d42339a087d",
+        "quote_symbol": "USDT",
+        "quote_address": "0x55d398326f99059ff775485246999027b3197955",
+        "liq_usd": 24001.99,
+        "vol_h24": 0.99,
+        "url": "https://dexscreener.com/bsc/0x48a7d9baf19649ffc9e1c4871a9cf0a2be01e457",
+        "priceUsd": "0.0000001200"
+      }
+    ]
+  },
+  "QQQ|ondo": {
+    "query": "QQQon",
+    "n": 6,
+    "best": {
+      "pairAddress": "0x40D38ef4782beB126A36d733d63BAF9300Fc6587",
+      "dexId": "pancakeswap",
+      "labels": [
+        "v3"
+      ],
+      "stock_symbol": "SQQQon",
+      "stock_address": "0x17515b68378d86c38f394c666e79907da05dcba9",
+      "quote_symbol": "USDT",
+      "quote_address": "0x55d398326f99059ff775485246999027b3197955",
+      "liq_usd": 40771.54,
+      "vol_h24": 5002.5,
+      "url": "https://dexscreener.com/bsc/0x40d38ef4782beb126a36d733d63baf9300fc6587",
+      "priceUsd": "39.12"
+    },
+    "top3": [
+      {
+        "pairAddress": "0x40D38ef4782beB126A36d733d63BAF9300Fc6587",
+        "dexId": "pancakeswap",
+        "labels": [
+          "v3"
+        ],
+        "stock_symbol": "SQQQon",
+        "stock_address": "0x17515b68378d86c38f394c666e79907da05dcba9",
+        "quote_symbol": "USDT",
+        "quote_address": "0x55d398326f99059ff775485246999027b3197955",
+        "liq_usd": 40771.54,
+        "vol_h24": 5002.5,
+        "url": "https://dexscreener.com/bsc/0x40d38ef4782beb126a36d733d63baf9300fc6587",
+        "priceUsd": "39.12"
+      },
+      {
+        "pairAddress": "0x124D306dc7f9E181D61458C5264baC4D8E98906E",
+        "dexId": "flapsh",
+        "labels": [],
+        "stock_symbol": "TSLAonSPCXonNVDAonAAPLonMSFTonGOOGLonQQQonSPYonTSLAonSPCXonNVDAonAAPLonMSFTonGOOGLonQQQonSPYonTSLAonSPCXonNVDAonAAPLonMSFTonGOOGLonQQQonSPYonTSLAonSPCXonNVDAonAAPLonMSFTonGOOGLonQQQonSPYonTSLAonSPCXonNVDAonAAPLonMSFTonGOOGLonQQQonSPYon",
+        "stock_address": "0x2396c9a56dde00f0e5f108fd824fd56d65807777",
+        "quote_symbol": "WBNB",
+        "quote_address": "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c",
+        "liq_usd": 7308.11,
+        "vol_h24": 21.36,
+        "url": "https://dexscreener.com/bsc/0x124d306dc7f9e181d61458c5264bac4d8e98906e",
+        "priceUsd": "0.000003301"
+      },
+      {
+        "pairAddress": "0x98B1e997D24ad9bC0405b882124759479F1C36e1",
+        "dexId": "flapsh",
+        "labels": [],
+        "stock_symbol": "QQQon",
+        "stock_address": "0xd9015a0bf69d807da511c7c9b3dcef56ddef7777",
+        "quote_symbol": "WBNB",
+        "quote_address": "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c",
+        "liq_usd": 7296.46,
+        "vol_h24": 0.38,
+        "url": "https://dexscreener.com/bsc/0x98b1e997d24ad9bc0405b882124759479f1c36e1",
+        "priceUsd": "0.000003299"
+      }
+    ]
+  },
+  "SPCX|bstock": {
+    "query": "SPCXB",
+    "n": 17,
+    "best": {
+      "pairAddress": "0x977DaFFC095b33872E2741c19568925015C35b4d",
+      "dexId": "pancakeswap",
+      "labels": [
+        "v3"
+      ],
+      "stock_symbol": "SPCXB",
+      "stock_address": "0xbe9d156892e55e7154bcd3cb0fea677f9d3103e1",
+      "quote_symbol": "USDT",
+      "quote_address": "0x55d398326f99059ff775485246999027b3197955",
+      "liq_usd": 4182294.53,
+      "vol_h24": 20312183.89,
+      "url": "https://dexscreener.com/bsc/0x977daffc095b33872e2741c19568925015c35b4d",
+      "priceUsd": "109.93"
+    },
+    "top3": [
+      {
+        "pairAddress": "0x977DaFFC095b33872E2741c19568925015C35b4d",
+        "dexId": "pancakeswap",
+        "labels": [
+          "v3"
+        ],
+        "stock_symbol": "SPCXB",
+        "stock_address": "0xbe9d156892e55e7154bcd3cb0fea677f9d3103e1",
+        "quote_symbol": "USDT",
+        "quote_address": "0x55d398326f99059ff775485246999027b3197955",
+        "liq_usd": 4182294.53,
+        "vol_h24": 20312183.89,
+        "url": "https://dexscreener.com/bsc/0x977daffc095b33872e2741c19568925015c35b4d",
+        "priceUsd": "109.93"
+      },
+      {
+        "pairAddress": "0x51A45A72Cc96CA3bA615E25e80a6Af2740ae2E2d",
+        "dexId": "uniswap",
+        "labels": [],
+        "stock_symbol": "SPCXB",
+        "stock_address": "0xbe9d156892e55e7154bcd3cb0fea677f9d3103e1",
+        "quote_symbol": "USDT",
+        "quote_address": "0x55d398326f99059ff775485246999027b3197955",
+        "liq_usd": 230032.27,
+        "vol_h24": 5135685.39,
+        "url": "https://dexscreener.com/bsc/0x51a45a72cc96ca3ba615e25e80a6af2740ae2e2d",
+        "priceUsd": "110.096"
+      },
+      {
+        "pairAddress": "0x216e3c265cd73965022aff33Da6E745836196594",
+        "dexId": "uniswap",
+        "labels": [],
+        "stock_symbol": "SPCXB",
+        "stock_address": "0xbe9d156892e55e7154bcd3cb0fea677f9d3103e1",
+        "quote_symbol": "USDT",
+        "quote_address": "0x55d398326f99059ff775485246999027b3197955",
+        "liq_usd": 122416.33,
+        "vol_h24": 256738.91,
+        "url": "https://dexscreener.com/bsc/0x216e3c265cd73965022aff33da6e745836196594",
+        "priceUsd": "109.97"
+      }
+    ]
+  },
+  "SPCX|ondo": {
+    "query": "SPCXon",
+    "n": 12,
+    "best": {
+      "pairAddress": "0x3ce968657b6F152293AFC8Af4712e4BaA3836f74",
+      "dexId": "uniswap",
+      "labels": [],
+      "stock_symbol": "SPCXon",
+      "stock_address": "0xd0a58bc9d88d3ff48c0294cb7e45937d0e41a928",
+      "quote_symbol": "USDT",
+      "quote_address": "0x55d398326f99059ff775485246999027b3197955",
+      "liq_usd": 1104.2,
+      "vol_h24": 3025.39,
+      "url": "https://dexscreener.com/bsc/0x3ce968657b6f152293afc8af4712e4baa3836f74",
+      "priceUsd": "110.67"
+    },
+    "top3": [
+      {
+        "pairAddress": "0x3ce968657b6F152293AFC8Af4712e4BaA3836f74",
+        "dexId": "uniswap",
+        "labels": [],
+        "stock_symbol": "SPCXon",
+        "stock_address": "0xd0a58bc9d88d3ff48c0294cb7e45937d0e41a928",
+        "quote_symbol": "USDT",
+        "quote_address": "0x55d398326f99059ff775485246999027b3197955",
+        "liq_usd": 1104.2,
+        "vol_h24": 3025.39,
+        "url": "https://dexscreener.com/bsc/0x3ce968657b6f152293afc8af4712e4baa3836f74",
+        "priceUsd": "110.67"
+      },
+      {
+        "pairAddress": "0x5C67Fda6b3B1c259cC51b36beD03Cc9D5C95558f",
+        "dexId": "topaz",
+        "labels": [],
+        "stock_symbol": "SPCXon",
+        "stock_address": "0xd0a58bc9d88d3ff48c0294cb7e45937d0e41a928",
+        "quote_symbol": "USDT",
+        "quote_address": "0x55d398326f99059ff775485246999027b3197955",
+        "liq_usd": 559.41,
+        "vol_h24": 1208.12,
+        "url": "https://dexscreener.com/bsc/0x5c67fda6b3b1c259cc51b36bed03cc9d5c95558f",
+        "priceUsd": "110.040"
+      },
+      {
+        "pairAddress": "0x473099F3517EF475B33D6F5fFb1D5881b2299503",
+        "dexId": "pancakeswap",
+        "labels": [
+          "v2"
+        ],
+        "stock_symbol": "SPCXon",
+        "stock_address": "0xd0a58bc9d88d3ff48c0294cb7e45937d0e41a928",
+        "quote_symbol": "USDT",
+        "quote_address": "0x55d398326f99059ff775485246999027b3197955",
+        "liq_usd": 0.07,
+        "vol_h24": 60.32,
+        "url": "https://dexscreener.com/bsc/0x473099f3517ef475b33d6f5ffb1d5881b2299503",
+        "priceUsd": "109.48"
+      }
+    ]
+  },
+  "CRCL|bstock": {
+    "query": "CRCLB",
+    "n": 3,
+    "best": {
+      "pairAddress": "0xcf99710e36ADA0304f47c6be9B0c8F2a4C472bC0",
+      "dexId": "uniswap",
+      "labels": [],
+      "stock_symbol": "CRCLB",
+      "stock_address": "0x80f3d493ebce97e343c53d29a137942416b4ffc0",
+      "quote_symbol": "USDT",
+      "quote_address": "0x55d398326f99059ff775485246999027b3197955",
+      "liq_usd": 7751.37,
+      "vol_h24": 9947.01,
+      "url": "https://dexscreener.com/bsc/0xcf99710e36ada0304f47c6be9b0c8f2a4c472bc0",
+      "priceUsd": "62.0098"
+    },
+    "top3": [
+      {
+        "pairAddress": "0xcf99710e36ADA0304f47c6be9B0c8F2a4C472bC0",
+        "dexId": "uniswap",
+        "labels": [],
+        "stock_symbol": "CRCLB",
+        "stock_address": "0x80f3d493ebce97e343c53d29a137942416b4ffc0",
+        "quote_symbol": "USDT",
+        "quote_address": "0x55d398326f99059ff775485246999027b3197955",
+        "liq_usd": 7751.37,
+        "vol_h24": 9947.01,
+        "url": "https://dexscreener.com/bsc/0xcf99710e36ada0304f47c6be9b0c8f2a4c472bc0",
+        "priceUsd": "62.0098"
+      },
+      {
+        "pairAddress": "0xA7edAbEa8aE776264B6abE4383606456d3e79168",
+        "dexId": "pancakeswap",
+        "labels": [
+          "v3"
+        ],
+        "stock_symbol": "CRCLB",
+        "stock_address": "0x80f3d493ebce97e343c53d29a137942416b4ffc0",
+        "quote_symbol": "USDT",
+        "quote_address": "0x55d398326f99059ff775485246999027b3197955",
+        "liq_usd": 0.25,
+        "vol_h24": 0.25,
+        "url": "https://dexscreener.com/bsc/0xa7edabea8ae776264b6abe4383606456d3e79168",
+        "priceUsd": "63.90"
+      },
+      {
+        "pairAddress": "0x82133Ce9D02a95268C52f2b9c7A6c02fB6051C66",
+        "dexId": "flapsh",
+        "labels": [],
+        "stock_symbol": "CRCLB",
+        "stock_address": "0x8b1262b66dae62aff5c4f22a54b7d3a8d79d7777",
+        "quote_symbol": "QQQB",
+        "quote_address": "0x205812cdbed920aff76c6580abd681a46d11efc7",
+        "liq_usd": 7815.36,
+        "vol_h24": 0.54,
+        "url": "https://dexscreener.com/bsc/0x82133ce9d02a95268c52f2b9c7a6c02fb6051c66",
+        "priceUsd": "0.000003529"
+      }
+    ]
+  },
+  "CRCL|ondo": {
+    "query": "CRCLon",
+    "n": 2,
+    "best": {
+      "pairAddress": "0xc1d141d6A9F8e8eb7B9Ce1AEcD4A8932F047c075",
+      "dexId": "pancakeswap",
+      "labels": [
+        "v3"
+      ],
+      "stock_symbol": "CRCLon",
+      "stock_address": "0x992879cd8ce0c312d98648875b5a8d6d042cbf34",
+      "quote_symbol": "\u6bd4\u7279\u5e01",
+      "quote_address": "0x18d0e455b3491e09210292d3953157a4bf104444",
+      "liq_usd": 2888.31,
+      "vol_h24": 1478.92,
+      "url": "https://dexscreener.com/bsc/0xc1d141d6a9f8e8eb7b9ce1aecd4a8932f047c075",
+      "priceUsd": "61.62"
+    },
+    "top3": [
+      {
+        "pairAddress": "0xc1d141d6A9F8e8eb7B9Ce1AEcD4A8932F047c075",
+        "dexId": "pancakeswap",
+        "labels": [
+          "v3"
+        ],
+        "stock_symbol": "CRCLon",
+        "stock_address": "0x992879cd8ce0c312d98648875b5a8d6d042cbf34",
+        "quote_symbol": "\u6bd4\u7279\u5e01",
+        "quote_address": "0x18d0e455b3491e09210292d3953157a4bf104444",
+        "liq_usd": 2888.31,
+        "vol_h24": 1478.92,
+        "url": "https://dexscreener.com/bsc/0xc1d141d6a9f8e8eb7b9ce1aecd4a8932f047c075",
+        "priceUsd": "61.62"
+      },
+      {
+        "pairAddress": "0x2a422bc4f70dC68A3561E02C780BA1814C0eaD91",
+        "dexId": "uniswap",
+        "labels": [],
+        "stock_symbol": "CRCLon",
+        "stock_address": "0x992879cd8ce0c312d98648875b5a8d6d042cbf34",
+        "quote_symbol": "\u6bd4\u7279\u5e01",
+        "quote_address": "0x18d0e455b3491e09210292d3953157a4bf104444",
+        "liq_usd": 591.04,
+        "vol_h24": 288.43,
+        "url": "https://dexscreener.com/bsc/0x2a422bc4f70dc68a3561e02c780ba1814c0ead91",
+        "priceUsd": "61.80"
+      }
+    ]
+  },
+  "GOOGL|bstock": {
+    "query": "GOOGLB",
+    "n": 9,
+    "best": {
+      "pairAddress": "0x89001D846f7CA36EE089F73eEFC25657E1798144",
+      "dexId": "pancakeswap",
+      "labels": [
+        "v3"
+      ],
+      "stock_symbol": "GOOGLB",
+      "stock_address": "0x3f53de71c126bdabae20f9cd64848d317f6c3238",
+      "quote_symbol": "USDT",
+      "quote_address": "0x55d398326f99059ff775485246999027b3197955",
+      "liq_usd": 105357.06,
+      "vol_h24": 77115.45,
+      "url": "https://dexscreener.com/bsc/0x89001d846f7ca36ee089f73eefc25657e1798144",
+      "priceUsd": "365.32"
+    },
+    "top3": [
+      {
+        "pairAddress": "0x89001D846f7CA36EE089F73eEFC25657E1798144",
+        "dexId": "pancakeswap",
+        "labels": [
+          "v3"
+        ],
+        "stock_symbol": "GOOGLB",
+        "stock_address": "0x3f53de71c126bdabae20f9cd64848d317f6c3238",
+        "quote_symbol": "USDT",
+        "quote_address": "0x55d398326f99059ff775485246999027b3197955",
+        "liq_usd": 105357.06,
+        "vol_h24": 77115.45,
+        "url": "https://dexscreener.com/bsc/0x89001d846f7ca36ee089f73eefc25657e1798144",
+        "priceUsd": "365.32"
+      },
+      {
+        "pairAddress": "0xF5A91043817EC002B8892688A25Afb281Ab06F4b",
+        "dexId": "pancakeswap",
+        "labels": [
+          "v3"
+        ],
+        "stock_symbol": "GOOGLB",
+        "stock_address": "0x3f53de71c126bdabae20f9cd64848d317f6c3238",
+        "quote_symbol": "USDT",
+        "quote_address": "0x55d398326f99059ff775485246999027b3197955",
+        "liq_usd": 47373.75,
+        "vol_h24": 8041.39,
+        "url": "https://dexscreener.com/bsc/0xf5a91043817ec002b8892688a25afb281ab06f4b",
+        "priceUsd": "363.24"
+      },
+      {
+        "pairAddress": "0xdA6010fcB025211AE6AD647E9Bd01430A78e2068",
+        "dexId": "pancakeswap",
+        "labels": [
+          "v3"
+        ],
+        "stock_symbol": "GOOGLB",
+        "stock_address": "0x3f53de71c126bdabae20f9cd64848d317f6c3238",
+        "quote_symbol": "USDT",
+        "quote_address": "0x55d398326f99059ff775485246999027b3197955",
+        "liq_usd": 110.01,
+        "vol_h24": 61.73,
+        "url": "https://dexscreener.com/bsc/0xda6010fcb025211ae6ad647e9bd01430a78e2068",
+        "priceUsd": "365.0027"
+      }
+    ]
+  },
+  "GOOGL|ondo": {
+    "query": "GOOGLon",
+    "n": 3,
+    "best": {
+      "pairAddress": "0x6731932C92E882Cc22a10749324C70A7d6aDde60",
+      "dexId": "pancakeswap",
+      "labels": [
+        "v3"
+      ],
+      "stock_symbol": "GOOGLon",
+      "stock_address": "0x091fc7778e6932d4009b087b191d1ee3bac5729a",
+      "quote_symbol": "USDT",
+      "quote_address": "0x55d398326f99059ff775485246999027b3197955",
+      "liq_usd": 2191.11,
+      "vol_h24": 400.17,
+      "url": "https://dexscreener.com/bsc/0x6731932c92e882cc22a10749324c70a7d6adde60",
+      "priceUsd": "364.049"
+    },
+    "top3": [
+      {
+        "pairAddress": "0x6731932C92E882Cc22a10749324C70A7d6aDde60",
+        "dexId": "pancakeswap",
+        "labels": [
+          "v3"
+        ],
+        "stock_symbol": "GOOGLon",
+        "stock_address": "0x091fc7778e6932d4009b087b191d1ee3bac5729a",
+        "quote_symbol": "USDT",
+        "quote_address": "0x55d398326f99059ff775485246999027b3197955",
+        "liq_usd": 2191.11,
+        "vol_h24": 400.17,
+        "url": "https://dexscreener.com/bsc/0x6731932c92e882cc22a10749324c70a7d6adde60",
+        "priceUsd": "364.049"
+      },
+      {
+        "pairAddress": "0x124D306dc7f9E181D61458C5264baC4D8E98906E",
+        "dexId": "flapsh",
+        "labels": [],
+        "stock_symbol": "TSLAonSPCXonNVDAonAAPLonMSFTonGOOGLonQQQonSPYonTSLAonSPCXonNVDAonAAPLonMSFTonGOOGLonQQQonSPYonTSLAonSPCXonNVDAonAAPLonMSFTonGOOGLonQQQonSPYonTSLAonSPCXonNVDAonAAPLonMSFTonGOOGLonQQQonSPYonTSLAonSPCXonNVDAonAAPLonMSFTonGOOGLonQQQonSPYon",
+        "stock_address": "0x2396c9a56dde00f0e5f108fd824fd56d65807777",
+        "quote_symbol": "WBNB",
+        "quote_address": "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c",
+        "liq_usd": 7308.11,
+        "vol_h24": 21.36,
+        "url": "https://dexscreener.com/bsc/0x124d306dc7f9e181d61458c5264bac4d8e98906e",
+        "priceUsd": "0.000003301"
+      },
+      {
+        "pairAddress": "0xCdB2f7831600afFC6151543711387FfBDb7748dA",
+        "dexId": "pancakeswap",
+        "labels": [
+          "v2"
+        ],
+        "stock_symbol": "GOOGLon",
+        "stock_address": "0x091fc7778e6932d4009b087b191d1ee3bac5729a",
+        "quote_symbol": "WBNB",
+        "quote_address": "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c",
+        "liq_usd": 78.99,
+        "vol_h24": 2.34,
+        "url": "https://dexscreener.com/bsc/0xcdb2f7831600affc6151543711387ffbdb7748da",
+        "priceUsd": "364.13"
+      }
+    ]
+  },
+  "AMD|bstock": {
+    "query": "AMDB",
+    "n": 0,
+    "best": null,
+    "top3": []
+  },
+  "AMD|ondo": {
+    "query": "AMDon",
+    "n": 0,
+    "best": null,
+    "top3": []
+  },
+  "PLTR|bstock": {
+    "query": "PLTRB",
+    "n": 0,
+    "best": null,
+    "top3": []
+  },
+  "PLTR|ondo": {
+    "query": "PLTRon",
+    "n": 0,
+    "best": null,
+    "top3": []
+  },
+  "META|bstock": {
+    "query": "METAB",
+    "n": 1,
+    "best": {
+      "pairAddress": "0xC2151a561E928D16576d75Ea88544543ac63D80B",
+      "dexId": "pancakeswap",
+      "labels": [
+        "v3"
+      ],
+      "stock_symbol": "METAB",
+      "stock_address": "0x7425889fe94f9d693e8daefe88bcced6acfef4c0",
+      "quote_symbol": "USDT",
+      "quote_address": "0x55d398326f99059ff775485246999027b3197955",
+      "liq_usd": 45757.76,
+      "vol_h24": 8325.56,
+      "url": "https://dexscreener.com/bsc/0xc2151a561e928d16576d75ea88544543ac63d80b",
+      "priceUsd": "589.80"
+    },
+    "top3": [
+      {
+        "pairAddress": "0xC2151a561E928D16576d75Ea88544543ac63D80B",
+        "dexId": "pancakeswap",
+        "labels": [
+          "v3"
+        ],
+        "stock_symbol": "METAB",
+        "stock_address": "0x7425889fe94f9d693e8daefe88bcced6acfef4c0",
+        "quote_symbol": "USDT",
+        "quote_address": "0x55d398326f99059ff775485246999027b3197955",
+        "liq_usd": 45757.76,
+        "vol_h24": 8325.56,
+        "url": "https://dexscreener.com/bsc/0xc2151a561e928d16576d75ea88544543ac63d80b",
+        "priceUsd": "589.80"
+      }
+    ]
+  },
+  "META|ondo": {
+    "query": "METAon",
+    "n": 0,
+    "best": null,
+    "top3": []
+  },
+  "AMZN|bstock": {
+    "query": "AMZNB",
+    "n": 2,
+    "best": {
+      "pairAddress": "0x7530beb7Bde5843f668cf31b996fa1F748C9b6B1",
+      "dexId": "pancakeswap",
+      "labels": [
+        "v3"
+      ],
+      "stock_symbol": "AMZNB",
+      "stock_address": "0x1a4b499833a79a09ad7cf1d42d7dacf71e92eb00",
+      "quote_symbol": "USDT",
+      "quote_address": "0x55d398326f99059ff775485246999027b3197955",
+      "liq_usd": 44734.88,
+      "vol_h24": 35789.47,
+      "url": "https://dexscreener.com/bsc/0x7530beb7bde5843f668cf31b996fa1f748c9b6b1",
+      "priceUsd": "272.95"
+    },
+    "top3": [
+      {
+        "pairAddress": "0x7530beb7Bde5843f668cf31b996fa1F748C9b6B1",
+        "dexId": "pancakeswap",
+        "labels": [
+          "v3"
+        ],
+        "stock_symbol": "AMZNB",
+        "stock_address": "0x1a4b499833a79a09ad7cf1d42d7dacf71e92eb00",
+        "quote_symbol": "USDT",
+        "quote_address": "0x55d398326f99059ff775485246999027b3197955",
+        "liq_usd": 44734.88,
+        "vol_h24": 35789.47,
+        "url": "https://dexscreener.com/bsc/0x7530beb7bde5843f668cf31b996fa1f748c9b6b1",
+        "priceUsd": "272.95"
+      },
+      {
+        "pairAddress": "0x89eE17f8D2f5f26Ed8926699dC855651a3EdABE8",
+        "dexId": "pancakeswap",
+        "labels": [
+          "v2"
+        ],
+        "stock_symbol": "AMZNB",
+        "stock_address": "0xbe26100fa03013a59d59f09167ce216f754a0386",
+        "quote_symbol": "WBNB",
+        "quote_address": "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c",
+        "liq_usd": 0.04,
+        "vol_h24": 4385.63,
+        "url": "https://dexscreener.com/bsc/0x89ee17f8d2f5f26ed8926699dc855651a3edabe8",
+        "priceUsd": "0.0000000000000002920"
+      }
+    ]
+  },
+  "AMZN|ondo": {
+    "query": "AMZNon",
+    "n": 1,
+    "best": {
+      "pairAddress": "0x8617Ba6DEEE616694601ADc41Ab7ffE0e610907E",
+      "dexId": "pancakeswap",
+      "labels": [
+        "v2"
+      ],
+      "stock_symbol": "AMZNon",
+      "stock_address": "0x4553cfe1c09f37f38b12dc509f676964e392f8fc",
+      "quote_symbol": "WBNB",
+      "quote_address": "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c",
+      "liq_usd": 5898.36,
+      "vol_h24": 152.11,
+      "url": "https://dexscreener.com/bsc/0x8617ba6deee616694601adc41ab7ffe0e610907e",
+      "priceUsd": "273.72"
+    },
+    "top3": [
+      {
+        "pairAddress": "0x8617Ba6DEEE616694601ADc41Ab7ffE0e610907E",
+        "dexId": "pancakeswap",
+        "labels": [
+          "v2"
+        ],
+        "stock_symbol": "AMZNon",
+        "stock_address": "0x4553cfe1c09f37f38b12dc509f676964e392f8fc",
+        "quote_symbol": "WBNB",
+        "quote_address": "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c",
+        "liq_usd": 5898.36,
+        "vol_h24": 152.11,
+        "url": "https://dexscreener.com/bsc/0x8617ba6deee616694601adc41ab7ffe0e610907e",
+        "priceUsd": "273.72"
+      }
+    ]
+  },
+  "SPY|bstock": {
+    "query": "SPYB",
+    "n": 28,
+    "best": {
+      "pairAddress": "0x7aA6d92Fc369A8C1EDc631A3aAc44eFB0808ddbF",
+      "dexId": "pancakeswap",
+      "labels": [
+        "v3"
+      ],
+      "stock_symbol": "SPYB",
+      "stock_address": "0x7138b48df7d98d7e3cc221bfe7192d0a178182d8",
+      "quote_symbol": "USDT",
+      "quote_address": "0x55d398326f99059ff775485246999027b3197955",
+      "liq_usd": 794596.52,
+      "vol_h24": 11769103.34,
+      "url": "https://dexscreener.com/bsc/0x7aa6d92fc369a8c1edc631a3aac44efb0808ddbf",
+      "priceUsd": "772.0084"
+    },
+    "top3": [
+      {
+        "pairAddress": "0x7aA6d92Fc369A8C1EDc631A3aAc44eFB0808ddbF",
+        "dexId": "pancakeswap",
+        "labels": [
+          "v3"
+        ],
+        "stock_symbol": "SPYB",
+        "stock_address": "0x7138b48df7d98d7e3cc221bfe7192d0a178182d8",
+        "quote_symbol": "USDT",
+        "quote_address": "0x55d398326f99059ff775485246999027b3197955",
+        "liq_usd": 794596.52,
+        "vol_h24": 11769103.34,
+        "url": "https://dexscreener.com/bsc/0x7aa6d92fc369a8c1edc631a3aac44efb0808ddbf",
+        "priceUsd": "772.0084"
+      },
+      {
+        "pairAddress": "0x066B9C1e47303EA27C1e965FC7E3D65546675351",
+        "dexId": "pancakeswap",
+        "labels": [
+          "v3"
+        ],
+        "stock_symbol": "SPYB",
+        "stock_address": "0x7138b48df7d98d7e3cc221bfe7192d0a178182d8",
+        "quote_symbol": "USDT",
+        "quote_address": "0x55d398326f99059ff775485246999027b3197955",
+        "liq_usd": 2857.21,
+        "vol_h24": 10395.12,
+        "url": "https://dexscreener.com/bsc/0x066b9c1e47303ea27c1e965fc7e3d65546675351",
+        "priceUsd": "772.87"
+      },
+      {
+        "pairAddress": "0x7e8D083BE335dc9eD1aB661d3d3fA0Cf5c9B8926",
+        "dexId": "uniswap",
+        "labels": [],
+        "stock_symbol": "SPYB",
+        "stock_address": "0x7138b48df7d98d7e3cc221bfe7192d0a178182d8",
+        "quote_symbol": "USDT",
+        "quote_address": "0x55d398326f99059ff775485246999027b3197955",
+        "liq_usd": 1022.85,
+        "vol_h24": 149031.92,
+        "url": "https://dexscreener.com/bsc/0x7e8d083be335dc9ed1ab661d3d3fa0cf5c9b8926",
+        "priceUsd": "772.23"
+      }
+    ]
+  },
+  "SPY|ondo": {
+    "query": "SPYon",
+    "n": 2,
+    "best": {
+      "pairAddress": "0x3b31Ad84092cEFefc71F71A8F84AAce37ACA3ee1",
+      "dexId": "pancakeswap",
+      "labels": [
+        "v3"
+      ],
+      "stock_symbol": "SPYon",
+      "stock_address": "0x6a708ead771238919d85930b5a0f10454e1c331a",
+      "quote_symbol": "USDT",
+      "quote_address": "0x55d398326f99059ff775485246999027b3197955",
+      "liq_usd": 1060.76,
+      "vol_h24": 307.8,
+      "url": "https://dexscreener.com/bsc/0x3b31ad84092cefefc71f71a8f84aace37aca3ee1",
+      "priceUsd": "775.058"
+    },
+    "top3": [
+      {
+        "pairAddress": "0x3b31Ad84092cEFefc71F71A8F84AAce37ACA3ee1",
+        "dexId": "pancakeswap",
+        "labels": [
+          "v3"
+        ],
+        "stock_symbol": "SPYon",
+        "stock_address": "0x6a708ead771238919d85930b5a0f10454e1c331a",
+        "quote_symbol": "USDT",
+        "quote_address": "0x55d398326f99059ff775485246999027b3197955",
+        "liq_usd": 1060.76,
+        "vol_h24": 307.8,
+        "url": "https://dexscreener.com/bsc/0x3b31ad84092cefefc71f71a8f84aace37aca3ee1",
+        "priceUsd": "775.058"
+      },
+      {
+        "pairAddress": "0x124D306dc7f9E181D61458C5264baC4D8E98906E",
+        "dexId": "flapsh",
+        "labels": [],
+        "stock_symbol": "TSLAonSPCXonNVDAonAAPLonMSFTonGOOGLonQQQonSPYonTSLAonSPCXonNVDAonAAPLonMSFTonGOOGLonQQQonSPYonTSLAonSPCXonNVDAonAAPLonMSFTonGOOGLonQQQonSPYonTSLAonSPCXonNVDAonAAPLonMSFTonGOOGLonQQQonSPYonTSLAonSPCXonNVDAonAAPLonMSFTonGOOGLonQQQonSPYon",
+        "stock_address": "0x2396c9a56dde00f0e5f108fd824fd56d65807777",
+        "quote_symbol": "WBNB",
+        "quote_address": "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c",
+        "liq_usd": 7308.11,
+        "vol_h24": 21.36,
+        "url": "https://dexscreener.com/bsc/0x124d306dc7f9e181d61458c5264bac4d8e98906e",
+        "priceUsd": "0.000003301"
+      }
+    ]
+  },
+  "MSTR|bstock": {
+    "query": "MSTRB",
+    "n": 0,
+    "best": null,
+    "top3": []
+  },
+  "MSTR|ondo": {
+    "query": "MSTRon",
+    "n": 6,
+    "best": {
+      "pairAddress": "0xAf768479450573cd31EC03165e47b18310f75743",
+      "dexId": "flapsh",
+      "labels": [],
+      "stock_symbol": "Armstrong",
+      "stock_address": "0xb7ad2d5caf33a577281aba41ddd2eb6fb3217777",
+      "quote_symbol": "SPCXB",
+      "quote_address": "0xbe9d156892e55e7154bcd3cb0fea677f9d3103e1",
+      "liq_usd": 7627.0,
+      "vol_h24": 571.35,
+      "url": "https://dexscreener.com/bsc/0xaf768479450573cd31ec03165e47b18310f75743",
+      "priceUsd": "0.000003444"
+    },
+    "top3": [
+      {
+        "pairAddress": "0xAf768479450573cd31EC03165e47b18310f75743",
+        "dexId": "flapsh",
+        "labels": [],
+        "stock_symbol": "Armstrong",
+        "stock_address": "0xb7ad2d5caf33a577281aba41ddd2eb6fb3217777",
+        "quote_symbol": "SPCXB",
+        "quote_address": "0xbe9d156892e55e7154bcd3cb0fea677f9d3103e1",
+        "liq_usd": 7627.0,
+        "vol_h24": 571.35,
+        "url": "https://dexscreener.com/bsc/0xaf768479450573cd31ec03165e47b18310f75743",
+        "priceUsd": "0.000003444"
+      },
+      {
+        "pairAddress": "0x4Fb4725DC9cB201D15a774D707fE0689ceb798fC",
+        "dexId": "flapsh",
+        "labels": [],
+        "stock_symbol": "Armstrong",
+        "stock_address": "0x2b969db949c69e3a4f0bb2dcd451a250d8a07777",
+        "quote_symbol": "WBNB",
+        "quote_address": "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c",
+        "liq_usd": 7363.58,
+        "vol_h24": 0.0,
+        "url": "https://dexscreener.com/bsc/0x4fb4725dc9cb201d15a774d707fe0689ceb798fc",
+        "priceUsd": "0.000003325"
+      },
+      {
+        "pairAddress": "0xeAdad56dE41eC1Ff4100d8Cf57083e758F3D0fe3",
+        "dexId": "flapsh",
+        "labels": [],
+        "stock_symbol": "Armstrong",
+        "stock_address": "0xb1d00c6565450e5c7d71f39fc379ec89056d7777",
+        "quote_symbol": "WBNB",
+        "quote_address": "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c",
+        "liq_usd": 7363.58,
+        "vol_h24": 0.0,
+        "url": "https://dexscreener.com/bsc/0xeadad56de41ec1ff4100d8cf57083e758f3d0fe3",
+        "priceUsd": "0.000003325"
+      }
+    ]
+  }
+}
