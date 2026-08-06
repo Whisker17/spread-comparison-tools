@@ -4,7 +4,7 @@
 | --- | --- |
 | Issue | [WHI-798](https://linear.app/whisker-personal/issue/WHI-798/调研确定各资产类别的资产清单) |
 | Milestone | M1 调研与口径定义 |
-| Blocks | WHI-809（Section: Crypto blue chips）、[WHI-810](https://linear.app/whisker-personal/issue/WHI-810)（Section: Stocks）、WHI-811（Section: Others） |
+| Blocks | WHI-809（Section: Crypto blue chips）、[WHI-810](https://linear.app/whisker-personal/issue/WHI-810)（Section: Stocks）、WHI-811（Section: Others）；**v3 下游** [WHI-881](https://linear.app/whisker-personal/issue/WHI-881)（catalog/API 实现）、[WHI-883](https://linear.app/whisker-personal/issue/WHI-883)（高成交量 underlying survey） |
 | 调研日期 | 2026-08-03（UTC；v2 同日重做 Stocks 部分；**v3 2026-08-06** underlying-first，见 [WHI-880](https://linear.app/whisker-personal/issue/WHI-880)） |
 | 方法 | 各 venue **公网 market-list API** live 探测 + 官方文档 + 复用 [WHI-797](./WHI-797-prop-amm-jupiter-quote-api.md)（v2 多链版）prop AMM 资产矩阵 |
 | 样本 | [`samples/WHI-798-asset-venue-matrix.tsv`](./samples/WHI-798-asset-venue-matrix.tsv) |
@@ -424,35 +424,45 @@ SSOT 落地位置：`spread_compare/assets.py`（实现 issue [WHI-881](https://
 ### 6.2 Stocks（v3：underlying × form × venue）
 
 > v2 的「P0-A 独立 tokenized 资产 id + P0-B equity_perp 资产 id」作废为 **catalog 形状**；venue 覆盖事实不变。  
-> 行 = `(asset, form, venue)`；`instrument_type` 由 form 默认值或 venue 覆盖（WHI-799 §6.2）。  
-> 图例：✅ live 已报价路径 · 📌 catalogued / unverified（勿静默删除）· ⛔ live 验证无 · — 不适用。
+> 行 = `(asset, form, venue)`；`instrument_type` 由 **venue×form** 决定（WHI-799 §6.2），不由 form 单独定死。  
+> form 词汇表 SSOT：§4.6（他处只引用，不重写）。
 
-#### 6.2.1 Phase-1 underlyings（当前产品行，不含新增 ticker）
+**图例（两轴，勿混用）**：
+
+| 标记 | 含义 |
+| --- | --- |
+| ✅ | Venue 侧 **live 验证有市场**（§4.3/§4.4 证据）**且** 当前产品 fan-out 会报价 |
+| 📗 | Venue 侧 **live 验证有市场**，但 Phase-1 **引擎尚未 fan-out**（catalog 保留，`coverage=unverified` 或报价前 `no_quote`——**禁止静默删除**） |
+| 📌 | Venue 支持 **未在本轮逐条 live 钉死**（§4.3「未验证」）——仍可 catalog，须标 `unverified` |
+| ⛔ | Live 验证无 / 明确不适用 |
+| — | 该 venue class 不适用 |
+
+#### 6.2.1 Phase-1 underlyings（当前产品 + catalog 锚点；不含 *新增* ticker）
 
 | asset | form | form_class | binance | bybit | hyperliquid | lighter | apex | pancakeswap_bsc | tessera_bsc | 备注 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| **NVDA** | `perp` | perp | ✅ NVDAUSDT p | ✅ NVDAUSDT p | ✅ xyz:NVDA | ✅ NVDA | ✅ NVDA-USDT | — | — | 五 venue exact-ticker |
-| **NVDA** | `bstock` | tokenized | ✅ NVDABUSDT s | — | — | — | — | ✅ NVDAB | ✅ NVDAB | BSC 三方闭环 |
-| **NVDA** | `ondo` | tokenized | — | — | — | — | — | ✅ NVDAon | ✅ NVDAon | 无 Binance spot |
-| **NVDA** | `xstock_cex` | tokenized | — | 📌 NVDAXUSDT s | — | — | — | — | — | catalogued；Bybit live 符号已确认 |
-| **NVDA** | `xstock` | tokenized | — | — | — | — | — | — | — | 📌 Sol mint NVDAx；Sol prop ⛔ |
-| **TSLA** | `perp` | perp | ✅ | ✅ | ✅ xyz:TSLA | ✅ | ✅ | — | — | |
-| **TSLA** | `bstock` | tokenized | 📌 TSLABUSDT | — | — | — | — | 📌 TSLAB | ⛔ Tessera 无池 | P1 扩展 |
-| **TSLA** | `xstock_cex` | tokenized | — | 📌 TSLAXUSDT | — | — | — | — | — | |
-| **TSLA** | `xstock` | tokenized | — | — | — | — | — | — | — | 📌 TSLAx mint；Sol prop ⛔ |
-| **TSLA** | `ondo` | tokenized | — | — | — | — | — | 📌 | 📌 | 未逐池 live 钉死 |
-| **AAPL** | `perp` | perp | ✅ | ✅ | ✅ xyz:AAPL | ✅ | ✅ | — | — | |
-| **AAPL** | `xstock_cex` | tokenized | — | 📌 AAPLXUSDT | — | — | — | — | — | |
-| **AAPL** | `xstock` | tokenized | — | — | — | — | — | — | — | 📌 AAPLx mint |
-| **MSFT** | `perp` | perp | ✅ | ✅ | ✅ xyz:MSFT | ✅ | ✅ | — | — | |
-| **MSFT** | `xstock` | tokenized | — | — | — | — | — | — | — | 📌 MSFTx mint；无 Bybit `*X` |
+| **NVDA** | `perp` | perp | ✅ NVDAUSDT p | ✅ NVDAUSDT p | ✅ xyz:NVDA | ✅ NVDA | ✅ NVDA-USDT | — | — | Phase-1 live |
+| **NVDA** | `bstock` | tokenized | ✅ NVDABUSDT s | — | — | — | — | ✅ NVDAB | ✅ NVDAB | BSC 三方；旧 id `NVDAB` |
+| **NVDA** | `ondo` | tokenized | — | — | — | — | — | ✅ NVDAon | ✅ NVDAon | 旧 id `NVDAON`；无 BN spot |
+| **NVDA** | `xstock_cex` | tokenized | — | 📗 NVDAXUSDT s | — | — | — | — | — | Bybit live 符号已确认；未 fan-out |
+| **NVDA** | `xstock` | tokenized | — | — | — | — | — | — | — | 📗 Sol mint NVDAx；Sol prop ⛔ |
+| **TSLA** | `perp` | perp | ✅ | ✅ | ✅ xyz:TSLA | ✅ | ✅ | — | — | Phase-1 live |
+| **TSLA** | `bstock` | tokenized | 📗 TSLABUSDT | — | — | — | — | 📗 TSLAB | ⛔ Tessera 无池 | §4.3 live BN+Pancake；Tessera ⛔ |
+| **TSLA** | `xstock_cex` | tokenized | — | 📗 TSLAXUSDT | — | — | — | — | — | Bybit `*X` live |
+| **TSLA** | `xstock` | tokenized | — | — | — | — | — | — | — | 📗 TSLAx mint；Sol prop ⛔ |
+| **TSLA** | `ondo` | tokenized | — | — | — | — | — | 📌 | 📌 | §4.3 未逐池钉死 |
+| **AAPL** | `perp` | perp | ✅ | ✅ | ✅ xyz:AAPL | ✅ | ✅ | — | — | Phase-1 live |
+| **AAPL** | `xstock_cex` | tokenized | — | 📗 AAPLXUSDT | — | — | — | — | — | |
+| **AAPL** | `xstock` | tokenized | — | — | — | — | — | — | — | 📗 AAPLx mint |
+| **MSFT** | `perp` | perp | ✅ | ✅ | ✅ xyz:MSFT | ✅ | ✅ | — | — | Phase-1 live |
+| **MSFT** | `xstock` | tokenized | — | — | — | — | — | — | — | 📗 MSFTx mint；无 Bybit `*X` |
 | **QQQ** | `bstock` | tokenized | ✅ QQQBUSDT s | — | — | — | — | ✅ QQQB | ✅ QQQB | 旧 id `QQQB` |
-| **QQQ** | `perp` | perp | 📌 QQQUSDT p | 📌 | ⛔ proxy-only xyz:XYZ100 | 📌 | 📌 | — | — | HL **禁止**假装 exact `xyz:QQQ` |
-| **QQQ** | `xstock` | tokenized | — | — | — | — | — | — | — | 📌 QQQx mint |
+| **QQQ** | `perp` | perp | 📗 QQQUSDT p | 📗 | ⛔ proxy-only xyz:XYZ100 | 📗 | 📗 | — | — | §4.4 四 venue live；HL **禁止** exact `xyz:QQQ` |
+| **QQQ** | `xstock` | tokenized | — | — | — | — | — | — | — | 📗 QQQx mint |
 | **SPCX** | `bstock` | tokenized | ✅ SPCXBUSDT s | — | — | — | — | ✅ SPCXB | ✅ SPCXB | 旧 id `SPCXB`；**无公开 equity ref** |
-| **SPCX** | `xstock_cex` | tokenized | — | 📌 SPCXXUSDT | — | — | — | — | — | |
-| **SPCX** | `xstock` | tokenized | — | — | — | — | — | — | — | 📌 SPCXx mint |
-| **SPCX** | `perp` | perp | — | — | — | — | — | — | — | ⛔ 无私募 SpaceX exact perp（当前 venue 集） |
+| **SPCX** | `xstock_cex` | tokenized | — | 📗 SPCXXUSDT | — | — | — | — | — | |
+| **SPCX** | `xstock` | tokenized | — | — | — | — | — | — | — | 📗 SPCXx mint |
+| **SPCX** | `perp` | perp | — | — | — | — | — | — | — | ⛔ 无私募 SpaceX exact perp |
 
 **读法**：
 
@@ -460,10 +470,20 @@ SSOT 落地位置：`spread_compare/assets.py`（实现 issue [WHI-881](https://
 - `tessera_bsc` 对 NVDA 贡献 **两行**（`bstock` + `ondo`），不再需要两个 logical asset id。
 - SPCX **没有** TradFi index / equity perp 中位数可用 → mid 固定走 bstock CEX TOB 链（WHI-799 §3.3.1）。
 
-#### 6.2.2 旧表对照（v2 兼容阅读）
+#### 6.2.2 规划名单（v2 P1/P2 — **不得静默删除**）
 
-v2 的「P0-A tokenized 三方」= 上表 `QQQ/SPCX/NVDA` × `bstock`（+ `NVDA` × `ondo`）。  
-v2 的「P0-B equity-perp」= 上表 `TSLA/NVDA/AAPL/MSFT` × `perp`。
+下列 underlying 在 §4.3/§4.4 已有 live 证据，**尚未**全部进 Phase-1 fan-out；catalog / survey（WHI-883）必须沿用 §4.6 form 表收录，不得因「不在 §6.2.1」而从 inventory 消失：
+
+| 优先级 | Underlyings | 备注 |
+| --- | --- | --- |
+| P1 跨 form / xStocks | TSLA（扩 bstock/ondo/xstock）、CRCL、… + Bybit `*X` 全集 | §4.5 |
+| P1-lite ETF | **SPY**（`bstock` SPYB；perp 四 venue；HL proxy-only）、QQQ perp（上表 📗） | 勿实现假 `xyz:SPY`/`xyz:QQQ` |
+| P2 mega-cap | AMZN、GOOGL、META、COIN、HOOD、MSTR、CRCL、PLTR、AMD（BY=`AMDSTOCKUSDT`） | §4.4/§4.5 |
+
+#### 6.2.3 旧表对照（v2 兼容阅读）
+
+v2 的「P0-A tokenized 三方」= §6.2.1 `QQQ/SPCX/NVDA` × `bstock`（+ `NVDA` × `ondo`）。  
+v2 的「P0-B equity-perp」= §6.2.1 `TSLA/NVDA/AAPL/MSFT` × `perp`。
 
 ### 6.3 Others（P0 压缩 — 与 §7.3 一致）
 
@@ -492,13 +512,13 @@ P0: BTC, ETH, SOL
 - SOL 行隐藏或禁用 EVM AMM 列。  
 - 稳定币报价腿优先 **USDC**（perp 多为 USDT 结算 — UI 需标注 quote currency）。
 
-### 7.2 Stocks section（v3 / WHI-880 → 实现 WHI-881 + FE 跟随 issue）
+### 7.2 WHI-810 Stocks section（v3 / WHI-880 → 实现 WHI-881 + FE 跟随 issue）
 
 ```text
-Logical assets (underlyings):
+Phase-1 logical assets (underlyings):
   NVDA, TSLA, AAPL, MSFT, QQQ, SPCX
 
-Live forms (Phase 1 UI / backend):
+Phase-1 live forms (fan-out + UI):
   NVDA:  perp + bstock + ondo
   TSLA:  perp
   AAPL:  perp
@@ -506,11 +526,14 @@ Live forms (Phase 1 UI / backend):
   QQQ:   bstock
   SPCX:  bstock
 
-Catalogued-not-live (keep in catalog; quote as no_quote / unverified — do NOT drop):
+Catalogued, not yet fan-out (📗/📌 — do NOT drop; coverage=unverified / no_quote):
   NVDA/TSLA/AAPL/… × xstock | xstock_cex
-  TSLA/QQQ/… 扩展 bstock / ondo / perp 按 §6.2
+  TSLA × bstock (BN+Pancake live per §4.3; Tessera ⛔)
+  QQQ × perp (BN/BY/Lighter/ApeX live per §4.4; HL proxy-only)
 
-P1 survey (WHI-883): 更多 high-volume underlyings，必须沿用 form 分类法
+Planned underlyings (v2 §4.5 — keep in roadmap; expand via WHI-883 using §4.6 forms):
+  P1 / P1-lite: SPY, CRCL, … + full Bybit *X set
+  P2: AMZN, GOOGL, META, COIN, HOOD, MSTR, PLTR, AMD (BY=AMDSTOCKUSDT)
 排除: pre-IPO SPV (PreStocks/Jarsy)
 ```
 
@@ -592,22 +615,23 @@ P2: JUP, venue-specific high-vol (HYPE, PUMP) — flagged
 
 ---
 
-## 12. 修订记录
-
-| 日期 | 变更 |
-| --- | --- |
-| 2026-08-03 | 初版 + v2 asset-first Stocks 重做（bStocks / Tessera BSC） |
-| 2026-08-06 | **v3 / WHI-880**：underlying-first；§1.2 / §4.6 form 分类法；§6.2 改为 underlying×form×venue；§7.2 与下游交接更新；legacy id breaking rename 表；Q17/Q18 |
-
----
-
 ## 11. 与下游 issue 的交接一句话
 
 | Issue | 交接 |
 | --- | --- |
 | WHI-809 | 只做 BTC/ETH/SOL；用 §3.3 映射；SOL 不含 EVM AMM；**v2：BTC/ETH 的 prop AMM 报价点扩展到 Tessera Base/BSC** |
 | WHI-810 / FE stocks | **v3**：section 以 underlying 列表驱动；forms 来自 `GET /assets`；旧 `TOKENIZED_STOCK_ASSETS`/`EQUITY_PERP_ASSETS` 双板作废（FE issue 跟 WHI-881） |
-| WHI-881 | **实现** underlying-first catalog + `Quote.form` + 共享 mid + API（本文件 §4.6/§6.2 + WHI-799 §3.3/§5.2/§6 为 SSOT） |
-| WHI-883 | 高成交量 stock underlying 扩表 survey — **必须**采用 §4.6 form 分类法 |
+| WHI-881 | **实现** underlying-first catalog + `Quote.form` + 共享 mid + API + stream 行键含 form（本文件 §4.6/§6.2 + WHI-799 §3.3/§5.2/§6 为 SSOT） |
+| WHI-883 | 高成交量 stock underlying 扩表 survey — **必须**采用 §4.6 form 分类法；v2 P1/P2 名单（§4.5 / 下文）不得静默丢弃 |
 | WHI-811 | P0 八个非 meme L1/大盘；P1 缩放 meme；**不要**对 Solana prop 扫 meme；v2：Base Tessera 增量资产 AERO/VIRTUAL/EURC 可选入观察仓 |
 | WHI-806 | 资产侧：Solana 三 pair 之外，**新增 Tessera EVM（KyberSwap）**：Base WETH/cbBTC/AERO/VIRTUAL/EURC vs USDC；BSC BTCB + **forms** `bstock`/`ondo` under QQQ/SPCX/NVDA vs USDT |
+
+---
+
+## 12. 修订记录
+
+| 日期 | 变更 |
+| --- | --- |
+| 2026-08-03 | 初版 + v2 asset-first Stocks 重做（bStocks / Tessera BSC） |
+| 2026-08-06 | **v3 / WHI-880**：underlying-first；§1.2 / §4.6 form 分类法；§6.2 改为 underlying×form×venue；§7.2 与下游交接更新；legacy id breaking rename 表；Q17/Q18 |
+| 2026-08-06 | Review r1：§ 编号修正（修订记录在 §11 后）；覆盖图例拆分；恢复 P1/P2 名单；修正 §6.2.1 与 §4.3 live 证据对齐 |
