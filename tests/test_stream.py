@@ -124,10 +124,14 @@ def _stream_settings(**overrides: Any) -> StreamSettings:
         "max_queue_depth": 5,
     }
     base.update(overrides)
-    # Callers that raise max_assets must also raise depth (or use model_construct
-    # for intentional invalid pairs in rejection tests).
     if base["max_queue_depth"] < base["max_assets_per_client"]:
-        base["max_queue_depth"] = base["max_assets_per_client"]
+        raise AssertionError(
+            "test helper: max_queue_depth must be >= max_assets_per_client "
+            f"(got depth={base['max_queue_depth']}, "
+            f"assets={base['max_assets_per_client']}); "
+            "pass both knobs, or use StreamSettings.model_construct for "
+            "intentional shallow-queue overflow tests"
+        )
     return StreamSettings.model_validate(base)
 
 
@@ -554,7 +558,11 @@ async def test_hub_max_venues_is_union_across_filters() -> None:
     aggregator = AsyncMock()
     hub = QuoteStreamHub(
         aggregator,
-        _stream_settings(max_venues_per_client=2, max_assets_per_client=10),
+        _stream_settings(
+            max_venues_per_client=2,
+            max_assets_per_client=10,
+            max_queue_depth=10,
+        ),
         cors_origins=["http://localhost:3000"],
     )
     client = await hub.register()
@@ -612,8 +620,7 @@ async def test_hub_queue_overflow_forces_resnapshot() -> None:
     await hub.unregister(client.client_id)
 
 
-@pytest.mark.asyncio
-async def test_enqueue_overflow_invalidates_only_dropped_asset() -> None:
+def test_enqueue_overflow_invalidates_only_dropped_asset() -> None:
     """WHI-888: full wipe of every baseline turned multi-asset overflow into a
     permanent snapshot storm; only the dropped frame's asset must re-snapshot.
     """
@@ -641,6 +648,58 @@ async def test_enqueue_overflow_invalidates_only_dropped_asset() -> None:
     assert "ETH" in client.last_pairs
     assert "SOL" in client.last_pairs
     assert client.last_mid_json == {"ETH": "e", "SOL": "s"}
+
+
+@pytest.mark.asyncio
+async def test_deliver_same_asset_overflow_keeps_need_snapshot() -> None:
+    """WHI-888: drop+enqueue for the same asset must not re-commit baseline.
+
+    At depth == assets, a client one tick behind drops asset X's prior frame
+    while enqueueing X's next delta. Pre-fix-ordering cleared need_snapshot
+    via commit_baseline and left a permanent gap; invalidation must stick.
+    """
+    pair = _ok_pair(asset="BTC", snap="snap-1", total_cost="20")
+    pair2 = _ok_pair(asset="BTC", snap="snap-2", total_cost="25")
+
+    async def collect(asset: str, *args: Any, **kwargs: Any) -> QuotesPackage:
+        # Second collect returns a changed package so the delta path fires.
+        if getattr(collect, "n", 0) == 0:
+            collect.n = 1  # type: ignore[attr-defined]
+            return _package(asset=asset, pairs=[pair], snap="snap-1")
+        return _package(asset=asset, pairs=[pair2], snap="snap-2")
+
+    aggregator = AsyncMock()
+    aggregator.collect = AsyncMock(side_effect=collect)
+    hub = QuoteStreamHub(
+        aggregator,
+        _stream_settings(max_queue_depth=1, max_assets_per_client=1),
+        cors_origins=["http://localhost:3000"],
+    )
+    client = await hub.register()
+    hub.subscribe(
+        client,
+        StreamSubscribe.model_validate(
+            {
+                "type": "subscribe",
+                "assets": ["BTC"],
+                "notionals": ["1000"],
+            }
+        ),
+    )
+    # Tick 1: snapshot fills the depth-1 queue; baseline committed.
+    await hub.publish_once()
+    assert client.outbound.full()
+    assert "BTC" in client.last_pairs
+    assert "BTC" not in client.need_snapshot
+
+    # Tick 2: delta path; overflow drops the unsent snapshot for BTC.
+    await hub.publish_once()
+    assert "BTC" in client.need_snapshot, (
+        "same-asset overflow must leave need_snapshot set; "
+        f"got last_pairs={set(client.last_pairs)!r}"
+    )
+    assert "BTC" not in client.last_pairs
+    await hub.unregister(client.client_id)
 
 
 @pytest.mark.asyncio

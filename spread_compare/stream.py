@@ -313,11 +313,11 @@ class StreamClient:
     def commit_baseline(
         self,
         asset: str,
-        pairs: Mapping[str, SizeQuotePair],
+        pairs: dict[str, SizeQuotePair],
         mid_json: str,
     ) -> None:
         """Record the last-sent package for delta diffing after a successful enqueue."""
-        self.last_pairs[asset] = dict(pairs)
+        self.last_pairs[asset] = pairs
         self.last_mid_json[asset] = mid_json
         self.need_snapshot.discard(asset)
 
@@ -625,7 +625,6 @@ class QuoteStreamHub:
         self, client: StreamClient, asset: str, package: QuotesPackage
     ) -> None:
         want_snap = asset in client.need_snapshot or asset not in client.last_pairs
-        pair_map = {pair_identity_key(p): p for p in package.pairs}
         mid_json = package.mid.model_dump_json()
         if want_snap:
             queued = client.enqueue(
@@ -637,8 +636,14 @@ class QuoteStreamHub:
             )
             # Only commit the delta baseline when the frame is actually queued;
             # a failed enqueue already marked this asset for resnapshot.
+            # Snapshot frames are self-contained, so commit even if overflow
+            # invalidated this same asset while dropping an older frame.
             if queued:
-                client.commit_baseline(asset, pair_map, mid_json)
+                client.commit_baseline(
+                    asset,
+                    {pair_identity_key(p): p for p in package.pairs},
+                    mid_json,
+                )
             return
 
         prev = client.last_pairs.get(asset, {})
@@ -657,8 +662,19 @@ class QuoteStreamHub:
                 "notionals": [str(n) for n in package.notionals],
             }
         )
-        if queued:
-            client.commit_baseline(asset, pair_map, mid_json)
+        if not queued:
+            return
+        # Overflow may have dropped an older frame for *this* asset while
+        # queueing the delta. That invalidation must stick: committing here
+        # would re-clear need_snapshot and leave the client on a gapped
+        # baseline with no resnapshot scheduled (WHI-888 same-asset case).
+        if asset in client.need_snapshot:
+            return
+        client.commit_baseline(
+            asset,
+            {pair_identity_key(p): p for p in package.pairs},
+            mid_json,
+        )
 
     async def _tick_loop(self) -> None:
         interval = self._settings.coalesce_interval_ms / 1000.0
