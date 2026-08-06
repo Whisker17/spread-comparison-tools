@@ -24,4 +24,15 @@ max_venues_per_client: 40
 
 # Outbound queue depth per client. When full, drop the oldest pending frame
 # rather than unbounded memory growth (slow client backpressure).
-max_queue_depth: 8
+#
+# Invariant (validated in StreamSettings): max_queue_depth >= max_assets_per_client.
+# The hub enqueues **one frame per subscribed asset per coalesce tick**. If the
+# queue is shallower than the asset cap, a single tick can never fit even when
+# empty — and pre-WHI-888 that interacted with a full-baseline wipe on overflow
+# to pin multi-asset pages (e.g. /stocks with 14 underlyings) in a permanent
+# full-snapshot storm. Overflow still only invalidates the dropped frame's
+# asset; this floor just keeps one full tick structural.
+#
+# No stream_overloaded warning frame: structural overload is rejected at config
+# load; transient backpressure is per-asset resnapshot only (WHI-888).
+max_queue_depth: 20

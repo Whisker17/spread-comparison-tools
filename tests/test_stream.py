@@ -120,9 +120,17 @@ def _stream_settings(**overrides: Any) -> StreamSettings:
         "max_clients": 10,
         "max_assets_per_client": 5,
         "max_venues_per_client": 10,
-        "max_queue_depth": 4,
+        # WHI-888: depth must cover one frame per subscribed asset per tick.
+        "max_queue_depth": 5,
     }
     base.update(overrides)
+    # Keep the production invariant unless a test is explicitly probing rejection
+    # (both caps overridden with an invalid pair).
+    if (
+        "max_queue_depth" not in overrides
+        and base["max_queue_depth"] < base["max_assets_per_client"]
+    ):
+        base["max_queue_depth"] = base["max_assets_per_client"]
     return StreamSettings.model_validate(base)
 
 
@@ -478,6 +486,26 @@ def test_stream_settings_load() -> None:
     assert s.heartbeat_interval_sec == 15.0
     assert s.client_liveness_timeout_sec == 45.0
     assert s.max_clients >= 1
+    # WHI-888: one frame per asset per coalesce tick must fit the queue.
+    assert s.max_queue_depth >= s.max_assets_per_client
+
+
+def test_stream_settings_reject_queue_shallower_than_assets() -> None:
+    """max_queue_depth < max_assets_per_client is a structural storm config."""
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError, match="max_queue_depth"):
+        StreamSettings.model_validate(
+            {
+                "coalesce_interval_ms": 400.0,
+                "heartbeat_interval_sec": 15.0,
+                "client_liveness_timeout_sec": 45.0,
+                "max_clients": 10,
+                "max_assets_per_client": 20,
+                "max_venues_per_client": 40,
+                "max_queue_depth": 8,
+            }
+        )
 
 
 @pytest.mark.asyncio
@@ -563,7 +591,7 @@ async def test_hub_queue_overflow_forces_resnapshot() -> None:
     aggregator.collect = AsyncMock(return_value=_package())
     hub = QuoteStreamHub(
         aggregator,
-        _stream_settings(max_queue_depth=1),
+        _stream_settings(max_queue_depth=1, max_assets_per_client=1),
         cors_origins=["http://localhost:3000"],
     )
     client = await hub.register()
@@ -581,7 +609,139 @@ async def test_hub_queue_overflow_forces_resnapshot() -> None:
     # Fill queue so next enqueue drops.
     while not client.outbound.full():
         client.outbound.put_nowait({"type": "heartbeat", "ts": 0})
-    client.enqueue({"type": "delta", "asset": "BTC", "pairs": []})
+    assert client.enqueue({"type": "delta", "asset": "BTC", "pairs": []}) is True
     assert "BTC" in client.need_snapshot
-    assert client.last_pairs == {}
+    # Dropped frame was a heartbeat (no asset) — baseline may remain until a
+    # quote frame is dropped. Seed a quote frame then overflow again.
+    while not client.outbound.empty():
+        client.outbound.get_nowait()
+    client.last_pairs["BTC"] = {"k": _ok_pair()}
+    client.last_mid_json["BTC"] = "mid"
+    client.need_snapshot.discard("BTC")
+    client.outbound.put_nowait({"type": "delta", "asset": "BTC", "pairs": []})
+    assert client.outbound.full()
+    assert client.enqueue({"type": "delta", "asset": "BTC", "pairs": []}) is True
+    assert "BTC" in client.need_snapshot
+    assert "BTC" not in client.last_pairs
+    await hub.unregister(client.client_id)
+
+
+@pytest.mark.asyncio
+async def test_enqueue_overflow_invalidates_only_dropped_asset() -> None:
+    """WHI-888: full wipe of every baseline turned multi-asset overflow into a
+    permanent snapshot storm; only the dropped frame's asset must re-snapshot.
+    """
+    from spread_compare.stream import StreamClient
+
+    client = StreamClient(
+        client_id="c1",
+        outbound=asyncio.Queue(maxsize=1),
+    )
+    pair = _ok_pair()
+    client.last_pairs = {
+        "BTC": {"k": pair},
+        "ETH": {"k": pair},
+        "SOL": {"k": pair},
+    }
+    client.last_mid_json = {"BTC": "b", "ETH": "e", "SOL": "s"}
+    client.need_snapshot = set()
+
+    # Oldest frame is BTC; enqueue ETH while full → drop BTC only.
+    client.outbound.put_nowait({"type": "delta", "asset": "BTC", "pairs": []})
+    assert client.enqueue({"type": "delta", "asset": "ETH", "pairs": []}) is True
+
+    assert client.need_snapshot == {"BTC"}
+    assert "BTC" not in client.last_pairs
+    assert "ETH" in client.last_pairs
+    assert "SOL" in client.last_pairs
+    assert client.last_mid_json == {"ETH": "e", "SOL": "s"}
+
+
+@pytest.mark.asyncio
+async def test_multi_asset_subscription_yields_deltas_not_snapshot_storm() -> None:
+    """WHI-888 regression: N assets > prior queue cliff still delivers deltas.
+
+    Pre-fix: queue depth 8 + full baseline wipe → permanent snapshot storm at
+    N=14. Post-fix: after the initial snapshot pass, further ticks are deltas
+    (snapshot count bounded by asset count + small constant).
+    """
+    assets = [
+        "NVDA",
+        "TSLA",
+        "AAPL",
+        "MSFT",
+        "QQQ",
+        "SPCX",
+        "CRCL",
+        "GOOGL",
+        "AMD",
+        "PLTR",
+        "META",
+        "AMZN",
+        "SPY",
+        "MSTR",
+    ]
+    n = len(assets)
+
+    async def collect(asset: str, *args: Any, **kwargs: Any) -> QuotesPackage:
+        return _package(asset=asset, snap=f"snap-{asset}")
+
+    aggregator = AsyncMock()
+    aggregator.collect = AsyncMock(side_effect=collect)
+    # Depth covers one tick of N assets (production invariant); slow consumer
+    # still drains between ticks so we observe frame types, not tunnel latency.
+    hub = QuoteStreamHub(
+        aggregator,
+        _stream_settings(
+            max_assets_per_client=n,
+            max_queue_depth=n,
+            coalesce_interval_ms=50.0,
+        ),
+        cors_origins=["http://localhost:3000"],
+    )
+    client = await hub.register()
+    hub.subscribe(
+        client,
+        StreamSubscribe.model_validate(
+            {
+                "type": "subscribe",
+                "assets": assets,
+                "notionals": ["1000"],
+            }
+        ),
+    )
+
+    counts: dict[str, int] = {"snapshot": 0, "delta": 0}
+
+    async def drain() -> None:
+        while True:
+            try:
+                msg = client.outbound.get_nowait()
+            except asyncio.QueueEmpty:
+                return
+            t = msg.get("type")
+            if t in counts:
+                counts[t] += 1
+
+    # Initial tick: one snapshot per asset.
+    await hub.publish_once()
+    await drain()
+    assert counts["snapshot"] == n
+    assert counts["delta"] == 0
+    assert not client.need_snapshot
+
+    # Subsequent ticks with unchanged packages: mid/pairs unchanged → no frames.
+    # Force a mid change path by returning packages with a new snapshot_id (and
+    # therefore a new mid.snapshot_id) so every asset emits a delta.
+    async def collect_v2(asset: str, *args: Any, **kwargs: Any) -> QuotesPackage:
+        return _package(asset=asset, snap=f"snap2-{asset}")
+
+    aggregator.collect = AsyncMock(side_effect=collect_v2)
+    for _ in range(3):
+        await hub.publish_once()
+        await drain()
+
+    assert counts["delta"] >= n  # at least one delta pass across all assets
+    # Snapshots must not grow linearly with ticks (storm signature).
+    assert counts["snapshot"] <= n + 2, counts
     await hub.unregister(client.client_id)

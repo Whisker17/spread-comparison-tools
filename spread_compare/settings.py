@@ -293,6 +293,19 @@ class StreamSettings(BaseModel):
             )
         return self
 
+    @model_validator(mode="after")
+    def _queue_covers_asset_tick(self) -> StreamSettings:
+        # Hub emits up to one frame per subscribed asset per coalesce tick.
+        # depth < assets means a full tick can never fit an empty queue (WHI-888).
+        if self.max_queue_depth < self.max_assets_per_client:
+            raise ValueError(
+                "max_queue_depth must be >= max_assets_per_client "
+                f"(got depth={self.max_queue_depth}, "
+                f"assets={self.max_assets_per_client}); "
+                "the stream emits one frame per asset per coalesce tick"
+            )
+        return self
+
 
 class PollerSettings(BaseModel):
     """``config/poller.yaml`` — pull-only background poller (WHI-846 / WHI-864)."""
