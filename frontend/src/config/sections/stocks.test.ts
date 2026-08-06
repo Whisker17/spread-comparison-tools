@@ -8,8 +8,8 @@ import {
   coverageBadgeLabel,
   FORM_BADGE_LABELS,
   hasBstockForm,
+  liveQuoteableFormIds,
   nonLiveRowKeys,
-  quoteableFormIds,
   resolveStockForms,
   STOCK_FORMS_STATIC,
   STOCK_UNDERLYINGS,
@@ -199,7 +199,8 @@ describe("stocks section config (WHI-882 underlying-first)", () => {
     expect(xcex.coverage).not.toBe("live");
     const xstock = forms.find((f) => f.id === "xstock")!;
     expect(xstock.coverage).toBe("absent");
-    expect(quoteableFormIds(forms)).toEqual(["xstock_cex"]);
+    // Unverified has venues but is not default fan-out.
+    expect(liveQuoteableFormIds(forms)).toEqual([]);
   });
 
   it("does not resurrect static forms when the API returns only non-live forms", () => {
@@ -307,8 +308,8 @@ describe("stocks section config (WHI-882 underlying-first)", () => {
     ]);
     const rows = buildStockMatrixRows(forms);
     expect(nonLiveRowKeys(rows)).toEqual([makeRowKey("bybit", "xstock_cex")]);
-    // Unverified row can still stream; only best is gated.
-    expect(quoteableFormIds(forms).sort()).toEqual(["perp", "xstock_cex"].sort());
+    // Default fan-out is live only; unverified is chrome + never best.
+    expect(liveQuoteableFormIds(forms)).toEqual(["perp"]);
   });
 
   it("marks only orderbook venues for TOB rows", () => {

@@ -18,6 +18,7 @@ import { SpreadMatrix } from "@/components/SpreadMatrix";
 import { TopOfBookRow } from "@/components/TopOfBookRow";
 import { Button } from "@/components/ui/button";
 import { Tooltip } from "@/components/ui/tooltip";
+import { VENUE_META } from "@/config/sections/helpers";
 import type { SectionConfig } from "@/config/sections/types";
 import { useQuotesMatrix } from "@/hooks/useQuotes";
 import { useQuotesStreamOptional } from "@/hooks/useQuotesStream";
@@ -138,13 +139,13 @@ export function AssetSpreadBlock({
   );
 
   // Row keys may be `venue|form` (stocks) — strip form for the venue filter.
-  // Drop synthetic catalog summary venue (WHI-892); it is label-only.
+  // Drop synthetic / unknown slugs (catalog summary rows are label-only, WHI-892).
   const venueSlugsForRequest = useMemo(() => {
     if (venues.length === 0) return undefined;
     const slugs = new Set(
       venues
         .map((k) => parseRowKey(k).venue)
-        .filter((v) => v.length > 0 && v !== "catalog"),
+        .filter((v) => v.length > 0 && v in VENUE_META),
     );
     return slugs.size > 0 ? [...slugs] : undefined;
   }, [venues]);
@@ -455,12 +456,14 @@ export function AssetSpreadBlock({
             metric={section.cellMetric}
             venues={venues}
             venueLabels={proseLabels}
+            // Exclude non-live from best prose only (still list matrix rows).
             hiddenVenues={disabledVenues}
           />
           <SpreadMatrix
             pairs={pairs}
             notionals={displayNotionals}
             venues={venues}
+            // Dim + never best; rows remain listed (WHI-892 list, do not omit).
             disabledVenues={disabledVenues}
             sideView={sideView}
             metric={section.cellMetric}

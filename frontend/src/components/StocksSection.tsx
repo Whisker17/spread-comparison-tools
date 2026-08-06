@@ -13,9 +13,9 @@ import {
   buildStockMatrixRows,
   buildStocksVenueLabels,
   hasBstockForm,
+  liveQuoteableFormIds,
   nonLiveRowKeys,
   orderbookRows,
-  quoteableFormIds,
   resolveStockForms,
   STOCK_ASSET_SUBTITLES,
   STOCK_UNDERLYINGS,
@@ -76,30 +76,22 @@ function StocksSectionInner() {
   }, [assetsQuery.data]);
 
   const streamFilters = useMemo<StreamFilter[]>(() => {
-    // Single filter: all underlyings, all quoteable-form venues, no instrument pin.
-    // WHI-892: include unverified forms that have venues (badge + never best);
-    // venue-less absent/unverified stay catalog summary rows only.
-    const venueSet = new Set<string>();
-    const formSet = new Set<string>();
-    for (const forms of formsByUnderlying.values()) {
-      for (const v of venuesFromForms(forms)) {
-        venueSet.add(v);
-      }
-      for (const f of quoteableFormIds(forms)) {
-        formSet.add(f);
-      }
-    }
-    return [
-      {
-        assets: [...STOCK_UNDERLYINGS],
-        // WHI-864: subscribe only the visible tier.
+    // One filter per underlying so `forms=` never includes a form absent from
+    // that asset's catalog (global union → resolve_forms_filter ValueError /
+    // collect_failed — WHI-892 review). Omit forms → backend live default also
+    // works, but per-asset filters keep venue allow-lists tight.
+    // WHI-864: subscribe only the visible tier.
+    // Default fan-out = live only (WHI-799 §6.1.1); non-live rows are chrome.
+    return STOCK_UNDERLYINGS.map((underlying) => {
+      const forms = formsByUnderlying.get(underlying) ?? [];
+      const liveForms = forms.filter((f) => f.coverage === "live");
+      return {
+        assets: [underlying],
         notionals: [notional],
-        venues: [...venueSet],
-        // Explicit forms so unverified venue rows can stream (WHI-892).
-        forms: [...formSet],
-        // omit instrument_type so form expansion picks spot vs perp per form_class.
-      },
-    ];
+        venues: venuesFromForms(liveForms),
+        forms: liveQuoteableFormIds(forms),
+      };
+    });
   }, [notional, formsByUnderlying]);
 
   return (
@@ -236,8 +228,8 @@ function UnderlyingBoard({
     () => orderbookRows(rows).map((r) => r.rowKey),
     [rows],
   );
-  // Request only forms that have real venues; summary-only forms stay labels.
-  const formIds = useMemo(() => quoteableFormIds(forms), [forms]);
+  // HTTP/stream form filter = live venue-bearing only; non-live are chrome.
+  const formIds = useMemo(() => liveQuoteableFormIds(forms), [forms]);
   const allFormIds = useMemo(() => forms.map((f) => f.id), [forms]);
   const disabledKeys = useMemo(() => nonLiveRowKeys(rows), [rows]);
   const showBstockNote = hasBstockForm(forms);

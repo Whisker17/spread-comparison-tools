@@ -105,12 +105,7 @@ export type StockFormDef = {
  */
 export const CATALOG_SUMMARY_VENUE = "catalog" as const;
 
-/** True when the form is part of the default live product surface. */
-export function isLiveCoverage(coverage: FormCoverage): boolean {
-  return coverage === "live";
-}
-
-/** Non-live forms never win §5.2 best (WHI-892). */
+/** Non-live forms never win §5.2 best (WHI-892). Live-only eligibility. */
 export function isBestEligibleCoverage(coverage: FormCoverage): boolean {
   return coverage === "live";
 }
@@ -630,13 +625,17 @@ export function venuesFromForms(forms: readonly StockFormDef[]): string[] {
 }
 
 /**
- * Form ids that have at least one real venue (eligible for quote fan-out).
- * Includes unverified so explicit stream can surface numbers with a badge.
- * Excludes venue-less absent/unverified summary-only forms.
+ * Live form ids with at least one real venue — default quote fan-out only.
+ * Unverified/absent stay matrix chrome (badge / summary row) without stream
+ * requests (WHI-799 §6.1.1 default fan-out = live; WHI-892 out of scope to
+ * widen sampling).
  */
-export function quoteableFormIds(forms: readonly StockFormDef[]): string[] {
+export function liveQuoteableFormIds(forms: readonly StockFormDef[]): string[] {
   return forms
-    .filter((f) => Object.keys(f.representations).length > 0)
+    .filter(
+      (f) =>
+        f.coverage === "live" && Object.keys(f.representations).length > 0,
+    )
     .map((f) => f.id);
 }
 
