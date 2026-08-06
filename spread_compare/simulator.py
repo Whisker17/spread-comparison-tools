@@ -417,13 +417,11 @@ class TradeSimulator:
 
         # Same (venue, form) expansion as the aggregator — never stamp a
         # tokenized form on a perp-DEX book (WHI-799 §5.2.1 / WHI-881).
-        from spread_compare.aggregator import QuoteAggregator
+        from spread_compare.aggregator import venues_for_form_expansion
 
         work: list[tuple[str, str | None]] = []
         for f in form_list:
-            for slug in QuoteAggregator._venues_for_form_expansion(
-                pair.asset, f, venue_slugs
-            ):
+            for slug in venues_for_form_expansion(pair.asset, f, venue_slugs):
                 work.append((slug, f))
         raw_rows = await asyncio.gather(
             *(

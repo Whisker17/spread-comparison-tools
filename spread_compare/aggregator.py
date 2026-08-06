@@ -87,13 +87,31 @@ def effective_instrument_type(
     if form is not None and venue_class == "cex":
         from spread_compare.assets import form_class_of
 
-        # WHI-799 §6.2 unique derivation: form_class wins over requested itype.
+        # WHI-799 §6.2 unique derivation: form_class always wins over requested.
         if form_class_of(form) == "perp":
             return "perp"
         return "spot"
     if requested is not None and requested in CLASS_INSTRUMENTS[venue_class]:
         return requested
     return default_instrument_type(venue_class)
+
+
+def venues_for_form_expansion(
+    asset: str,
+    form: str | None,
+    venue_slugs: Sequence[str],
+) -> list[str]:
+    """Venues to fan out for one form (stock: catalog representation filter).
+
+    Shared by :class:`QuoteAggregator` and :class:`~spread_compare.simulator.TradeSimulator`.
+    """
+    if form is None:
+        return list(venue_slugs)
+    labeled = venues_for_form(asset, form)
+    if not labeled:
+        # Unverified form with empty representations — no fan-out rows.
+        return []
+    return [slug for slug in venue_slugs if slug in labeled]
 
 
 def _append_raw_ref(existing: str | None, tag: str) -> str:
@@ -752,7 +770,7 @@ class QuoteAggregator:
         stale_threshold = self._mid_settings.stale_threshold_sec
         pairs: list[SizeQuotePair] = []
         for form in forms:
-            form_venues = self._venues_for_form_expansion(asset, form, store_slugs)
+            form_venues = venues_for_form_expansion(asset, form, store_slugs)
             for slug in form_venues:
                 adapter = registry_get(slug)
                 for n in notionals:
@@ -821,7 +839,7 @@ class QuoteAggregator:
         # Expand (venue, form) work items — stocks can emit multiple forms per venue.
         work: list[tuple[str, str | None]] = []
         for form in forms:
-            for slug in self._venues_for_form_expansion(asset_key, form, venue_slugs):
+            for slug in venues_for_form_expansion(asset_key, form, venue_slugs):
                 work.append((slug, form))
 
         if len(notionals) == 1:
@@ -867,20 +885,6 @@ class QuoteAggregator:
             notionals=notionals,
         )
 
-    @staticmethod
-    def _venues_for_form_expansion(
-        asset: str,
-        form: str | None,
-        venue_slugs: Sequence[str],
-    ) -> list[str]:
-        """Venues to fan out for one form (stock: catalog representation filter)."""
-        if form is None:
-            return list(venue_slugs)
-        labeled = venues_for_form(asset, form)
-        if not labeled:
-            # Unverified form with empty representations — no fan-out rows.
-            return []
-        return [slug for slug in venue_slugs if slug in labeled]
 
     def _resolve_venues(self, venues: Sequence[str] | None) -> list[str]:
         if not venues:

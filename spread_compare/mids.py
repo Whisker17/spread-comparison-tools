@@ -17,7 +17,7 @@ from typing import Protocol
 
 import httpx
 
-from spread_compare.assets import STOCK_ASSETS, STOCK_PERP_UNDERLYINGS, is_stock_asset
+from spread_compare.assets import STOCK_PERP_UNDERLYINGS, is_stock_asset
 from spread_compare.cex_symbols import resolve_cex_multiplier, resolve_cex_symbol
 from spread_compare.models import MidSource, ReferenceMid
 from spread_compare.settings import MidSettings, StockMidP2Step, load_mid_settings
@@ -396,7 +396,7 @@ class MidService:
             raise MidResolutionError(f"force_pyth set but pyth failed for {asset}")
 
         # WHI-799 §3.3 v3 / WHI-881: one mid per stock underlying (all forms share).
-        if is_stock_asset(asset) or asset in STOCK_ASSETS or asset in STOCK_PERP_UNDERLYINGS:
+        if is_stock_asset(asset) or asset in STOCK_PERP_UNDERLYINGS:
             return await self._try_stock_chain(asset)
 
         # Crypto blue chips (CRYPTO_BLUE_CHIPS) and Others: §3.2 priority chain.

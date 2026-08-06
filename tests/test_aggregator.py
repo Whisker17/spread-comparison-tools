@@ -605,16 +605,16 @@ async def test_rate_limited_fail_fast_under_budget() -> None:
 
 def test_nvda_form_venue_expansion_multi_form() -> None:
     """WHI-881: tessera_bsc appears for both bstock and ondo; forms share mid identity."""
-    from spread_compare.aggregator import QuoteAggregator
+    from spread_compare.aggregator import venues_for_form_expansion
     from spread_compare.assets import live_forms
 
     forms = {f.id for f in live_forms("NVDA")}
     assert forms == {"perp", "bstock", "ondo"}
 
     venues = ["tessera_bsc", "pancakeswap_bsc", "binance", "hyperliquid", "bybit"]
-    bstock = QuoteAggregator._venues_for_form_expansion("NVDA", "bstock", venues)
-    ondo = QuoteAggregator._venues_for_form_expansion("NVDA", "ondo", venues)
-    perp = QuoteAggregator._venues_for_form_expansion("NVDA", "perp", venues)
+    bstock = venues_for_form_expansion("NVDA", "bstock", venues)
+    ondo = venues_for_form_expansion("NVDA", "ondo", venues)
+    perp = venues_for_form_expansion("NVDA", "perp", venues)
 
     assert bstock == ["tessera_bsc", "pancakeswap_bsc", "binance"]
     assert ondo == ["tessera_bsc", "pancakeswap_bsc"]
@@ -623,5 +623,5 @@ def test_nvda_form_venue_expansion_multi_form() -> None:
     assert "tessera_bsc" in bstock and "tessera_bsc" in ondo
 
     # Crypto single-form expansion is unchanged (all requested venues).
-    crypto = QuoteAggregator._venues_for_form_expansion("BTC", None, venues)
+    crypto = venues_for_form_expansion("BTC", None, venues)
     assert crypto == venues

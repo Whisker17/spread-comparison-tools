@@ -526,15 +526,15 @@ def resolve_forms_filter(
         return [None]
     if not forms:
         return [f.id for f in info.forms if f.coverage == "live"]
-    known = {f.id for f in info.forms}
-    out: list[str] = []
+    known = {f.id: f.id for f in info.forms}
+    out: list[str | None] = []
     for raw in forms:
         fid = raw.strip().lower()
         if fid not in known:
             raise ValueError(f"unknown form {raw!r} for asset {asset_id.upper()}")
-        if fid not in out:
-            out.append(fid)
-    return out  # type: ignore[return-value]
+        if known[fid] not in out:
+            out.append(known[fid])
+    return out
 
 
 def form_key(form: str | None) -> str:
