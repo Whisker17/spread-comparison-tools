@@ -1,11 +1,12 @@
-"""PancakeSwap v3 on BSC via on-chain QuoterV2 (WHI-804 / WHI-826 / WHI-881).
+"""PancakeSwap v3 on BSC via on-chain QuoterV2 (WHI-804 / WHI-826 / WHI-881 / WHI-891).
 
 Quote leg is USDT on BSC. Single-venue semantics only — no 0x/1inch.
 Phase 1: fixed v3 fee-tier probe (skip Smart Router / multi-hop).
 
-Stock underlyings resolve to tokenized tickers by form (WHI-881):
-QQQ/bstock→QQQB, SPCX/bstock→SPCXB, NVDA/bstock→NVDAB, NVDA/ondo→NVDAON.
-Token addresses still keyed by ticker in the Tessera BSC table (WHI-797 §7.4).
+Stock underlyings resolve to tokenized tickers by form (WHI-881 / WHI-891):
+QQQ/bstock→QQQB, SPCX/bstock→SPCXB, NVDA/bstock→NVDAB, NVDA/ondo→NVDAON,
+plus Phase-A bStocks SPY/AAPL/TSLA/MSFT/GOOGL/META/AMZN (WHI-890 §8).
+Token addresses keyed by ticker in ``BSC_TOKENS`` (shared SSOT with Tessera).
 """
 
 from __future__ import annotations
@@ -41,8 +42,17 @@ _TOKEN_BY_TICKER: Final[dict[str, TokenInfo]] = {
     "SPCXB": BSC_TOKENS["SPCXB"],
     "NVDAB": BSC_TOKENS["NVDAB"],
     "NVDAON": BSC_TOKENS["NVDAON"],
+    # WHI-891 / WHI-890 Phase A (Pancake TVL bar).
+    "SPYB": BSC_TOKENS["SPYB"],
+    "AAPLB": BSC_TOKENS["AAPLB"],
+    "TSLAB": BSC_TOKENS["TSLAB"],
+    "MSFTB": BSC_TOKENS["MSFTB"],
+    "GOOGLB": BSC_TOKENS["GOOGLB"],
+    "METAB": BSC_TOKENS["METAB"],
+    "AMZNB": BSC_TOKENS["AMZNB"],
 }
 _USDT = BSC_TOKENS["USDT"]
+
 
 @register_adapter
 class PancakeSwapBscAdapter(AmmDexAdapter):
@@ -51,13 +61,20 @@ class PancakeSwapBscAdapter(AmmDexAdapter):
     venue: str = "pancakeswap_bsc"
     rpc_env: str = "BSC_RPC_URL"
     native_binance_symbol: str = "BNBUSDT"
-    # Underlyings (WHI-881); crypto form=null, stocks require form.
+    # Underlyings (WHI-881 / WHI-891); crypto form=null, stocks require form.
     supported: tuple[str, ...] = (
         "BTC",
         "ETH",
         "QQQ",
         "SPCX",
         "NVDA",
+        "SPY",
+        "AAPL",
+        "TSLA",
+        "MSFT",
+        "GOOGL",
+        "META",
+        "AMZN",
     )
     lp_fee_tiers: tuple[int, ...] = PANCAKE_FEE_TIERS
 

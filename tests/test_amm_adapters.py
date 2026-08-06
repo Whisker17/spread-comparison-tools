@@ -127,12 +127,28 @@ def test_adapters_registered() -> None:
 
 
 def test_pancakeswap_supports_stock_underlyings() -> None:
-    """WHI-881: PancakeSwap BSC lists underlyings; form maps to token tickers."""
+    """WHI-881 / WHI-891: PancakeSwap BSC lists underlyings; form maps to tickers."""
     adapter = get("pancakeswap_bsc")
     supported = set(adapter.supported_assets())
-    assert {"BTC", "ETH", "QQQ", "SPCX", "NVDA"} <= supported
-    # Token addresses must stay aligned with Tessera BSC (single SSOT).
-    from spread_compare.adapters._prop_common import BSC_TOKENS
+    assert {
+        "BTC",
+        "ETH",
+        "QQQ",
+        "SPCX",
+        "NVDA",
+        "SPY",
+        "AAPL",
+        "TSLA",
+        "MSFT",
+        "GOOGL",
+        "META",
+        "AMZN",
+    } <= supported
+    # Token addresses must stay aligned with BSC_TOKENS (single SSOT).
+    from spread_compare.adapters._prop_common import (
+        BSC_STOCK_FORM_TICKER,
+        BSC_TOKENS,
+    )
     from spread_compare.adapters.amm_pancakeswap import PancakeSwapBscAdapter
 
     pcs = PancakeSwapBscAdapter()
@@ -140,6 +156,32 @@ def test_pancakeswap_supports_stock_underlyings() -> None:
     assert pcs._base_token("SPCX", form="bstock").address == BSC_TOKENS["SPCXB"].address
     assert pcs._base_token("NVDA", form="bstock").address == BSC_TOKENS["NVDAB"].address
     assert pcs._base_token("NVDA", form="ondo").address == BSC_TOKENS["NVDAON"].address
+    # WHI-890 Phase A addresses (survey §3.2).
+    phase_a = {
+        "SPY": ("bstock", "SPYB", "0x7138b48df7d98d7e3cc221bfe7192d0a178182d8"),
+        "AAPL": ("bstock", "AAPLB", "0x431a3bee82e2ca41e49895cbece5bb0f76a89b7a"),
+        "TSLA": ("bstock", "TSLAB", "0x5b1910eaad6450e50f816082aa078c41f10c292f"),
+        "MSFT": ("bstock", "MSFTB", "0x80106cb3ead06659a5ad19df39d9b4733863b9b0"),
+        "GOOGL": ("bstock", "GOOGLB", "0x3f53de71c126bdabae20f9cd64848d317f6c3238"),
+        "META": ("bstock", "METAB", "0x7425889fe94f9d693e8daefe88bcced6acfef4c0"),
+        "AMZN": ("bstock", "AMZNB", "0x1a4b499833a79a09ad7cf1d42d7dacf71e92eb00"),
+    }
+    for underlying, (form, ticker, address) in phase_a.items():
+        assert BSC_STOCK_FORM_TICKER[(underlying, form)] == ticker
+        tok = BSC_TOKENS[ticker]
+        assert tok.address.lower() == address.lower()
+        assert tok.decimals == 18
+        assert pcs._base_token(underlying, form=form).address == tok.address
+
+
+def test_tessera_bsc_stock_whitelist_unchanged() -> None:
+    """WHI-890 Phase B: Tessera stays on the green quartet; no Phase-A fan-out."""
+    adapter = get("tessera_bsc")
+    supported = set(adapter.supported_assets())
+    assert supported == {"BTC", "QQQ", "SPCX", "NVDA"}
+    # Phase-A underlyings must not be advertised (no phantom Tessera rows).
+    for asset in ("SPY", "AAPL", "TSLA", "MSFT", "GOOGL", "META", "AMZN"):
+        assert asset not in supported
 
 
 def test_encode_decode_quoter_roundtrip() -> None:

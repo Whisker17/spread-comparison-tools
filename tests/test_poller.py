@@ -148,6 +148,10 @@ def test_load_poller_settings_defaults() -> None:
         Decimal("1000000"),
     ]
     assert s.groups["rpc"].notionals_usd == s.groups["kyber"].notionals_usd
+    # WHI-891: named RPC offset after +7 Pancake Phase-A tokens (WHI-890 §8).
+    assert s.groups["rpc"].interval_sec == 45.0
+    assert s.groups["rpc"].max_quote_age_for_best_sec == 90.0
+    assert s.groups["rpc"].max_stale_sec == 180.0
 
 
 def test_group_for_venue_mapping() -> None:

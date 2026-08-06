@@ -122,3 +122,31 @@ async def test_live_pancake_btcb_usdt() -> None:
                 assert quote.total_cost_bps is not None
     finally:
         await adapter.aclose()
+
+
+@pytest.mark.live
+@pytest.mark.asyncio
+async def test_live_pancake_phase_a_bstock_spy() -> None:
+    """WHI-891: thickest Phase-A bStock (SPYB) quotes at $1k both sides."""
+    _require("BSC_RPC_URL")
+    mid = ReferenceMid(
+        snapshot_id="live-pcs-spy",
+        asset="SPY",
+        mid=Decimal("600"),
+        mid_source="proxy_perp_mark_median",
+        timestamp=datetime.now(tz=UTC),
+    )
+    adapter = get("pancakeswap_bsc")
+    await adapter.startup()
+    try:
+        n = Decimal("1000")
+        for side in ("buy", "sell"):
+            quote = await adapter.get_quote(
+                "SPY", side, n, mid=mid, form="bstock"
+            )
+            assert quote.status == "ok", quote.error_message
+            assert quote.effective_price is not None
+            assert quote.qty_base is not None
+            assert quote.form == "bstock"
+    finally:
+        await adapter.aclose()

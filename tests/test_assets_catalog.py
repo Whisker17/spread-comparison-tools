@@ -165,13 +165,54 @@ def test_whi884_p0_live_forms() -> None:
     assert "xstock_cex" in {f.id for f in live_forms("GOOGL")}
     assert "xstock_cex" not in {f.id for f in live_forms("CRCL")}
 
-    # AMD/PLTR bstock catalogued but not live fan-out (survey §5.2).
+    # AMD/PLTR bstock catalogued but not live fan-out (survey §5.2 / WHI-890).
     amd_bstock = get_form("AMD", "bstock")
     assert amd_bstock is not None and amd_bstock.coverage == "unverified"
     pltr_bstock = get_form("PLTR", "bstock")
     assert pltr_bstock is not None and pltr_bstock.coverage == "unverified"
     assert "bstock" not in {f.id for f in live_forms("AMD")}
     assert "bstock" not in {f.id for f in live_forms("PLTR")}
+
+
+def test_whi891_pancake_phase_a_bstock_live() -> None:
+    """WHI-891: Phase-A Pancake bStocks are live; Tessera only on the quartet."""
+    phase_a = {
+        "SPY": "SPYB",
+        "AAPL": "AAPLB",
+        "TSLA": "TSLAB",
+        "MSFT": "MSFTB",
+        "GOOGL": "GOOGLB",
+        "META": "METAB",
+        "AMZN": "AMZNB",
+    }
+    for underlying, ticker in phase_a.items():
+        bstock = get_form(underlying, "bstock")
+        assert bstock is not None, underlying
+        assert bstock.coverage == "live", underlying
+        assert bstock.representations["pancakeswap_bsc"] == ticker
+        # Tessera stayed absent_no_route for these (WHI-890 §5.2 / §8 Phase B).
+        assert "tessera_bsc" not in bstock.representations
+        assert "pancakeswap_bsc" in venues_for_form(underlying, "bstock")
+        assert "tessera_bsc" not in venues_for_form(underlying, "bstock")
+
+    # Existing green Tessera quartet unchanged.
+    for underlying, ticker in (
+        ("NVDA", "NVDAB"),
+        ("QQQ", "QQQB"),
+        ("SPCX", "SPCXB"),
+    ):
+        bstock = get_form(underlying, "bstock")
+        assert bstock is not None
+        assert bstock.representations["pancakeswap_bsc"] == ticker
+        assert bstock.representations["tessera_bsc"] == ticker
+
+    # Thin / zero-pool bStocks stay without Pancake (WHI-890 §4.2–§4.3).
+    for underlying in ("CRCL", "AMD", "PLTR", "MSTR"):
+        bstock = get_form(underlying, "bstock")
+        assert bstock is not None
+        assert "pancakeswap_bsc" not in bstock.representations
+        if underlying in ("AMD", "PLTR"):
+            assert bstock.coverage == "unverified"
 
 
 def test_tradeable_stables_subset_of_peg_set() -> None:
