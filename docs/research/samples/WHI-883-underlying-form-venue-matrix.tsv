@@ -78,7 +78,7 @@ COIN	perp	perp	apex	perp	COIN-USDT	live		GET /api/v3/symbols contractConfig.stoc
 COIN	bstock	tokenized	binance	spot	COINBUSDT	live	647810.63862	GET api/v3/exchangeInfo+ticker/24hr	bStocks
 COIN	bstock	tokenized	pancakeswap_bsc	spot	COINB	unverified		Gecko 429 or no pool this pass	
 COIN	bstock	tokenized	tessera_bsc	spot	COINB	unverified		Tessera subset; no per-token address probe this pass	not absent
-COIN	ondo	tokenized	pancakeswap_bsc	spot	COINon	live	23.8880039128	GeckoTerminal search/pools	dex=pancakeswap-v3-bsc tvl=1241.2535 id=bsc_0x7de5f4a237315a7c8fd31974bb6603c1d965e9ac
+COIN	ondo	tokenized	pancakeswap_bsc	spot	COINon	unverified	23.8880039128	GeckoTerminal search/pools	dex=pancakeswap-v3-bsc tvl=1241.2535 id=bsc_0x7de5f4a237315a7c8fd31974bb6603c1d965e9ac; gecko name appears BTC-quoted (比特币 / *on) — not USDT bStock-comparable
 COIN	ondo	tokenized	tessera_bsc	spot	COINon	unverified		not in known Tessera live subset	
 COIN	xstock_cex	tokenized	bybit	spot	COINXUSDT	live	1409494.59852	GET v5 instruments-info spot	
 COIN	xstock	tokenized	solana_mint	spot	COINx	live	254691.28983205734	Jupiter tokens/v2/search (jup_xstocks.json)	mint=Xs7ZdzSHLU9ftNJsii5fCeJhoRWSC32SQGzGQtePxNu
@@ -112,7 +112,7 @@ MSTR	xstock	tokenized	prop_amm_sol	spot	MSTRx	unverified		Not individually quote
 AVGO	perp	perp	binance	perp	AVGOUSDT	live	8605648.7567	GET fapi/v1/exchangeInfo+ticker/24hr TRADIFI_PERPETUAL	
 AVGO	perp	perp	bybit	perp	AVGOUSDT	live	544055.1079	GET v5 instruments-info linear + tickers	
 AVGO	perp	perp	hyperliquid	perp	xyz:AVGO	live	3047760.9520000005	POST info metaAndAssetCtxs dex=xyz (see hl_xyz_vol.json)	HIP-3; adapter wire xyz:TICKER; exact only if status=live
-AVGO	perp	perp	lighter	perp	AVGO	live	0	GET orderBookDetails (see lighter_equity_slim.json)	multiplier=1.000000000000000000
+AVGO	perp	perp	lighter	perp	AVGO	live_thin	0	GET orderBookDetails (see lighter_equity_slim.json)	multiplier=1.000000000000000000; daily_quote≈0
 AVGO	perp	perp	apex	perp	AVGO-USDT	live		GET /api/v3/symbols contractConfig.stockContract (see apex_equity_slim.json)	stockContract enableTrade=True
 AVGO	bstock	tokenized	binance	spot	AVGOBUSDT	live	295588.70885	GET api/v3/exchangeInfo+ticker/24hr	bStocks
 AVGO	bstock	tokenized	pancakeswap_bsc	spot	AVGOB	unverified	0.0	GeckoTerminal search/pools (gecko_pools.json)	dex=pancakeswap_v2 id=bsc_0x3ea169c878d73e12c1fb67b8827a9a74c4b6fc6d tvl_usd=0.2347 — not Pancake v3 Quoter path used by amm_pancakeswap adapter
@@ -139,6 +139,7 @@ SPY	perp	perp	binance	perp	SPYUSDT	live	65895214.6232	GET fapi/v1/exchangeInfo+t
 SPY	perp	perp	bybit	perp	SPYUSDT	live	2866991.8499	GET v5 instruments-info linear + tickers	
 SPY	perp	perp	lighter	perp	SPY	live	3536576.025837	GET orderBookDetails (see lighter_equity_slim.json)	multiplier=1.000000000000000000
 SPY	perp	perp	apex	perp	SPY-USDT	live		GET /api/v3/symbols contractConfig.stockContract (see apex_equity_slim.json)	stockContract enableTrade=True
+SPY	perp	perp	hyperliquid	perp	xyz:SP500	proxy		POST info metaAndAssetCtxs dex=xyz (hl_xyz_vol.json)	NO exact xyz:SPY — proxy index only; do not map as SPY
 SPY	bstock	tokenized	binance	spot	SPYBUSDT	live	1537868.44332	GET api/v3/exchangeInfo+ticker/24hr	bStocks
 SPY	bstock	tokenized	pancakeswap_bsc	spot	SPYB	live	10220214.4207579	GeckoTerminal search/pools (gecko_pools.json)	dex=pancakeswap-v3-bsc id=bsc_0x7aa6d92fc369a8c1edc631a3aac44efb0808ddbf tvl_usd=791541.7241
 SPY	bstock	tokenized	tessera_bsc	spot	SPYB	unverified		Tessera subset; no per-token address probe this pass	not absent
@@ -151,6 +152,7 @@ QQQ	perp	perp	binance	perp	QQQUSDT	live	219437777.5054	GET fapi/v1/exchangeInfo+
 QQQ	perp	perp	bybit	perp	QQQUSDT	live	9878889.4874	GET v5 instruments-info linear + tickers	
 QQQ	perp	perp	lighter	perp	QQQ	live	2322440.43298	GET orderBookDetails (see lighter_equity_slim.json)	multiplier=1.000000000000000000
 QQQ	perp	perp	apex	perp	QQQ-USDT	live		GET /api/v3/symbols contractConfig.stockContract (see apex_equity_slim.json)	stockContract enableTrade=True
+QQQ	perp	perp	hyperliquid	perp	xyz:XYZ100	proxy		POST info metaAndAssetCtxs dex=xyz (hl_xyz_vol.json)	NO exact xyz:QQQ — proxy only; do not map as QQQ
 QQQ	bstock	tokenized	binance	spot	QQQBUSDT	live	3271002.79694	GET api/v3/exchangeInfo+ticker/24hr	bStocks
 QQQ	bstock	tokenized	pancakeswap_bsc	spot	QQQB	live	72384228.7334357	GeckoTerminal search/pools (gecko_pools.json)	dex=pancakeswap-v3-bsc id=bsc_0xe531fcb1f5a195de7608b9f4f9518544c2cdb693 tvl_usd=2039444.1685
 QQQ	bstock	tokenized	tessera_bsc	spot	QQQB	live		Kyber includedSources=tessera (QQQB: kyber_tessera_probes.json 2026-08-06; NVDAB: WHI-798)	
@@ -167,7 +169,7 @@ CRCL	perp	perp	apex	perp	CRCL-USDT	live		GET /api/v3/symbols contractConfig.stoc
 CRCL	bstock	tokenized	binance	spot	CRCLBUSDT	live	22033323.71	GET api/v3/exchangeInfo+ticker/24hr	bStocks
 CRCL	bstock	tokenized	pancakeswap_bsc	spot	CRCLB	unverified		Gecko 429 or no pool this pass	
 CRCL	bstock	tokenized	tessera_bsc	spot	CRCLB	unverified		Tessera subset; no per-token address probe this pass	not absent
-CRCL	ondo	tokenized	pancakeswap_bsc	spot	CRCLon	live	1452.1639941691	GeckoTerminal search/pools	dex=pancakeswap-v3-bsc tvl=2913.4561 id=bsc_0xc1d141d6a9f8e8eb7b9ce1aecd4a8932f047c075
+CRCL	ondo	tokenized	pancakeswap_bsc	spot	CRCLon	unverified	1452.1639941691	GeckoTerminal search/pools	dex=pancakeswap-v3-bsc tvl=2913.4561 id=bsc_0xc1d141d6a9f8e8eb7b9ce1aecd4a8932f047c075; gecko name appears BTC-quoted (比特币 / *on) — not USDT bStock-comparable
 CRCL	ondo	tokenized	tessera_bsc	spot	CRCLon	unverified		not in known Tessera live subset	
 CRCL	xstock_cex	tokenized	bybit	spot	CRCLXUSDT	live	3495516.50358	GET v5 instruments-info spot	
 CRCL	xstock	tokenized	solana_mint	spot	CRCLx	live	866513.7771244396	Jupiter tokens/v2/search (jup_xstocks.json)	mint=XsueG8BtpquVJX9LVLLEGuViXUungE6WmK5YZ3p3bd1

@@ -90,7 +90,7 @@ lighter,PLTR,perp,perp,PLTR,live,998371.70607
 lighter,COIN,perp,perp,COIN,live,215975.934316
 lighter,HOOD,perp,perp,HOOD,live,697322.323448
 lighter,MSTR,perp,perp,MSTR,live,439125.360996
-lighter,AVGO,perp,perp,AVGO,live,0
+lighter,AVGO,perp,perp,AVGO,live_thin,0
 lighter,ORCL,perp,perp,ORCL,live,13904.793793
 lighter,SPY,perp,perp,SPY,live,3536576.025837
 lighter,QQQ,perp,perp,QQQ,live,2322440.43298
@@ -116,3 +116,5 @@ apex,TSLA,perp,perp,TSLA-USDT,live,
 apex,NVDA,perp,perp,NVDA-USDT,live,
 apex,AAPL,perp,perp,AAPL-USDT,live,
 apex,MSFT,perp,perp,MSFT-USDT,live,
+hyperliquid,SPY,perp,perp,xyz:SP500,proxy,
+hyperliquid,QQQ,perp,perp,xyz:XYZ100,proxy,

@@ -268,7 +268,7 @@ v1 从「预设 venue 集合的交集」出发，交集为空即降级——被�
 | Strategy (MSTR) | MSTRB | ✅ | 未验证 | 未验证 | — | 未验证 | ⛔ | MSTRx `XsP7…xyZ` | ⛔ |
 | Microsoft | MSFTB | ✅ | 未验证 | 未验证 | — | 未验证 | ⛔ | MSFTx `Xspz…RMX` | ⛔ |
 | SPDR S&P 500 | SPYB | ✅ | 未验证 | 未验证 | SPYon | 未验证 | ⛔ | SPYx `XsoC…F2W` | ⛔ |
-| **AMD（v2 无 *B；[WHI-883](./WHI-883-high-volume-stock-underlying-survey.md) 2026-08-06 修正）** | **AMDB** | **✅ AMDBUSDT** | 薄/异常池 | unverified | unverified | unverified | ⛔ 无 `*X` | AMDx（薄） | ⛔ |
+| **AMD（v2 无 *B；[WHI-883](./WHI-883-high-volume-stock-underlying-survey.md) 2026-08-06 修正）** | **AMDB** | **✅ AMDBUSDT** | 薄/非 v3 路径 | unverified | unverified | unverified | ⛔ 无 `*X` | AMDx（薄） | **unverified**（未 quote 探测；勿写 ⛔） |
 | Nebius | NBISB | ✅ | ✅ | 未验证 | NBISon | 未验证 | ⛔ | — | ⛔ |
 | McDonald's | MCDB？ | 未验证 | 未验证 | 未验证 | — | 未验证 | ✅ `MCDXUSDT` | MCDx | ⛔ |
 
