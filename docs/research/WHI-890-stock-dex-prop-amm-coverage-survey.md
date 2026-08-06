@@ -46,7 +46,7 @@ Status vocabulary (aligned with WHI-883):
 
 | status | Meaning |
 | --- | --- |
-| `live` | Probe confirmed route/pool usable for fan-out |
+| `live` | Confirmed usable for fan-out planning: Tessera = Kyber route_ok; Pancake = v3/USDT pool TVL ≳ $10k (DexScreener) — **Quoter eth_call not re-run this survey** (adapter already multi-probes fee tiers) |
 | `live_thin` | Exists but fails product bar (TVL ≪ $10k, non-USDT, or empty book) |
 | `absent_no_route` | Address/mint known; route or pool explicitly missing |
 | `unverified` | Expected form not pinned this round (no trustworthy address) |
@@ -95,7 +95,6 @@ All decimals measured **18** via `eth_call`. Listed symbol is on-chain `symbol()
 | CRCLON | ondo | `0x992879cd8ce0c312d98648875b5a8d6d042cbf34` | 18 | Circle Internet Group (Ondo Tokenized) | DexScreener + on-chain |
 | SPYON | ondo | `0x6a708ead771238919d85930b5a0f10454e1c331a` | 18 | SPDR S&P 500 ETF (Ondo Tokenized) | DexScreener + on-chain |
 | SPCXON | ondo | `0xd0a58bc9d88d3ff48c0294cb7e45937d0e41a928` | 18 | SpaceX (Ondo Tokenized) | DexScreener + on-chain |
-
 | QQQON | ondo | `0x0cde6936d305d5b34667fc46425e852efd73559a` | 18 | Invesco QQQ (Ondo Tokenized) | DexScreener exact + on-chain (USDC pool, thin) |
 
 **Still `unverified` (no trustworthy BSC address this round):** `METAon`, `MSTRon`, `AMDon`, `PLTRon` — CoinGecko + DexScreener exact-symbol hunt in `missing_hunt.json` found no clean BSC hit.
@@ -136,7 +135,7 @@ Fee tiers: **only** values with a name in `gecko_pools.json` are recorded (e.g. 
 | SPYON | 1 061 | v3/USDT thin |
 | AMZNON | 5 898 | best pool WBNB, not USDT |
 | CRCLON | 2 888 | non-USDT quote (DexScreener quote symbol `比特币` — unvetted; TVL not USDT-comparable) |
-| TSLAON | 178 | non-USDT quote (same `比特币` caveat) |
+| TSLAON | 849 | v3/USDT thin (gecko pool preferred; DexScreener also surfaces non-USDT `比特币` pairs) |
 | SPCXON | 485 | non-USDT quote |
 | AAPLON | 23 | v3/USDT dust |
 | MSFTON | ~0 | listed pool, effectively empty book |
@@ -281,12 +280,12 @@ Full TSV: [`samples/WHI-890-underlying-form-venue-matrix.tsv`](./samples/WHI-890
 | SPCX | SPCXB | live | live | 4.20M |
 | CRCL | CRCLB | live_thin | absent_no_route | ~0 |
 | GOOGL | GOOGLB | live | absent_no_route | 105k |
-| AMD | AMDB | absent_no_route | absent_no_route | 0 pairs |
-| PLTR | PLTRB | absent_no_route | absent_no_route | 0 pairs |
+| AMD | AMDB | absent_no_route | absent_no_route | n/a (0 pairs) |
+| PLTR | PLTRB | absent_no_route | absent_no_route | n/a (0 pairs) |
 | META | METAB | live | absent_no_route | 46k |
 | AMZN | AMZNB | live | absent_no_route | 45k |
 | SPY | SPYB | live | absent_no_route | 795k |
-| MSTR | MSTRB | absent_no_route | absent_no_route | 0 pairs |
+| MSTR | MSTRB | absent_no_route | absent_no_route | n/a (0 pairs) |
 
 \*NVDAB Tessera: buy green at $100 only in this capture (see §5.1).
 

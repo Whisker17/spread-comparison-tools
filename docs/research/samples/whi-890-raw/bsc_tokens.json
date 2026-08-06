@@ -90,13 +90,13 @@
     "onchain_symbol": "TSLAon",
     "onchain_name": "Tesla (Ondo Tokenized)",
     "provenance": "dexscreener/gecko TSLAon pairs (base 0x2494\u2026); on-chain verified",
-    "pool_tvl_usd": 177.55,
-    "pool_quote": "\u6bd4\u7279\u5e01",
+    "pool_tvl_usd": 849.1712,
+    "pool_quote": "USDT",
     "symbol_match_ok": true,
     "rejected": false,
-    "pool_vol_h24_usd": 18.62,
+    "pool_vol_h24_usd": 0.0,
     "pool_is_v3": true,
-    "pool_is_usdt": false,
+    "pool_is_usdt": true,
     "pool_dex": "pancakeswap",
     "pool_labels": [
       "v3"
@@ -106,7 +106,8 @@
     "pool_url": "https://dexscreener.com/bsc/0x4b7c3542ff4f63c44a5711755e7727e71138e74b",
     "n_pairs": 4,
     "fee_tier": "0.25%",
-    "fee_tier_provenance": "geckoterminal pool name 'TSLAon / USDT 0.25%' (gecko_pools.json)"
+    "fee_tier_provenance": "geckoterminal pool name 'TSLAon / USDT 0.25%' (gecko_pools.json)",
+    "pool_note": "prefer gecko USDT v3 thin pool over dexscreener \u6bd4\u7279\u5e01 pair"
   },
   "AAPLB": {
     "address": "0x431a3bee82e2ca41e49895cbece5bb0f76a89b7a",
