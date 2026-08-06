@@ -16,7 +16,6 @@ import {
   orderbookRows,
   resolveStockForms,
   STOCK_ASSET_SUBTITLES,
-  STOCK_ASSET_TITLES,
   STOCK_UNDERLYINGS,
   STOCKS_BEST_NOTE,
   STOCKS_MATRIX_ROW_HEADER,
@@ -238,13 +237,13 @@ function UnderlyingBoard({
         </p>
       ) : null}
       <div className="sr-only" id={`stocks-board-${underlying}-title`}>
-        {STOCK_ASSET_TITLES[underlying] ?? underlying}
+        {underlying}
       </div>
       <AssetSpreadBlock
         section={stocksBoard}
         asset={underlying}
         notional={notional}
-        assetTitle={STOCK_ASSET_TITLES[underlying] ?? underlying}
+        assetTitle={underlying}
         assetSubtitle={STOCK_ASSET_SUBTITLES[underlying]}
         venues={rowKeys}
         venueLabels={venueLabels}

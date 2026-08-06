@@ -8,6 +8,7 @@ import {
   isOrderbookVenue,
   VENUE_META,
 } from "@/config/sections/helpers";
+// VENUE_META used by instrument-type inference in buildStockMatrixRows.
 import type { SectionConfig } from "@/config/sections/types";
 import type { AssetResponse, InstrumentType } from "@/lib/api";
 import {
@@ -192,15 +193,6 @@ export const STOCK_FORMS_STATIC: Readonly<
   ],
 };
 
-export const STOCK_ASSET_TITLES: Readonly<Record<string, string>> = {
-  NVDA: "NVDA",
-  TSLA: "TSLA",
-  AAPL: "AAPL",
-  MSFT: "MSFT",
-  QQQ: "QQQ",
-  SPCX: "SPCX",
-};
-
 export const STOCK_ASSET_SUBTITLES: Readonly<Record<string, string>> = {
   NVDA: "NVIDIA · equity perp + bStocks + Ondo (shared mid)",
   TSLA: "Tesla · equity perp",
@@ -258,28 +250,32 @@ export function resolveStockForms(
 ): StockFormDef[] {
   const key = underlying.toUpperCase();
   const fromApi = assets?.find((a) => a.id.toUpperCase() === key);
-  if (fromApi?.forms && fromApi.forms.length > 0) {
-    // Live only: matches backend default fan-out (resolve_forms_filter → live).
-    // Unverified catalog forms stay on GET /assets for discovery, not the matrix.
+  if (fromApi?.forms != null) {
+    // Catalog row present: use live forms only (may be empty if demoted).
+    // Do NOT fall back to static when the API deliberately returns 0 live forms.
+    // Unverified forms stay on GET /assets for discovery, not the matrix
+    // (matches backend resolve_forms_filter → live).
     const live = fromApi.forms
       .filter((f) => f.coverage === "live")
       .map((f): StockFormDef | null => {
         const id = f.id.toLowerCase() as StockFormId;
         // Prefer wire form_class; fall back to closed vocabulary.
-        const wireClass = f.form_class === "perp" || f.form_class === "tokenized"
-          ? (f.form_class as FormClass)
-          : formClassOf(id);
+        const wireClass =
+          f.form_class === "perp" || f.form_class === "tokenized"
+            ? (f.form_class as FormClass)
+            : formClassOf(id);
         if (!wireClass) return null;
         return {
-          id: id in FORM_BADGE_LABELS ? id : (f.id.toLowerCase() as StockFormId),
+          id,
           form_class: wireClass,
           coverage: "live",
           representations: f.representations ?? {},
         };
       })
       .filter((f): f is StockFormDef => f !== null);
-    if (live.length > 0) return sortForms(live);
+    return sortForms(live);
   }
+  // Underlying absent from GET /assets (or assets not loaded yet) → static.
   const staticForms =
     STOCK_FORMS_STATIC[key as StockUnderlying] ?? ([] as StockFormDef[]);
   return sortForms([...staticForms].filter((f) => f.coverage === "live"));
@@ -348,52 +344,14 @@ export function buildStocksVenueLabels(
 ): Record<string, string> {
   const out: Record<string, string> = {};
   for (const row of rows) {
-    const badge = formBadgeLabel(row.form);
-    // Reuse helper shape per form (instrument + rep) then inject form badge.
-    const base = buildVenueRowLabels([row.venue], {
+    out[row.rowKey] = buildVenueRowLabels([row.venue], {
       representations: { [row.venue]: row.representation },
       instrumentType: row.instrumentType,
       includeOrderbookSymbol: true,
-    })[row.venue];
-    // Insert form badge after display name: "Binance · Perp · NVDAUSDT"
-    // base is already "Binance · perp · NVDAUSDT" — replace instrument word
-    // with the product form badge when present, else prepend badge.
-    const label = injectFormBadge(base ?? row.venue, badge, row);
-    out[row.rowKey] = label;
+      formBadge: formBadgeLabel(row.form),
+    })[row.venue]!;
   }
   return out;
-}
-
-function injectFormBadge(
-  baseLabel: string,
-  badge: string,
-  row: StockMatrixRow,
-): string {
-  // Prefer swapping CEX/perp instrument word for the form badge so we do not
-  // double up ("perp · Perp"). On-chain labels get the badge after display name.
-  const meta = VENUE_META[row.venue];
-  if (!meta) {
-    return `${baseLabel} · ${badge}`;
-  }
-  if (meta.venueClass === "cex" || meta.venueClass === "perp_dex") {
-    // "Binance · perp · NVDAUSDT" → "Binance · Perp · NVDAUSDT"
-    return baseLabel.replace(
-      new RegExp(`^${escapeRegExp(meta.displayName)} · (?:perp|spot)`),
-      `${meta.displayName} · ${badge}`,
-    );
-  }
-  // On-chain: "Tessera (BSC) · NVDAB · USDT" → "Tessera (BSC) · bStocks · NVDAB · USDT"
-  if (row.representation && baseLabel.includes(row.representation)) {
-    return baseLabel.replace(
-      row.representation,
-      `${badge} · ${row.representation}`,
-    );
-  }
-  return `${baseLabel} · ${badge}`;
-}
-
-function escapeRegExp(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 /** Summary prose labels (shorter; still include form badge + symbol). */
@@ -402,28 +360,12 @@ export function stocksVenueSummaryLabels(
 ): Record<string, string> {
   const out: Record<string, string> = {};
   for (const row of rows) {
-    const badge = formBadgeLabel(row.form);
-    const base = buildVenueSummaryLabel(row.venue, {
+    out[row.rowKey] = buildVenueSummaryLabel(row.venue, {
       representations: { [row.venue]: row.representation },
       instrumentType: row.instrumentType,
       includeOrderbookSymbol: true,
+      formBadge: formBadgeLabel(row.form),
     });
-    // "Binance perp (NVDAUSDT)" → "Binance Perp (NVDAUSDT)" with form badge
-    const meta = VENUE_META[row.venue];
-    if (meta && (meta.venueClass === "cex" || meta.venueClass === "perp_dex")) {
-      out[row.rowKey] = base
-        .replace(/ perp\b/i, ` ${badge}`)
-        .replace(/ spot\b/i, ` ${badge}`);
-    } else if (row.representation) {
-      out[row.rowKey] = base.includes(row.representation)
-        ? base.replace(
-            `(${row.representation})`,
-            `(${badge} ${row.representation})`,
-          )
-        : `${base} (${badge})`;
-    } else {
-      out[row.rowKey] = `${base} (${badge})`;
-    }
   }
   return out;
 }

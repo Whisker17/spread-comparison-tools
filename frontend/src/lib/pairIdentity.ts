@@ -26,6 +26,14 @@ export function formClassOf(
   return null;
 }
 
+/** Build a row key from venue + optional form. */
+export function makeRowKey(venue: string, form?: string | null): string {
+  if (form != null && form !== "") {
+    return `${venue}|${form}`;
+  }
+  return venue;
+}
+
 /**
  * Matrix / TOB row key for a quote pair.
  * Non-stocks (form null) stay venue-only so existing boards are unchanged.
@@ -34,18 +42,7 @@ export function pairRowKey(pair: {
   venue: string;
   form?: string | null;
 }): string {
-  if (pair.form != null && pair.form !== "") {
-    return `${pair.venue}|${pair.form}`;
-  }
-  return pair.venue;
-}
-
-/** Build a row key from venue + optional form. */
-export function makeRowKey(venue: string, form?: string | null): string {
-  if (form != null && form !== "") {
-    return `${venue}|${form}`;
-  }
-  return venue;
+  return makeRowKey(pair.venue, pair.form);
 }
 
 /** Parse a row key back into venue + form (form null when absent). */

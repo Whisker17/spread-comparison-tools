@@ -147,6 +147,25 @@ describe("stocks section config (WHI-882 underlying-first)", () => {
     expect(venuesFromForms(forms)).toEqual(["binance", "bybit"]);
   });
 
+  it("does not resurrect static forms when the API returns zero live forms", () => {
+    const assets: AssetResponse[] = [
+      {
+        id: "NVDA",
+        category: "stock",
+        representations: null,
+        forms: [
+          {
+            id: "perp",
+            form_class: "perp",
+            coverage: "unverified",
+            representations: { binance: "NVDAUSDT" },
+          },
+        ],
+      },
+    ];
+    expect(resolveStockForms("NVDA", assets)).toEqual([]);
+  });
+
   it("marks only orderbook venues for TOB rows", () => {
     const forms = resolveStockForms("NVDA", null);
     const rows = buildStockMatrixRows(forms);
