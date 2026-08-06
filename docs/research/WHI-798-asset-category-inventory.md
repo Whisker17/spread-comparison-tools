@@ -307,13 +307,15 @@ v1 从「预设 venue 集合的交集」出发，交集为空即降级——被�
 
 SSOT 落地位置：`spread_compare/assets.py`（实现 issue [WHI-881](https://linear.app/whisker-personal/issue/WHI-881)）。本表是 **form 词汇表**——新增发行家族时只允许扩展此表，禁止为同一 form 发明别名。
 
-| `form` id（稳定） | 发行家族 / 含义 | 典型命名 | 默认 `instrument_type`（venue 可覆盖） | 常见 venues |
-| --- | --- | --- | --- | --- |
-| `perp` | Exact-ticker 股票/ETF 永续 | `NVDAUSDT`、`xyz:NVDA` | `perp` | `binance`, `bybit`, `hyperliquid`, `lighter`, `apex` |
-| `bstock` | bStocks（BTech / Binance 系，BSC） | `NVDAB`、`QQQB`、`SPCXB` | `spot`（CEX）/ `amm_pool` / `prop_amm` | `binance` spot、`pancakeswap_bsc`、`tessera_bsc` |
-| `ondo` | Ondo Stocks | `NVDAon` | `amm_pool` / `prop_amm`（CEX 现货常无） | `pancakeswap_bsc`、`tessera_bsc`；（ETH Uniswap 可选） |
-| `xstock` | Backed xStocks **链上 mint**（主 Solana） | `NVDAx` mint `Xs…` | `amm_pool`（公共 DEX）；prop 当前 ⛔ | Solana AMM / 未来 prop |
-| `xstock_cex` | xStocks **CEX 现货**（Bybit `*X`） | `NVDAXUSDT` | `spot` | `bybit` spot |
+| `form` id（稳定） | 发行家族 / 含义 | 典型命名 | 常见 venues |
+| --- | --- | --- | --- |
+| `perp` | Exact-ticker 股票/ETF 永续 | `NVDAUSDT`、`xyz:NVDA` | `binance`, `bybit`, `hyperliquid`, `lighter`, `apex` |
+| `bstock` | bStocks（BTech / Binance 系，BSC） | `NVDAB`、`QQQB`、`SPCXB` | `binance` spot、`pancakeswap_bsc`、`tessera_bsc` |
+| `ondo` | Ondo Stocks | `NVDAon` | `pancakeswap_bsc`、`tessera_bsc`；（ETH Uniswap 可选） |
+| `xstock` | Backed xStocks **链上 mint**（主 Solana） | `NVDAx` mint `Xs…` | Solana AMM / 未来 prop（prop 当前 ⛔） |
+| `xstock_cex` | xStocks **CEX 现货**（Bybit `*X`） | `NVDAXUSDT` | `bybit` spot |
+
+`instrument_type` **不**由 form 表定义——唯一派生规则见 [WHI-799 §6.2](./WHI-799-spread-fee-data-model.md)。
 
 **Form class**（用于 §5.2 best 分组，见 WHI-799 §5.2 v3）：
 
@@ -327,7 +329,7 @@ SSOT 落地位置：`spread_compare/assets.py`（实现 issue [WHI-881](https://
 1. `form` 是稳定 slug（小写 snake）；**不是** display label（label 仍走 `representations[venue]`）。
 2. 一个 `(venue, asset)` **可以**挂多个 form（`tessera_bsc` + `NVDA` → `bstock` 与 `ondo` 两行）。
 3. 未 live 验证的 form **仍写入 catalog**，`status`/`coverage` 用 `unverified` 或报价 `no_quote`——**禁止**因「暂不对比」而从 inventory 删除。
-4. Crypto blue chips / Others **不**强制 `form` 字段（隐式单 form；实现可省略或 null）——行为不变。
+4. Crypto blue chips / Others 的 `form` **必须为 null**（隐式单形态；与 WHI-799 §6.2 不变量 8 一致）——行为不变。
 
 **Legacy asset id 映射（breaking rename，pre-v1）**：
 
@@ -453,7 +455,7 @@ SSOT 落地位置：`spread_compare/assets.py`（实现 issue [WHI-881](https://
 | **TSLA** | `ondo` | tokenized | — | — | — | — | — | 📌 | 📌 | §4.3 未逐池钉死 |
 | **AAPL** | `perp` | perp | ✅ | ✅ | ✅ xyz:AAPL | ✅ | ✅ | — | — | Phase-1 live |
 | **AAPL** | `bstock` | tokenized | 📗 AAPLBUSDT | — | — | — | — | 📌 | 📌 | §4.3 BN spot ✅；Pancake/Tessera 未钉 |
-| **AAPL** | `ondo` | tokenized | — | — | — | — | — | 📌 | 📌 | AAPLon；另 Uniswap ETH 可选（未列列） |
+| **AAPL** | `ondo` | tokenized | — | — | — | — | — | 📌 | 📌 | AAPLon；另 Uniswap ETH 可选（本表未单列该 venue） |
 | **AAPL** | `xstock_cex` | tokenized | — | 📗 AAPLXUSDT | — | — | — | — | — | |
 | **AAPL** | `xstock` | tokenized | — | — | — | — | — | — | — | 📗 AAPLx mint |
 | **MSFT** | `perp` | perp | ✅ | ✅ | ✅ xyz:MSFT | ✅ | ✅ | — | — | Phase-1 live |

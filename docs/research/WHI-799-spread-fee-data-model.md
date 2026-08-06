@@ -542,7 +542,7 @@ Quote {
 （`form=null` 时退化为今日的 `(venue, asset, instrument_type, …)`。）  
 **禁止**假设 `(venue, asset)` 或 `(venue, asset, instrument_type)` 唯一——反例：`tessera_bsc` + `NVDA` 同时有 `bstock` 与 `ondo`（二者常同为 `prop_amm`）。
 
-**Stream / cache / store 键（WHI-848 / WHI-846 / WHI-843）**：所有把 pair 压成字符串键的路径（至少 `stream.py` delta key、`quote_store`、orderbook cache、poller 矩阵）**必须**纳入 `form`（null 时用哨兵如 `-`）。今日 `f"{venue}|{notional}|{instrument_type}"` 在双 form 同 instrument_type 时会静默互相覆盖——WHI-881 必改。
+**Stream / cache / store 键（WHI-848 / WHI-846 / WHI-843）**：所有把 pair 压成字符串键的路径（至少 `stream.py` delta key、`quote_store`、orderbook cache、poller 矩阵、以及仍读 `TOKENIZED_CEX_SPOT` 的 `ws_bootstrap` 订阅范围）**必须**纳入 `form`（null 时用哨兵如 `-`）。今日 `f"{venue}|{notional}|{instrument_type}"` 在双 form 同 instrument_type 时会静默互相覆盖——WHI-881 必改。
 
 **`instrument_type` 派生（唯一规则）**：
 
@@ -802,7 +802,7 @@ QuotesResponse {
 | --- | --- |
 | 废除 top-level asset | `NVDAB`, `NVDAON`, `QQQB`, `SPCXB` |
 | 迁移 | WHI-798 §4.6 → `(NVDA,bstock)` / `(NVDA,ondo)` / `(QQQ,bstock)` / `(SPCX,bstock)`；旧 `equity_perp` 行 `TSLA|NVDA|AAPL|MSFT` → 同 id + `form=perp` |
-| 请求旧 id | **HTTP 422** + 机读 body：`error_code: legacy_asset_id`，`message` 含目标 `asset`+`form`（与 WHI-815 结构化 422 一致；**不用** 404） |
+| 请求旧 id | **HTTP 422** + 机读 body：`error_code: legacy_asset_id`，`message` 含目标 `asset`+`form`（与 WHI-815 结构化 422 一致；**不用** 404）。**WS `/stream` subscribe** 若带旧 asset id：同机读错误帧关闭或 error 事件（实现二选一，但 **不得** 静默忽略） |
 | `GET /assets` | **不**再列出旧 id 行 |
 | **Category 枚举** | 废除 `tokenized_stock` 与 `equity_perp`；stock underlyings 统一 `category="stock"`。`crypto_blue_chip` / `other` 不变 |
 | Mid 枚举 | 停止写出 `equity_ref_same_as_perp` 作为新 mid 源（§3.3.3） |
