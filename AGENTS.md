@@ -151,6 +151,11 @@ Catalog P0 stock expansion (WHI-884): CRCL/GOOGL/AMD/PLTR/META/AMZN/SPY/MSTR
 (+ QQQ perp live); form-aware CEX maps + Bybit `AMDSTOCKUSDT` venue override;
 HL exact-only WS (no SPY/QQQ proxy); live bstock@BN + xstock_cex@Bybit; Sol
 xStocks stay unverified (zero Jupiter budget).
+Stream overflow resnapshot storm (WHI-888): `StreamClient.enqueue` invalidates
+only the dropped frame's asset (not every subscription); `_deliver` commits
+baseline only when the frame queues and keeps `need_snapshot` after same-asset
+drops; `StreamSettings` enforces `max_queue_depth >= max_assets_per_client`
+(`config/stream.yaml` depth 20); no `stream_overloaded` warning frame.
 
 **Not implemented:** remaining venue adapters (WHI-805), collector.
 Do not assume a module exists until its issue lands.

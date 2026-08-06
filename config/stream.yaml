@@ -24,4 +24,10 @@ max_venues_per_client: 40
 
 # Outbound queue depth per client. When full, drop the oldest pending frame
 # rather than unbounded memory growth (slow client backpressure).
-max_queue_depth: 8
+#
+# Invariant (StreamSettings): max_queue_depth >= max_assets_per_client — the hub
+# emits one frame per subscribed asset per coalesce tick (WHI-888). Overflow
+# invalidates only the dropped frame's asset. No stream_overloaded warning
+# frame: structural overload fails config load; transient backpressure is
+# per-asset resnapshot.
+max_queue_depth: 20

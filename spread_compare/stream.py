@@ -283,46 +283,90 @@ class StreamClient:
     need_snapshot: set[str] = field(default_factory=set)
     closed: bool = False
 
+    def _frame_asset(self, frame: dict[str, Any] | None) -> str | None:
+        if frame is None:
+            return None
+        asset = frame.get("asset")
+        if not isinstance(asset, str) or not asset:
+            return None
+        return asset
+
+    def _invalidate_frame_baseline(self, frame: dict[str, Any] | None) -> str | None:
+        """Drop delta baseline for the asset carried by a lost frame (WHI-888).
+
+        Overflow must not wipe every subscribed asset — that turns a single
+        dropped frame into a permanent full-snapshot storm when the subscription
+        is wider than the residual queue room. Heartbeats / frames without
+        ``asset`` leave baselines intact.
+
+        Returns the asset that was invalidated, or None when the frame carries
+        no asset key (caller may log that value).
+        """
+        asset = self._frame_asset(frame)
+        if asset is None:
+            return None
+        self.need_snapshot.add(asset)
+        self.last_pairs.pop(asset, None)
+        self.last_mid_json.pop(asset, None)
+        return asset
+
+    def commit_baseline(
+        self,
+        asset: str,
+        pairs: dict[str, SizeQuotePair],
+        mid_json: str,
+    ) -> None:
+        """Record the last-sent package for delta diffing after a successful enqueue."""
+        self.last_pairs[asset] = pairs
+        self.last_mid_json[asset] = mid_json
+        self.need_snapshot.discard(asset)
+
     def enqueue(
         self, message: dict[str, Any], *, important: bool = True
-    ) -> None:
+    ) -> bool:
         """Push a frame; drop the oldest if the queue is full (backpressure).
 
-        Important frames (snapshot/delta): a drop can skip a delta that later
-        frames assume was applied, so force a full resnapshot on the next tick.
+        Returns True when ``message`` was accepted onto the outbound queue.
 
-        Heartbeats are not important — drop silently without invalidating
-        delta state when the client is already behind.
+        Important frames (snapshot/delta): a drop can skip a delta that later
+        frames assume was applied, so force a **per-asset** resnapshot for the
+        dropped frame only (WHI-888). Heartbeats are not important — drop
+        silently without invalidating delta state when the client is already
+        behind.
         """
         if self.closed:
-            return
+            return False
         if self.outbound.full():
             if not important:
-                return
+                return False
+            dropped: dict[str, Any] | None
             try:
-                self.outbound.get_nowait()
+                dropped = self.outbound.get_nowait()
             except asyncio.QueueEmpty:
-                pass
-            self.need_snapshot = set(self.filters)
-            self.last_pairs.clear()
-            self.last_mid_json.clear()
+                dropped = None
+            invalidated = self._invalidate_frame_baseline(dropped)
             logger.warning(
                 "stream client %s queue full; dropping oldest frame + "
-                "forcing resnapshot",
+                "forcing resnapshot for asset=%s",
                 self.client_id,
+                invalidated,
             )
         try:
             self.outbound.put_nowait(message)
+            return True
         except asyncio.QueueFull:
             if not important:
-                return
-            self.need_snapshot = set(self.filters)
-            self.last_pairs.clear()
-            self.last_mid_json.clear()
+                return False
+            # Could not free a slot (maxsize=0 race) or another producer won —
+            # the new frame never left; invalidate only its asset.
+            invalidated = self._invalidate_frame_baseline(message)
             logger.warning(
-                "stream client %s still full after drop; forcing resnapshot",
+                "stream client %s still full after drop; forcing resnapshot "
+                "for asset=%s",
                 self.client_id,
+                invalidated,
             )
+            return False
 
 
 class QuoteStreamHub:
@@ -581,28 +625,33 @@ class QuoteStreamHub:
         self, client: StreamClient, asset: str, package: QuotesPackage
     ) -> None:
         want_snap = asset in client.need_snapshot or asset not in client.last_pairs
+        mid_json = package.mid.model_dump_json()
         if want_snap:
-            client.enqueue(
+            queued = client.enqueue(
                 {
                     "type": "snapshot",
                     "asset": asset,
                     "data": package_to_wire(package),
                 }
             )
-            client.last_pairs[asset] = {
-                pair_identity_key(p): p for p in package.pairs
-            }
-            client.last_mid_json[asset] = package.mid.model_dump_json()
-            client.need_snapshot.discard(asset)
+            # Only commit the delta baseline when the frame is actually queued;
+            # a failed enqueue already marked this asset for resnapshot.
+            # Snapshot frames are self-contained, so commit even if overflow
+            # invalidated this same asset while dropping an older frame.
+            if queued:
+                client.commit_baseline(
+                    asset,
+                    {pair_identity_key(p): p for p in package.pairs},
+                    mid_json,
+                )
             return
 
         prev = client.last_pairs.get(asset, {})
         changed, removed = diff_pairs(prev, package.pairs)
-        mid_json = package.mid.model_dump_json()
         mid_changed = client.last_mid_json.get(asset) != mid_json
         if not changed and not removed and not mid_changed:
             return
-        client.enqueue(
+        queued = client.enqueue(
             {
                 "type": "delta",
                 "asset": asset,
@@ -613,10 +662,19 @@ class QuoteStreamHub:
                 "notionals": [str(n) for n in package.notionals],
             }
         )
-        client.last_pairs[asset] = {
-            pair_identity_key(p): p for p in package.pairs
-        }
-        client.last_mid_json[asset] = mid_json
+        if not queued:
+            return
+        # Overflow may have dropped an older frame for *this* asset while
+        # queueing the delta. That invalidation must stick: committing here
+        # would re-clear need_snapshot and leave the client on a gapped
+        # baseline with no resnapshot scheduled (WHI-888 same-asset case).
+        if asset in client.need_snapshot:
+            return
+        client.commit_baseline(
+            asset,
+            {pair_identity_key(p): p for p in package.pairs},
+            mid_json,
+        )
 
     async def _tick_loop(self) -> None:
         interval = self._settings.coalesce_interval_ms / 1000.0
