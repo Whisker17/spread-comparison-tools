@@ -103,7 +103,9 @@ class LighterAdapter(BaseAdapter):
         mid: ReferenceMid,
         instrument_type: InstrumentType | None = None,
         fee_tier: str | None = None,
+        form: str | None = None,
     ) -> Quote:
+        _ = form  # WHI-881: accept form; equity perps use asset id
         itype_default = instrument_type or default_instrument_type(self.venue_class)
         asset_key = asset.upper()
         resolved = resolve_lighter_symbol(asset_key)
@@ -181,7 +183,9 @@ class LighterAdapter(BaseAdapter):
         *,
         mid: ReferenceMid,
         instrument_type: Literal["spot", "perp"] | None = None,
+        form: str | None = None,
     ) -> TopOfBook | None:
+        _ = form  # WHI-881
         asset_key = asset.upper()
         resolved = resolve_lighter_symbol(asset_key)
         require_mid_asset(mid, asset_key)
@@ -207,8 +211,9 @@ class LighterAdapter(BaseAdapter):
         self,
         *,
         instrument_type: InstrumentType | None = None,
+        form: str | None = None,
     ) -> list[str]:
-        _ = instrument_type
+        _ = instrument_type, form
         if self._markets_by_symbol:
             logicals = {scaled_1000_logical_id(sym) for sym in self._markets_by_symbol}
             blue = [c for c in _BLUE_CHIPS if c in logicals]
@@ -269,8 +274,10 @@ class LighterAdapter(BaseAdapter):
         mid: ReferenceMid,
         instrument_type: InstrumentType | None = None,
         fee_tier: str | None = None,
+        form: str | None = None,
     ) -> list[Quote]:
         """One order-book fetch, walk every notional × side (WHI-843)."""
+        _ = form  # WHI-881
         if not notionals or not sides:
             raise AdapterError("get_quotes_batch requires notionals and sides")
 

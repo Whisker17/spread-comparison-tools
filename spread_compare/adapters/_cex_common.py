@@ -117,6 +117,7 @@ def build_quote_from_book(
     multiplier: Decimal = Decimal(1),
     from_ws: bool = False,
     book_age_sec: float | None = None,
+    form: str | None = None,
 ) -> Quote:
     """Walk the book and assemble a ``Quote`` (shared CEX path).
 
@@ -137,6 +138,7 @@ def build_quote_from_book(
             snapshot_id=mid.snapshot_id,
             venue=venue,
             asset=asset,
+            form=form,
             venue_symbol=venue_symbol,
             instrument_type=instrument_type,
             side=side,
@@ -179,6 +181,7 @@ def build_quote_from_book(
         snapshot_id=mid.snapshot_id,
         venue=venue,
         asset=asset,
+        form=form,
         venue_symbol=venue_symbol,
         instrument_type=instrument_type,
         side=side,
@@ -242,6 +245,7 @@ def build_top_of_book(
     asks: OrderbookLevels,
     timestamp: datetime | None = None,
     multiplier: Decimal = Decimal(1),
+    form: str | None = None,
 ) -> TopOfBook:
     bids = scale_book_to_canonical(bids, multiplier)
     asks = scale_book_to_canonical(asks, multiplier)
@@ -255,6 +259,7 @@ def build_top_of_book(
         snapshot_id=mid.snapshot_id,
         venue=venue,
         asset=asset,
+        form=form,
         instrument_type=instrument_type,
         best_bid=best_bid,
         best_ask=best_ask,
@@ -450,6 +455,7 @@ class CexBaseAdapter(BaseAdapter, ABC):
         mid: ReferenceMid,
         instrument_type: InstrumentType | None = None,
         fee_tier: str | None = None,
+        form: str | None = None,
     ) -> Quote:
         explicit_itype = instrument_type is not None
         requested = instrument_type or default_instrument_type(self.venue_class)
@@ -481,18 +487,21 @@ class CexBaseAdapter(BaseAdapter, ABC):
                 status="error",
             )
 
-        symbol = resolve_cex_symbol(asset_key, book_side)
+        symbol = resolve_cex_symbol(asset_key, book_side, form=form)
         # Equity perps have no CEX spot book — when the caller omitted
-        # instrument_type, fall through to the only listed book (WHI-826).
+        # instrument_type and form, fall through to the only listed book (WHI-826).
         if (
             symbol is None
             and not explicit_itype
+            and form is None
             and book_side == "spot"
-            and resolve_cex_symbol(asset_key, "perp") is not None
+            and resolve_cex_symbol(asset_key, "perp", form=form) is not None
         ):
             book_side = "perp"
-            symbol = resolve_cex_symbol(asset_key, "perp")
-        if symbol is None or not self._venue_lists_asset(asset_key, book_side):
+            symbol = resolve_cex_symbol(asset_key, "perp", form=form)
+        if symbol is None or not self._venue_lists_asset(
+            asset_key, book_side, form=form
+        ):
             return build_error_quote(
                 venue=self.venue,
                 asset=asset_key,
@@ -504,6 +513,7 @@ class CexBaseAdapter(BaseAdapter, ABC):
                 message=(
                     f"{asset} not supported by {self.venue} adapter "
                     f"as instrument_type={book_side!r}"
+                    + (f" form={form!r}" if form else "")
                 ),
                 fee_tier=tier,
                 status="unsupported_asset",
@@ -511,7 +521,7 @@ class CexBaseAdapter(BaseAdapter, ABC):
 
         schedule = self.get_fees(asset_key, instrument_type=book_side)
         trading_fee = require_taker_bps(self.venue, schedule)
-        multiplier = resolve_cex_multiplier(asset_key, book_side)
+        multiplier = resolve_cex_multiplier(asset_key, book_side, form=form)
 
         q_star = notional_usd / mid.mid
         try:
@@ -547,6 +557,7 @@ class CexBaseAdapter(BaseAdapter, ABC):
             multiplier=multiplier,
             from_ws=from_ws,
             book_age_sec=book_age,
+            form=form,
         )
 
     async def get_quotes_batch(
@@ -558,6 +569,7 @@ class CexBaseAdapter(BaseAdapter, ABC):
         mid: ReferenceMid,
         instrument_type: InstrumentType | None = None,
         fee_tier: str | None = None,
+        form: str | None = None,
     ) -> list[Quote]:
         """Price many notionals/sides from **one** orderbook fetch (WHI-843).
 
@@ -603,16 +615,19 @@ class CexBaseAdapter(BaseAdapter, ABC):
                 for side in sides
             ]
 
-        symbol = resolve_cex_symbol(asset_key, book_side)
+        symbol = resolve_cex_symbol(asset_key, book_side, form=form)
         if (
             symbol is None
             and not explicit_itype
+            and form is None
             and book_side == "spot"
-            and resolve_cex_symbol(asset_key, "perp") is not None
+            and resolve_cex_symbol(asset_key, "perp", form=form) is not None
         ):
             book_side = "perp"
-            symbol = resolve_cex_symbol(asset_key, "perp")
-        if symbol is None or not self._venue_lists_asset(asset_key, book_side):
+            symbol = resolve_cex_symbol(asset_key, "perp", form=form)
+        if symbol is None or not self._venue_lists_asset(
+            asset_key, book_side, form=form
+        ):
             return [
                 build_error_quote(
                     venue=self.venue,
@@ -625,6 +640,7 @@ class CexBaseAdapter(BaseAdapter, ABC):
                     message=(
                         f"{asset} not supported by {self.venue} adapter "
                         f"as instrument_type={book_side!r}"
+                        + (f" form={form!r}" if form else "")
                     ),
                     fee_tier=tier,
                     status="unsupported_asset",
@@ -635,7 +651,7 @@ class CexBaseAdapter(BaseAdapter, ABC):
 
         schedule = self.get_fees(asset_key, instrument_type=book_side)
         trading_fee = require_taker_bps(self.venue, schedule)
-        multiplier = resolve_cex_multiplier(asset_key, book_side)
+        multiplier = resolve_cex_multiplier(asset_key, book_side, form=form)
 
         # Depth for the largest tier — escalate until *every* requested side fills
         # q_max (or max depth). One-sided escalation would leave the opposite
@@ -709,6 +725,7 @@ class CexBaseAdapter(BaseAdapter, ABC):
                         multiplier=multiplier,
                         from_ws=from_ws,
                         book_age_sec=book_age,
+                        form=form,
                     )
                 )
         return out
@@ -719,15 +736,17 @@ class CexBaseAdapter(BaseAdapter, ABC):
         *,
         mid: ReferenceMid,
         instrument_type: Literal["spot", "perp"] | None = None,
+        form: str | None = None,
     ) -> TopOfBook | None:
         asset_key = asset.upper()
         book_side: CexBookSide = instrument_type or "spot"
-        symbol = resolve_cex_symbol(asset_key, book_side)
+        symbol = resolve_cex_symbol(asset_key, book_side, form=form)
         if symbol is None:
             raise UnsupportedAssetError(
                 f"{asset} not supported by {self.venue} as {book_side}"
+                + (f" form={form!r}" if form else "")
             )
-        multiplier = resolve_cex_multiplier(asset_key, book_side)
+        multiplier = resolve_cex_multiplier(asset_key, book_side, form=form)
         bids, asks, _from_ws, _age = await self._resolve_book(symbol, book_side)
         return build_top_of_book(
             venue=self.venue,
@@ -737,24 +756,32 @@ class CexBaseAdapter(BaseAdapter, ABC):
             bids=bids,
             asks=asks,
             multiplier=multiplier,
+            form=form,
         )
 
     def supported_assets(
         self,
         *,
         instrument_type: InstrumentType | None = None,
+        form: str | None = None,
     ) -> list[str]:
         if instrument_type in ("spot", "perp"):
-            assets = supported_cex_assets(instrument_type)
+            assets = supported_cex_assets(instrument_type, form=form)
         else:
             assets = supported_cex_assets()
-        return [a for a in assets if self._venue_lists_asset(a, instrument_type)]
+        return [
+            a
+            for a in assets
+            if self._venue_lists_asset(a, instrument_type, form=form)
+        ]
 
     def _venue_lists_asset(
         self,
         asset: str,
         instrument_type: InstrumentType | CexBookSide | None,
+        *,
+        form: str | None = None,
     ) -> bool:
-        """Per-venue listing filter (override for Bybit bStocks gaps, etc.)."""
-        _ = asset, instrument_type
+        """Per-venue listing filter (override for Bybit bStock gaps, etc.)."""
+        _ = asset, instrument_type, form
         return True

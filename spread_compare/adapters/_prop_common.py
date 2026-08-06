@@ -308,3 +308,11 @@ BSC_TOKENS: Final[dict[str, TokenInfo]] = {
         "0xa9ee28c80f960b889dfbd1902055218cba016f75", 18, "NVDAon"
     ),
 }
+
+# Stock underlying × form → BSC_TOKENS ticker (WHI-881). Shared by Pancake + Tessera BSC.
+BSC_STOCK_FORM_TICKER: Final[dict[tuple[str, str], str]] = {
+    ("QQQ", "bstock"): "QQQB",
+    ("SPCX", "bstock"): "SPCXB",
+    ("NVDA", "bstock"): "NVDAB",
+    ("NVDA", "ondo"): "NVDAON",
+}

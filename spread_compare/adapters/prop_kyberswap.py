@@ -15,6 +15,7 @@ import httpx
 
 from spread_compare.adapters._prop_common import (
     BASE_TOKENS,
+    BSC_STOCK_FORM_TICKER,
     BSC_TOKENS,
     PropFill,
     PropNoQuoteError,
@@ -93,8 +94,9 @@ class KyberSwapPropAdapter(BaseAdapter):
         self,
         *,
         instrument_type: InstrumentType | None = None,
+        form: str | None = None,
     ) -> list[str]:
-        _ = instrument_type
+        _ = instrument_type, form
         return list(self.supported)
 
     async def get_orderbook_spread(
@@ -103,8 +105,26 @@ class KyberSwapPropAdapter(BaseAdapter):
         *,
         mid: ReferenceMid,
         instrument_type: Literal["spot", "perp"] | None = None,
+        form: str | None = None,
     ) -> TopOfBook | None:
-        _ = asset, mid, instrument_type
+        _ = asset, mid, instrument_type, form
+        return None
+
+    def _resolve_base_token(
+        self, asset: str, *, form: str | None = None
+    ) -> TokenInfo | None:
+        """Map logical asset (+ optional stock form) → token table entry."""
+        asset_key = asset.upper()
+        if asset_key in self.tokens:
+            return self.tokens[asset_key]
+        # Stock underlyings: resolve form → token ticker then table (WHI-881).
+        return self._token_for_form(asset_key, form=form)
+
+    def _token_for_form(
+        self, asset: str, *, form: str | None = None
+    ) -> TokenInfo | None:
+        """Override on venues that list stock underlyings (tessera_bsc)."""
+        _ = asset, form
         return None
 
     async def get_quote(
@@ -116,12 +136,14 @@ class KyberSwapPropAdapter(BaseAdapter):
         mid: ReferenceMid,
         instrument_type: InstrumentType | None = None,
         fee_tier: str | None = None,
+        form: str | None = None,
     ) -> Quote:
         _ = fee_tier
         itype: InstrumentType = instrument_type or default_instrument_type(self.venue_class)
         asset_key = asset.upper()
 
-        if asset_key not in self.supported or asset_key not in self.tokens:
+        base_tok = self._resolve_base_token(asset_key, form=form)
+        if asset_key not in self.supported or base_tok is None:
             return build_non_ok_quote(
                 venue=self.venue,
                 mid=mid,
@@ -131,7 +153,10 @@ class KyberSwapPropAdapter(BaseAdapter):
                 instrument_type=itype,
                 status="unsupported_asset",
                 error_code="unsupported_asset",
-                error_message=f"{asset_key} not supported on {self.venue} (KyberSwap prop)",
+                error_message=(
+                    f"{asset_key} form={form!r} not supported on {self.venue} "
+                    f"(KyberSwap prop)"
+                ),
             )
 
         require_mid_match(mid, asset_key)
@@ -162,7 +187,7 @@ class KyberSwapPropAdapter(BaseAdapter):
             side=side,
             notional_usd=notional_usd,
             instrument_type=itype,
-            base=self.tokens[asset_key],
+            base=base_tok,
             quote_tok=self.tokens[self.quote_asset],
             fee_tier=_SOURCE_ID,
             fetch=fetch,
@@ -378,4 +403,15 @@ class TesseraBscAdapter(KyberSwapPropAdapter):
     chain_slug: ClassVar[str] = "bsc"
     tokens: ClassVar[dict[str, TokenInfo]] = BSC_TOKENS
     quote_asset: ClassVar[str] = "USDT"
-    supported: ClassVar[tuple[str, ...]] = ("BTC", "QQQB", "SPCXB", "NVDAB", "NVDAON")
+    # Underlyings (WHI-881); tokenized forms resolve via ``_token_for_form``.
+    supported: ClassVar[tuple[str, ...]] = ("BTC", "QQQ", "SPCX", "NVDA")
+
+    def _token_for_form(
+        self, asset: str, *, form: str | None = None
+    ) -> TokenInfo | None:
+        if form is None:
+            return None
+        ticker = BSC_STOCK_FORM_TICKER.get((asset.upper(), form.lower()))
+        if ticker is None:
+            return None
+        return self.tokens.get(ticker)

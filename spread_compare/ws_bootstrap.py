@@ -126,16 +126,27 @@ async def stop_ws_ingest(
 
 
 def _cex_symbols(book_side: str, *, exclude_bstocks: bool = False) -> list[str]:
-    from spread_compare.assets import TOKENIZED_CEX_SPOT
+    """CEX wire symbols for WS subscribe (crypto + form-aware stock books).
 
+    ``exclude_bstocks=True`` (Bybit spot): skip form=bstock *B symbols; Bybit
+    uses *X xStocks instead (out of phase-1 WS unless listed as xstock_cex).
+    """
     out: list[str] = []
     for asset in supported_cex_assets(book_side):  # type: ignore[arg-type]
-        # Bybit has no bStocks (*B); use catalog membership, not a hand list.
-        if exclude_bstocks and asset in TOKENIZED_CEX_SPOT:
-            continue
         sym = resolve_cex_symbol(asset, book_side)  # type: ignore[arg-type]
         if sym:
             out.append(sym)
+    if book_side == "spot" and not exclude_bstocks:
+        # Binance bStocks: only Phase-1 live form coverage (WHI-881 / WHI-798 §6.2).
+        from spread_compare.assets import get_form
+
+        for asset in supported_cex_assets("spot", form="bstock"):
+            form_row = get_form(asset, "bstock")
+            if form_row is None or form_row.coverage != "live":
+                continue
+            sym = resolve_cex_symbol(asset, "spot", form="bstock")
+            if sym:
+                out.append(sym)
     # Prefer blue chips first for connection subscribe order.
     priority = {"BTCUSDT", "ETHUSDT", "SOLUSDT"}
     out = sorted(set(out), key=lambda s: (0 if s in priority else 1, s))

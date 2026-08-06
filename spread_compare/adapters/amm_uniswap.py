@@ -45,7 +45,8 @@ class UniswapEthAdapter(AmmDexAdapter):
     native_binance_symbol: str = "ETHUSDT"
     lp_fee_tiers: tuple[int, ...] = UNISWAP_FEE_TIERS
 
-    def _base_token(self, asset: str) -> TokenInfo:
+    def _base_token(self, asset: str, *, form: str | None = None) -> TokenInfo:
+        _ = form
         if asset == "BTC":
             return _WBTC
         if asset == "ETH":
@@ -61,8 +62,10 @@ class UniswapEthAdapter(AmmDexAdapter):
         side: Side,
         notional_usd: Decimal,
         mid: ReferenceMid,
+        *,
+        form: str | None = None,
     ) -> QuoterResult | None:
-        base = self._base_token(asset)
+        base = self._base_token(asset, form=form)
         quote = self._quote_token()
         q_star = notional_usd / mid.mid
         amount_base = to_raw(q_star, base.decimals)

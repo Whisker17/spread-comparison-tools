@@ -204,8 +204,9 @@ class JupiterPropAdapter(BaseAdapter):
         self,
         *,
         instrument_type: InstrumentType | None = None,
+        form: str | None = None,
     ) -> list[str]:
-        _ = instrument_type
+        _ = instrument_type, form
         return list(self.supported)
 
     async def get_orderbook_spread(
@@ -214,9 +215,10 @@ class JupiterPropAdapter(BaseAdapter):
         *,
         mid: ReferenceMid,
         instrument_type: Literal["spot", "perp"] | None = None,
+        form: str | None = None,
     ) -> TopOfBook | None:
         """Prop AMMs have no orderbook concept (WHI-799 §7)."""
-        _ = asset, mid, instrument_type
+        _ = asset, mid, instrument_type, form
         return None
 
     async def get_quote(
@@ -228,7 +230,9 @@ class JupiterPropAdapter(BaseAdapter):
         mid: ReferenceMid,
         instrument_type: InstrumentType | None = None,
         fee_tier: str | None = None,
+        form: str | None = None,
     ) -> Quote:
+        _ = form  # WHI-881: accept form; Jupiter prop is crypto-only
         _ = fee_tier
         itype: InstrumentType = instrument_type or default_instrument_type(self.venue_class)
         asset_key = asset.upper()

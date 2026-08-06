@@ -522,10 +522,9 @@ async def test_kyber_bsc_btcb_ok() -> None:
 
 
 @pytest.mark.asyncio
-async def test_kyber_bsc_qqqb_returns_valid_quote() -> None:
-    """BSC tokenized-stock pair QQQB/USDT via tessera_bsc (acceptance criterion)."""
+async def test_kyber_bsc_qqq_bstock_returns_valid_quote() -> None:
+    """BSC tokenized QQQ/bstock via tessera_bsc (WHI-881 underlying-first)."""
     sample = _load("ks-route-tessera-bsc-usdt-qqqb.json")
-    # For sell of QQQB we need amountIn=QQQB, amountOut=USDT — synthesize from sample.
     # Use buy path (USDT ExactIn → QQQB) which matches the sample direction.
     adapter = TesseraBscAdapter()
     adapter._client = httpx.AsyncClient(
@@ -536,14 +535,18 @@ async def test_kyber_bsc_qqqb_returns_valid_quote() -> None:
     adapter._smoke_ok = True
     try:
         # mid ~ QQQB price ≈ 693 from sample (2000 USDT → 2.882 QQQB).
-        mid = _mid("QQQB", "693.5")
-        quote = await adapter.get_quote("QQQB", "buy", Decimal("2000"), mid=mid)
+        mid = _mid("QQQ", "693.5")
+        quote = await adapter.get_quote(
+            "QQQ", "buy", Decimal("2000"), mid=mid, form="bstock"
+        )
         assert quote.status == "ok"
         assert quote.venue == "tessera_bsc"
         assert quote.qty_method == "quote_exact_in_approx"
         assert quote.qty_base is not None
         assert quote.effective_price is not None
         assert quote.total_cost_bps is not None
+        assert "QQQ" in adapter.supported_assets()
+        assert "QQQB" not in adapter.supported_assets()
     finally:
         await adapter.aclose()
 

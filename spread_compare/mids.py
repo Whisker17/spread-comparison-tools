@@ -17,14 +17,10 @@ from typing import Protocol
 
 import httpx
 
-from spread_compare.assets import (
-    EQUITY_PERP_ASSETS,
-    TOKENIZED_CEX_SPOT,
-    TOKENIZED_UNDERLYING,
-)
+from spread_compare.assets import STOCK_PERP_UNDERLYINGS, is_stock_asset
 from spread_compare.cex_symbols import resolve_cex_multiplier, resolve_cex_symbol
 from spread_compare.models import MidSource, ReferenceMid
-from spread_compare.settings import MidSettings, load_mid_settings
+from spread_compare.settings import MidSettings, StockMidP2Step, load_mid_settings
 
 logger = logging.getLogger(__name__)
 
@@ -115,8 +111,10 @@ class DefaultMarkProvider:
         """Sample marks from the five §3.3 venues (skip silently when unavailable)."""
         asset_key = asset.upper()
         # Prefer perp wire form when listed (e.g. 1000PEPEUSDT); scale to 1×.
-        perp_sym = resolve_cex_symbol(asset_key, "perp")
-        mult = resolve_cex_multiplier(asset_key, "perp")
+        # Stocks: form=perp symbols (WHI-881).
+        form = "perp" if is_stock_asset(asset_key) else None
+        perp_sym = resolve_cex_symbol(asset_key, "perp", form=form)
+        mult = resolve_cex_multiplier(asset_key, "perp", form=form)
         labeled = (
             ("binance", self._binance_mark_scaled(perp_sym, mult)),
             ("bybit", self._bybit_mark_scaled(perp_sym, mult)),
@@ -397,50 +395,84 @@ class MidService:
                 return result
             raise MidResolutionError(f"force_pyth set but pyth failed for {asset}")
 
-        if asset in TOKENIZED_CEX_SPOT:
-            venue = TOKENIZED_CEX_SPOT[asset]
-            if venue == "binance":
-                result = await self._try_binance_spot_tob(asset)
-            else:
-                result = await self._try_bybit_spot_tob(asset)
-            if result is not None:
-                return result
-            raise MidResolutionError(f"tokenized spot TOB failed for {asset}")
-
-        # Tokenized without CEX spot → equity underlying ref (WHI-799 §3.3).
-        underlying = TOKENIZED_UNDERLYING.get(asset)
-        if underlying is not None:
-            result = await self._try_cex_tradfi_index(underlying)
-            if result is not None:
-                return _SourceResult(
-                    result.mid,
-                    "equity_ref_same_as_perp",
-                    result.timestamp,
-                    sources_detail=result.sources_detail,
-                )
-            result = await self._try_proxy_mark_median(
-                underlying, mid_source="equity_ref_same_as_perp"
-            )
-            if result is not None:
-                return result
-            raise MidResolutionError(
-                f"equity_ref mid failed for {asset} (underlying {underlying})"
-            )
-
-        if asset in EQUITY_PERP_ASSETS:
-            # §3.3: prefer CEX TradFi index, else mark median across perps.
-            result = await self._try_cex_tradfi_index(asset)
-            if result is not None:
-                return result
-            result = await self._try_proxy_mark_median(
-                asset, mid_source="proxy_perp_mark_median"
-            )
-            if result is not None:
-                return result
-            raise MidResolutionError(f"proxy mark median failed for {asset}")
+        # WHI-799 §3.3 v3 / WHI-881: one mid per stock underlying (all forms share).
+        if is_stock_asset(asset) or asset in STOCK_PERP_UNDERLYINGS:
+            return await self._try_stock_chain(asset)
 
         # Crypto blue chips (CRYPTO_BLUE_CHIPS) and Others: §3.2 priority chain.
         return await self._try_crypto_chain(asset)
+
+    async def _try_stock_chain(self, asset: str) -> _SourceResult:
+        """Underlying-first stock mid (WHI-799 §3.3.1).
+
+        P0 ``cex_tradfi_index`` → P1 ``proxy_perp_mark_median`` → P2 tokenized
+        CEX spot TOB in fixed order from ``mid.stock_mid_p2_order``.
+        SPCX (and any underlying without a perp form) falls through to P2 only
+        (WHI-799 §3.3.2).
+        """
+        from spread_compare.assets import get_form
+
+        errors: list[str] = []
+        # P0/P1 when catalog has a perp form (live or unverified) or known
+        # equity-perp underlyings not yet in the Phase-1 catalog rows.
+        has_equity_ref = (
+            get_form(asset, "perp") is not None or asset in STOCK_PERP_UNDERLYINGS
+        )
+
+        if has_equity_ref:
+            try:
+                result = await self._try_cex_tradfi_index(asset)
+            except Exception as exc:  # noqa: BLE001
+                errors.append(f"cex_tradfi_index: {exc}")
+                result = None
+            if result is not None:
+                return result
+            try:
+                result = await self._try_proxy_mark_median(
+                    asset, mid_source="proxy_perp_mark_median"
+                )
+            except Exception as exc:  # noqa: BLE001
+                errors.append(f"proxy_perp_mark_median: {exc}")
+                result = None
+            if result is not None:
+                return result
+
+        # P2: fixed form×venue order (not dynamic depth ranking).
+        for step in self._settings.stock_mid_p2_order:
+            try:
+                result = await self._try_stock_p2_tob(asset, step)
+            except Exception as exc:  # noqa: BLE001
+                errors.append(f"p2 {step.form}@{step.venue}: {exc}")
+                result = None
+            if result is not None:
+                if asset == "SPCX":
+                    detail = list(result.sources_detail or [])
+                    tag = "private_underlying_no_equity_ref"
+                    if tag not in detail:
+                        detail.append(tag)
+                    result = _SourceResult(
+                        result.mid,
+                        result.mid_source,
+                        result.timestamp,
+                        sources_detail=detail,
+                    )
+                return result
+
+        err_detail = "; ".join(errors) if errors else "all stock mid sources empty"
+        raise MidResolutionError(
+            f"no mid for stock underlying {asset}: {err_detail}"
+        )
+
+    async def _try_stock_p2_tob(
+        self, asset: str, step: StockMidP2Step
+    ) -> _SourceResult | None:
+        """Tokenized CEX spot TOB for one P2 step (form-aware wire symbol)."""
+        if step.venue == "binance":
+            return await self._try_binance_spot_tob(asset, form=step.form)
+        if step.venue == "bybit":
+            return await self._try_bybit_spot_tob(asset, form=step.form)
+        logger.debug("unknown stock P2 venue %s for %s", step.venue, asset)
+        return None
 
     async def _try_crypto_chain(self, asset: str) -> _SourceResult:
         chain: list[FetchFn] = [
@@ -463,10 +495,12 @@ class MidService:
         raise MidResolutionError(f"no mid for {asset}: {detail}")
 
     async def _try_binance_usdm_index(self, asset: str) -> _SourceResult | None:
-        symbol = resolve_cex_symbol(asset, "perp")
+        # Equity index path: stock underlyings use form=perp wire symbols.
+        form = "perp" if is_stock_asset(asset) else None
+        symbol = resolve_cex_symbol(asset, "perp", form=form)
         if symbol is None:
             return None
-        mult = resolve_cex_multiplier(asset, "perp")
+        mult = resolve_cex_multiplier(asset, "perp", form=form)
         url = f"{_BINANCE_FAPI}/fapi/v1/premiumIndex"
         try:
             resp = await self._http().get(url, params={"symbol": symbol})
@@ -481,11 +515,13 @@ class MidService:
             logger.debug("binance_usdm_index failed for %s: %s", asset, exc)
             return None
 
-    async def _try_binance_spot_tob(self, asset: str) -> _SourceResult | None:
-        symbol = resolve_cex_symbol(asset, "spot")
+    async def _try_binance_spot_tob(
+        self, asset: str, *, form: str | None = None
+    ) -> _SourceResult | None:
+        symbol = resolve_cex_symbol(asset, "spot", form=form)
         if symbol is None:
             return None
-        mult = resolve_cex_multiplier(asset, "spot")
+        mult = resolve_cex_multiplier(asset, "spot", form=form)
         url = f"{_BINANCE_SPOT}/api/v3/ticker/bookTicker"
         try:
             resp = await self._http().get(url, params={"symbol": symbol})
@@ -498,14 +534,16 @@ class MidService:
                 mid = mid / mult
             return _SourceResult(mid, "binance_spot_tob", datetime.now(tz=UTC))
         except (httpx.HTTPError, KeyError, TypeError, MidResolutionError) as exc:
-            logger.debug("binance_spot_tob failed for %s: %s", asset, exc)
+            logger.debug("binance_spot_tob failed for %s form=%s: %s", asset, form, exc)
             return None
 
-    async def _try_bybit_spot_tob(self, asset: str) -> _SourceResult | None:
-        symbol = resolve_cex_symbol(asset, "spot")
+    async def _try_bybit_spot_tob(
+        self, asset: str, *, form: str | None = None
+    ) -> _SourceResult | None:
+        symbol = resolve_cex_symbol(asset, "spot", form=form)
         if symbol is None:
             return None
-        mult = resolve_cex_multiplier(asset, "spot")
+        mult = resolve_cex_multiplier(asset, "spot", form=form)
         url = f"{_BYBIT}/v5/market/tickers"
         try:
             resp = await self._http().get(
@@ -524,7 +562,7 @@ class MidService:
                 mid = mid / mult
             return _SourceResult(mid, "bybit_spot_tob", datetime.now(tz=UTC))
         except (httpx.HTTPError, KeyError, TypeError, MidResolutionError) as exc:
-            logger.debug("bybit_spot_tob failed for %s: %s", asset, exc)
+            logger.debug("bybit_spot_tob failed for %s form=%s: %s", asset, form, exc)
             return None
 
     async def _try_pyth(self, asset: str) -> _SourceResult | None:

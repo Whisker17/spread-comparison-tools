@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
 
-from spread_compare.adapters.base import VenueAdapter, default_instrument_type
+from spread_compare.adapters.base import VenueAdapter
 from spread_compare.adapters.registry import get as registry_get
 from spread_compare.adapters.registry import is_available, list_venues
 from spread_compare.aggregator import (
@@ -32,6 +32,7 @@ from spread_compare.aggregator import (
     quote_with_timeout,
     resolve_mid_with_budget,
 )
+from spread_compare.assets import resolve_forms_filter, venues_for_form
 from spread_compare.mids import MidResolutionError, MidService
 from spread_compare.models import (
     PRICED_QUOTE_STATUSES,
@@ -102,6 +103,7 @@ class _WorkItem:
     notional_usd: Decimal
     side: Side
     instrument_type: InstrumentType
+    form: str | None = None
 
 
 def _serve_quote(
@@ -357,7 +359,7 @@ class PullQuotePoller:
         )
 
     def _plan_work(self, group: str, cfg: PollerGroupSettings) -> list[_WorkItem]:
-        """Enumerate (venue, asset, tier, side) for venues in this group."""
+        """Enumerate (venue, asset, form, tier, side) for venues in this group."""
         notionals = list(cfg.notionals_usd)
         items: list[_WorkItem] = []
         for slug in list_venues():
@@ -372,28 +374,49 @@ class PullQuotePoller:
                 continue
             # Startup-failed venues stay in the plan; quote_with_timeout
             # writes not_initialized rows so the store is not empty.
-            itype = default_instrument_type(adapter.venue_class)
             try:
-                assets = adapter.supported_assets(instrument_type=itype)
+                # Instrument type is form-dependent for CEX; poller venues are
+                # AMM/prop so default itype is fixed — pass None for discovery.
+                assets = adapter.supported_assets()
             except Exception:  # noqa: BLE001
                 logger.exception("poller: supported_assets failed for %s", slug)
                 continue
             for asset in assets:
                 asset_key = asset.upper()
-                for notional in notionals:
-                    for side in _SIDES:
-                        items.append(
-                            _WorkItem(
-                                venue=slug,
-                                asset=asset_key,
-                                notional_usd=notional,
-                                side=side,
-                                instrument_type=itype,
+                try:
+                    forms = resolve_forms_filter(asset_key, None)
+                except ValueError:
+                    forms = [None]
+                for form in forms:
+                    # Stocks: only plan venues that appear on this form's map.
+                    if form is not None:
+                        labeled = venues_for_form(asset_key, form)
+                        if slug not in labeled:
+                            continue
+                    itype = effective_instrument_type(
+                        adapter.venue_class, None, form=form
+                    )
+                    for notional in notionals:
+                        for side in _SIDES:
+                            items.append(
+                                _WorkItem(
+                                    venue=slug,
+                                    asset=asset_key,
+                                    notional_usd=notional,
+                                    side=side,
+                                    instrument_type=itype,
+                                    form=form,
+                                )
                             )
-                        )
-        # Stable order: venue, asset, notional, side — predictable pacing.
+        # Stable order: venue, asset, form, notional, side — predictable pacing.
         items.sort(
-            key=lambda w: (w.venue, w.asset, w.notional_usd, w.side)
+            key=lambda w: (
+                w.venue,
+                w.asset,
+                w.form or "",
+                w.notional_usd,
+                w.side,
+            )
         )
         return items
 
@@ -457,6 +480,7 @@ class PullQuotePoller:
             instrument_type=item.instrument_type,
             timeout=timeout,
             log_tag=f"poller/{group}",
+            form=item.form,
         )
         key = QuoteStoreKey(
             venue=item.venue,
@@ -464,6 +488,7 @@ class PullQuotePoller:
             instrument_type=item.instrument_type,
             notional_usd=item.notional_usd,
             side=item.side,
+            form=item.form,
         )
         # Adapter-returned non-ok (unsupported_asset, no_quote, …) is still a
         # successful *sample* — we got a definitive answer for this key.
@@ -495,6 +520,7 @@ class PullQuotePoller:
             instrument_type=item.instrument_type,
             notional_usd=item.notional_usd,
             side=item.side,
+            form=item.form,
         )
         prev = self._store.get(key)
         if prev is None:
@@ -631,6 +657,7 @@ def pair_from_store(
     stale_threshold_sec: float,
     adapter: VenueAdapter,
     clock: Callable[[], float] | None = None,
+    form: str | None = None,
 ) -> SizeQuotePair:
     """Build a store-backed SizeQuotePair for the aggregator.
 
@@ -640,7 +667,9 @@ def pair_from_store(
     differ from the package mid.
     """
     mono = clock or time.monotonic
-    itype = effective_instrument_type(adapter.venue_class, instrument_type)
+    itype = effective_instrument_type(
+        adapter.venue_class, instrument_type, form=form
+    )
     asset_key = asset.upper()
     now = mono()
     buy: Quote | None = None
@@ -657,6 +686,7 @@ def pair_from_store(
             instrument_type=itype,
             notional_usd=notional_usd,
             side=side,
+            form=form,
         )
         entry = store.get(key)
         if entry is None:
@@ -670,6 +700,7 @@ def pair_from_store(
                     side=side,
                     notional_usd=notional_usd,
                     instrument_type=itype,
+                    form=form,
                 )
             else:
                 q = not_sampled_quote(
@@ -686,6 +717,7 @@ def pair_from_store(
                         venue_class=adapter.venue_class,
                         poller_settings=poller_settings,
                     ),
+                    form=form,
                 )
         else:
             gcfg = poller_settings.groups.get(entry.group)
@@ -761,6 +793,7 @@ def pair_from_store(
                     f"{venue}: buy leg kept under a prior sweep snapshot; "
                     "serving fresher sell only"
                 ),
+                form=form,
             )
         if "sell" in sides and sell is None:
             sell = error_quote(
@@ -775,6 +808,7 @@ def pair_from_store(
                     f"{venue}: sell leg kept under a prior sweep snapshot; "
                     "serving fresher buy only"
                 ),
+                form=form,
             )
     else:
         pair_mid = mid
@@ -789,4 +823,5 @@ def pair_from_store(
         sell=sell if "sell" in sides else None,
         top_of_book=None,
         stale_threshold_sec=stale_threshold_sec,
+        form=form,
     )

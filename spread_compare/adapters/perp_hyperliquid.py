@@ -100,7 +100,9 @@ class HyperliquidAdapter(BaseAdapter):
         mid: ReferenceMid,
         instrument_type: InstrumentType | None = None,
         fee_tier: str | None = None,
+        form: str | None = None,
     ) -> Quote:
+        _ = form  # WHI-881: accept form; equity perps use asset id
         itype_default = instrument_type or default_instrument_type(self.venue_class)
         tier = fee_tier or DEFAULT_FEE_TIER
         try:
@@ -191,7 +193,9 @@ class HyperliquidAdapter(BaseAdapter):
         *,
         mid: ReferenceMid,
         instrument_type: Literal["spot", "perp"] | None = None,
+        form: str | None = None,
     ) -> TopOfBook | None:
+        _ = form  # WHI-881
         try:
             resolved = resolve_hl_coin(asset)
         except UnsupportedPerpSymbolError as exc:
@@ -222,8 +226,9 @@ class HyperliquidAdapter(BaseAdapter):
         self,
         *,
         instrument_type: InstrumentType | None = None,
+        form: str | None = None,
     ) -> list[str]:
-        _ = instrument_type
+        _ = instrument_type, form
         if self._logical_assets:
             return list(self._logical_assets)
         return list(HL_PHASE1_ASSETS)
@@ -313,8 +318,10 @@ class HyperliquidAdapter(BaseAdapter):
         mid: ReferenceMid,
         instrument_type: InstrumentType | None = None,
         fee_tier: str | None = None,
+        form: str | None = None,
     ) -> list[Quote]:
         """One L2 fetch, walk every notional × side (WHI-843)."""
+        _ = form  # WHI-881
         if not notionals or not sides:
             raise AdapterError("get_quotes_batch requires notionals and sides")
 

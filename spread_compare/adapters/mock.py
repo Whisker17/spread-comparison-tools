@@ -121,7 +121,9 @@ class MockAdapter(BaseAdapter):
         mid: ReferenceMid,
         instrument_type: InstrumentType | None = None,
         fee_tier: str | None = None,
+        form: str | None = None,
     ) -> Quote:
+        _ = form  # WHI-881: accept form; mock has no stock forms
         itype = instrument_type or default_instrument_type(self.venue_class)
         now = datetime.now(tz=UTC)
         asset_key = asset.upper()
@@ -212,6 +214,7 @@ class MockAdapter(BaseAdapter):
         mid: ReferenceMid,
         instrument_type: InstrumentType | None = None,
         fee_tier: str | None = None,
+        form: str | None = None,
     ) -> list[Quote]:
         """Walk the fixture book at every notional × side (shared timestamp)."""
         if not notionals or not sides:
@@ -227,6 +230,7 @@ class MockAdapter(BaseAdapter):
                     mid=mid,
                     instrument_type=instrument_type,
                     fee_tier=fee_tier,
+                    form=form,
                 )
                 out.append(q.model_copy(update={"timestamp": shared_ts}))
         return out
@@ -237,7 +241,9 @@ class MockAdapter(BaseAdapter):
         *,
         mid: ReferenceMid,
         instrument_type: Literal["spot", "perp"] | None = None,
+        form: str | None = None,
     ) -> TopOfBook | None:
+        _ = form
         if asset.upper() not in _SUPPORTED:
             raise UnsupportedAssetError(f"{asset} not supported by mock")
         itype: Literal["spot", "perp"] = instrument_type or "spot"
@@ -287,6 +293,7 @@ class MockAdapter(BaseAdapter):
         self,
         *,
         instrument_type: InstrumentType | None = None,
+        form: str | None = None,
     ) -> list[str]:
-        _ = instrument_type
+        _ = instrument_type, form
         return list(_SUPPORTED)

@@ -23,6 +23,37 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 _CONFIG_DIR = _REPO_ROOT / "config"
 
 
+class StockMidP2Step(BaseModel):
+    """One step of the stock mid P2 tokenized CEX TOB order (WHI-799 §3.3.1)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    form: str
+    venue: str
+
+    @field_validator("form")
+    @classmethod
+    def _known_form(cls, value: str) -> str:
+        from spread_compare.assets import FORM_IDS
+
+        key = value.strip().lower()
+        if key not in FORM_IDS:
+            raise ValueError(
+                f"stock_mid_p2_order form must be one of {list(FORM_IDS)}, got {value!r}"
+            )
+        return key
+
+    @field_validator("venue")
+    @classmethod
+    def _known_cex_venue(cls, value: str) -> str:
+        key = value.strip().lower()
+        if key not in {"binance", "bybit"}:
+            raise ValueError(
+                f"stock_mid_p2_order venue must be binance or bybit, got {value!r}"
+            )
+        return key
+
+
 class MidSettings(BaseModel):
     """``config/mid.yaml`` — reference-mid priority chain controls (WHI-799 §3.2)."""
 
@@ -35,6 +66,8 @@ class MidSettings(BaseModel):
     # WHI-847: tighter mid freshness for quotes walked from WS books.
     max_age_for_ws_quote_sec: float = Field(gt=0)
     pyth_feed_ids: dict[str, str]
+    # WHI-881 / WHI-799 §3.3.1: fixed P2 order for stock underlyings (unvalidated).
+    stock_mid_p2_order: list[StockMidP2Step]
 
     @field_validator("pyth_feed_ids", mode="before")
     @classmethod
@@ -42,6 +75,13 @@ class MidSettings(BaseModel):
         if not isinstance(value, dict):
             return value
         return {str(k).upper(): str(v) for k, v in value.items()}
+
+    @field_validator("stock_mid_p2_order")
+    @classmethod
+    def _nonempty_p2_order(cls, value: list[StockMidP2Step]) -> list[StockMidP2Step]:
+        if not value:
+            raise ValueError("stock_mid_p2_order must list at least one step")
+        return value
 
 
 class AggregatorSettings(BaseModel):

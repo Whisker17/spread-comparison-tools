@@ -35,6 +35,10 @@ TEST_MID_SETTINGS = MidSettings(
     http_timeout_sec=5,
     max_age_for_ws_quote_sec=2.0,
     pyth_feed_ids={},
+    stock_mid_p2_order=[
+        {"form": "bstock", "venue": "binance"},
+        {"form": "xstock_cex", "venue": "bybit"},
+    ],
 )
 
 
@@ -69,7 +73,9 @@ class SlowAdapter(BaseAdapter):
         mid: ReferenceMid,
         instrument_type: InstrumentType | None = None,
         fee_tier: str | None = None,
+        form: str | None = None,
     ) -> Quote:
+        _ = form
         await asyncio.sleep(5)
         raise AssertionError("should have been cancelled by timeout")
 
@@ -79,7 +85,9 @@ class SlowAdapter(BaseAdapter):
         *,
         mid: ReferenceMid,
         instrument_type: Literal["spot", "perp"] | None = None,
+        form: str | None = None,
     ) -> TopOfBook | None:
+        _ = form
         return None
 
     def get_fees(
@@ -94,6 +102,7 @@ class SlowAdapter(BaseAdapter):
         self,
         *,
         instrument_type: InstrumentType | None = None,
+        form: str | None = None,
     ) -> list[str]:
         return ["BTC"]
 
@@ -113,7 +122,9 @@ class StubAdapter(BaseAdapter):
         mid: ReferenceMid,
         instrument_type: InstrumentType | None = None,
         fee_tier: str | None = None,
+        form: str | None = None,
     ) -> Quote:
+        _ = form
         raise NotImplementedError
 
     async def get_orderbook_spread(
@@ -122,7 +133,9 @@ class StubAdapter(BaseAdapter):
         *,
         mid: ReferenceMid,
         instrument_type: Literal["spot", "perp"] | None = None,
+        form: str | None = None,
     ) -> TopOfBook | None:
+        _ = form
         return None
 
     def get_fees(
@@ -137,5 +150,6 @@ class StubAdapter(BaseAdapter):
         self,
         *,
         instrument_type: InstrumentType | None = None,
+        form: str | None = None,
     ) -> list[str]:
         return []

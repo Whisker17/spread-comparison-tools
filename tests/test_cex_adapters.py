@@ -264,14 +264,16 @@ def test_adapters_import_bookwalk_and_costs() -> None:
 def test_supported_assets_includes_btc(slug: str) -> None:
     assets = get(slug).supported_assets()
     assert "DOGE" in assets
-    # bStocks are Binance-only (WHI-798 §4.3); Bybit must not advertise them.
+    # Equity perps on CEX perp book; bstock forms resolve via form= not bare id.
     spot = get(slug).supported_assets(instrument_type="spot")
-    if slug == "binance":
-        assert "QQQB" in spot
-    else:
-        assert "QQQB" not in spot
+    assert "QQQB" not in spot
     assert "TSLA" in get(slug).supported_assets(instrument_type="perp")
     assert "TSLA" not in get(slug).supported_assets(instrument_type="spot")
+    # Bybit rejects form=bstock (Binance-only *B tokens).
+    if slug == "bybit":
+        assert get(slug)._venue_lists_asset("QQQ", "spot", form="bstock") is False
+    else:
+        assert get(slug)._venue_lists_asset("QQQ", "spot", form="bstock") is True
     assert "BTC" in assets
     assert "ETH" in assets
     assert "SOL" in assets

@@ -1,9 +1,10 @@
-"""In-memory latest-quote store for pull-only venues (WHI-846).
+"""In-memory latest-quote store for pull-only venues (WHI-846 / WHI-881).
 
-Keyed by ``(venue, asset, instrument_type, notional_usd, side)``. Bounded by
-construction (catalog × tiers × sides × venues); overwrite in place, no
-eviction. **Never re-prices** stored quotes against a fresher mid — pairing
-invariant is fixed at write time by the poller sweep.
+Keyed by ``(venue, asset, form, instrument_type, notional_usd, side)``.
+``form`` is null for non-stock assets (keyed as ``-``). Bounded by construction
+(catalog × forms × tiers × sides × venues); overwrite in place, no eviction.
+**Never re-prices** stored quotes against a fresher mid — pairing invariant is
+fixed at write time by the poller sweep.
 """
 
 from __future__ import annotations
@@ -14,22 +15,24 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
 
+from spread_compare.assets import form_key
 from spread_compare.models import InstrumentType, Quote, Side
 
 
 @dataclass(frozen=True, slots=True)
 class QuoteStoreKey:
-    """Lookup key for one stored leg."""
+    """Lookup key for one stored leg (form included so dual-form venues do not clobber)."""
 
     venue: str
     asset: str
     instrument_type: InstrumentType
     notional_usd: Decimal
     side: Side
+    form: str | None = None
 
     def __str__(self) -> str:
         return (
-            f"{self.venue}|{self.asset}|{self.instrument_type}|"
+            f"{self.venue}|{self.asset}|{form_key(self.form)}|{self.instrument_type}|"
             f"{self.notional_usd}|{self.side}"
         )
 

@@ -52,6 +52,14 @@ class SimulateRequest(BaseModel):
         default=None,
         description="Override adapter default instrument type when the class supports it",
     )
+    forms: list[str] | None = Field(
+        default=None,
+        description="Optional stock form filter (WHI-881); default = all live forms",
+    )
+    form: str | None = Field(
+        default=None,
+        description="Single stock form shorthand; ignored when forms is set",
+    )
 
     @field_validator("sell_asset", "buy_asset", mode="before")
     @classmethod
@@ -81,6 +89,7 @@ class SimulateRowResponse(BaseModel):
     error_message: str | None = None
     mid_stale: bool = False
     quote_stale: bool = False
+    form: str | None = None
 
 
 class SimulateResponse(BaseModel):
@@ -105,7 +114,7 @@ class SimulatePairErrorDetail(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     message: str
-    reason: Literal["unknown_asset", "cross_pair"]
+    reason: Literal["unknown_asset", "cross_pair", "legacy_asset_id"]
 
 
 class SimulatePairsResponse(BaseModel):
@@ -143,6 +152,7 @@ def _row_to_response(row: SimulateRow) -> SimulateRowResponse:
         error_message=row.error_message,
         mid_stale=row.mid_stale,
         quote_stale=row.quote_stale,
+        form=row.form,
     )
 
 
@@ -265,6 +275,8 @@ async def post_simulate(request: Request, body: SimulateRequest) -> SimulateResp
             body.amount,
             venues=body.venues,
             instrument_type=body.instrument_type,
+            forms=body.forms,
+            form=body.form,
         )
     except InvalidSimulatePairError as exc:
         # Structured detail so clients can branch without prose-matching (WHI-814).
@@ -275,6 +287,9 @@ async def post_simulate(request: Request, body: SimulateRequest) -> SimulateResp
     except InvalidSimulateAmountError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except UnknownVenueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except ValueError as exc:
+        # Unknown form id from resolve_forms_filter.
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except MidResolutionError as exc:
         raise HTTPException(

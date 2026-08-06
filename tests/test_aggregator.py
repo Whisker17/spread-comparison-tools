@@ -258,6 +258,7 @@ async def test_orderbook_tob_failure_stamps_raw_ref(
             mid: ReferenceMid,
             instrument_type: InstrumentType | None = None,
             fee_tier: str | None = None,
+            form: str | None = None,
         ) -> Quote:
             from spread_compare.models import FeeBreakdown
 
@@ -294,6 +295,7 @@ async def test_orderbook_tob_failure_stamps_raw_ref(
             *,
             mid: ReferenceMid,
             instrument_type: Literal["spot", "perp"] | None = None,
+            form: str | None = None,
         ) -> TopOfBook | None:
             from spread_compare.adapters.base import AdapterFetchError
 
@@ -311,6 +313,7 @@ async def test_orderbook_tob_failure_stamps_raw_ref(
             self,
             *,
             instrument_type: InstrumentType | None = None,
+            form: str | None = None,
         ) -> list[str]:
             return ["BTC"]
 
@@ -384,6 +387,7 @@ async def test_response_cache_second_request_zero_upstream_within_ttl() -> None:
             mid: ReferenceMid,
             instrument_type: InstrumentType | None = None,
             fee_tier: str | None = None,
+            form: str | None = None,
         ) -> Quote:
             quote_calls["n"] += 1
             fees = FeeBreakdown(
@@ -419,6 +423,7 @@ async def test_response_cache_second_request_zero_upstream_within_ttl() -> None:
             *,
             mid: ReferenceMid,
             instrument_type: Literal["spot", "perp"] | None = None,
+            form: str | None = None,
         ) -> TopOfBook | None:
             return None
 
@@ -434,6 +439,7 @@ async def test_response_cache_second_request_zero_upstream_within_ttl() -> None:
             self,
             *,
             instrument_type: InstrumentType | None = None,
+            form: str | None = None,
         ) -> list[str]:
             return ["BTC"]
 
@@ -530,6 +536,7 @@ async def test_rate_limited_fail_fast_under_budget() -> None:
             mid: ReferenceMid,
             instrument_type: InstrumentType | None = None,
             fee_tier: str | None = None,
+            form: str | None = None,
         ) -> Quote:
             # Budget-aware acquire only — must not sleep past the quote deadline.
             await acquire_within_budget(self._limiter, venue=self.venue)
@@ -541,6 +548,7 @@ async def test_rate_limited_fail_fast_under_budget() -> None:
             *,
             mid: ReferenceMid,
             instrument_type: Literal["spot", "perp"] | None = None,
+            form: str | None = None,
         ) -> TopOfBook | None:
             return None
 
@@ -556,6 +564,7 @@ async def test_rate_limited_fail_fast_under_budget() -> None:
             self,
             *,
             instrument_type: InstrumentType | None = None,
+            form: str | None = None,
         ) -> list[str]:
             return ["BTC"]
 
@@ -592,3 +601,27 @@ async def test_rate_limited_fail_fast_under_budget() -> None:
             _REGISTRY.pop(_TIMEOUT_SLUG, None)
         else:
             _REGISTRY[_TIMEOUT_SLUG] = previous
+
+
+def test_nvda_form_venue_expansion_multi_form() -> None:
+    """WHI-881: tessera_bsc appears for both bstock and ondo; forms share mid identity."""
+    from spread_compare.aggregator import venues_for_form_expansion
+    from spread_compare.assets import live_forms
+
+    forms = {f.id for f in live_forms("NVDA")}
+    assert forms == {"perp", "bstock", "ondo"}
+
+    venues = ["tessera_bsc", "pancakeswap_bsc", "binance", "hyperliquid", "bybit"]
+    bstock = venues_for_form_expansion("NVDA", "bstock", venues)
+    ondo = venues_for_form_expansion("NVDA", "ondo", venues)
+    perp = venues_for_form_expansion("NVDA", "perp", venues)
+
+    assert bstock == ["tessera_bsc", "pancakeswap_bsc", "binance"]
+    assert ondo == ["tessera_bsc", "pancakeswap_bsc"]
+    assert set(perp) == {"binance", "hyperliquid", "bybit"}
+    # Dual form at one venue (acceptance: two distinct tessera_bsc rows).
+    assert "tessera_bsc" in bstock and "tessera_bsc" in ondo
+
+    # Crypto single-form expansion is unchanged (all requested venues).
+    crypto = venues_for_form_expansion("BTC", None, venues)
+    assert crypto == venues
