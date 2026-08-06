@@ -97,6 +97,11 @@ export type AssetSpreadBlockProps = {
    * forms on the backend for stock underlyings.
    */
   forms?: readonly string[];
+  /**
+   * Row keys dimmed and excluded from §5.2 best (WHI-892 non-live coverage).
+   * Passed through to SpreadMatrix as disabledVenues.
+   */
+  disabledVenues?: readonly string[];
   /** Matrix first-column header (section product copy). */
   matrixRowHeaderLabel?: string;
   /** Extra best-highlight footnote (section product copy). */
@@ -120,6 +125,7 @@ export function AssetSpreadBlock({
   venueDisplayNames,
   instrumentType,
   forms,
+  disabledVenues,
   matrixRowHeaderLabel,
   matrixBestNoteExtra,
 }: AssetSpreadBlockProps) {
@@ -132,10 +138,15 @@ export function AssetSpreadBlock({
   );
 
   // Row keys may be `venue|form` (stocks) — strip form for the venue filter.
+  // Drop synthetic catalog summary venue (WHI-892); it is label-only.
   const venueSlugsForRequest = useMemo(() => {
     if (venues.length === 0) return undefined;
-    const slugs = new Set(venues.map((k) => parseRowKey(k).venue));
-    return [...slugs];
+    const slugs = new Set(
+      venues
+        .map((k) => parseRowKey(k).venue)
+        .filter((v) => v.length > 0 && v !== "catalog"),
+    );
+    return slugs.size > 0 ? [...slugs] : undefined;
   }, [venues]);
 
   // WHI-848: when a page-level QuotesStreamProvider is present, read pushed
@@ -444,11 +455,13 @@ export function AssetSpreadBlock({
             metric={section.cellMetric}
             venues={venues}
             venueLabels={proseLabels}
+            hiddenVenues={disabledVenues}
           />
           <SpreadMatrix
             pairs={pairs}
             notionals={displayNotionals}
             venues={venues}
+            disabledVenues={disabledVenues}
             sideView={sideView}
             metric={section.cellMetric}
             venueLabels={venueLabels}

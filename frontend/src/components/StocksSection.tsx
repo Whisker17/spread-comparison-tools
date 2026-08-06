@@ -13,7 +13,9 @@ import {
   buildStockMatrixRows,
   buildStocksVenueLabels,
   hasBstockForm,
+  nonLiveRowKeys,
   orderbookRows,
+  quoteableFormIds,
   resolveStockForms,
   STOCK_ASSET_SUBTITLES,
   STOCK_UNDERLYINGS,
@@ -74,11 +76,17 @@ function StocksSectionInner() {
   }, [assetsQuery.data]);
 
   const streamFilters = useMemo<StreamFilter[]>(() => {
-    // Single filter: all underlyings, all live-form venues, no instrument pin.
+    // Single filter: all underlyings, all quoteable-form venues, no instrument pin.
+    // WHI-892: include unverified forms that have venues (badge + never best);
+    // venue-less absent/unverified stay catalog summary rows only.
     const venueSet = new Set<string>();
+    const formSet = new Set<string>();
     for (const forms of formsByUnderlying.values()) {
       for (const v of venuesFromForms(forms)) {
         venueSet.add(v);
+      }
+      for (const f of quoteableFormIds(forms)) {
+        formSet.add(f);
       }
     }
     return [
@@ -87,8 +95,9 @@ function StocksSectionInner() {
         // WHI-864: subscribe only the visible tier.
         notionals: [notional],
         venues: [...venueSet],
-        // Default forms = all live (backend); omit instrument_type so form
-        // expansion picks spot vs perp per form_class (WHI-881).
+        // Explicit forms so unverified venue rows can stream (WHI-892).
+        forms: [...formSet],
+        // omit instrument_type so form expansion picks spot vs perp per form_class.
       },
     ];
   }, [notional, formsByUnderlying]);
@@ -191,6 +200,17 @@ function StocksStreamBody({
           pool returns <code className="text-[11px]">no_quote</code> and
           renders as &quot;—&quot;, not a page error.
         </p>
+        <p>
+          <strong className="font-medium text-zinc-700 dark:text-zinc-300">
+            Coverage.
+          </strong>{" "}
+          Forms marked <em>unverified</em> or <em>no route</em> stay visible
+          (WHI-892 / WHI-799 §6.1.1) so a reader can tell &quot;never verified&quot;
+          from &quot;probed, no route&quot; from a live cell that is currently{" "}
+          <code className="text-[11px]">no_quote</code> /{" "}
+          <code className="text-[11px]">not_sampled</code>. Non-live rows never
+          win best.
+        </p>
       </footer>
     </div>
   );
@@ -216,14 +236,17 @@ function UnderlyingBoard({
     () => orderbookRows(rows).map((r) => r.rowKey),
     [rows],
   );
-  const formIds = useMemo(() => forms.map((f) => f.id), [forms]);
+  // Request only forms that have real venues; summary-only forms stay labels.
+  const formIds = useMemo(() => quoteableFormIds(forms), [forms]);
+  const allFormIds = useMemo(() => forms.map((f) => f.id), [forms]);
+  const disabledKeys = useMemo(() => nonLiveRowKeys(rows), [rows]);
   const showBstockNote = hasBstockForm(forms);
 
   return (
     <section
       className="space-y-3"
       data-testid={`stocks-board-${underlying}`}
-      data-forms={formIds.join(",")}
+      data-forms={allFormIds.join(",")}
       aria-labelledby={`stocks-board-${underlying}-title`}
     >
       {showBstockNote ? (
@@ -255,7 +278,7 @@ function UnderlyingBoard({
             className="mt-2 text-sm text-zinc-500"
             data-testid={`no-live-forms-${underlying}`}
           >
-            No live forms in the catalog for this underlying — nothing to quote.
+            No forms in the catalog for this underlying — nothing to quote.
           </p>
         </div>
       ) : (
@@ -270,6 +293,7 @@ function UnderlyingBoard({
           summaryVenueLabels={summaryLabels}
           orderbookVenues={orderbookRowKeys}
           forms={formIds}
+          disabledVenues={disabledKeys}
           emphasizeMidSource
           midSourceHint={STOCKS_MID_SOURCE_HINT}
           matrixRowHeaderLabel={STOCKS_MATRIX_ROW_HEADER}

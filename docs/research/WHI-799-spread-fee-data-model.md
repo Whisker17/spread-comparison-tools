@@ -491,6 +491,32 @@ QuoteStatus =
 
 （`TopOfBook` 不复用该枚举——orderbook 适配器用返回值 `None` 表示「本 venue 无 TOB 概念」，见 §6.3 / §7。）
 
+#### 6.1.1 Stock form coverage display contract（WHI-892）
+
+Form-level `coverage`（`FormInfo.coverage`，§6.7）与 `Quote.status`（上表）正交。Dashboard **list, do not omit** every catalogued form — never drop a form silently because it is non-live.
+
+| FormCoverage | Meaning | Default fan-out (`forms` omit) | Matrix row | §5.2 best |
+| --- | --- | --- | --- | --- |
+| `live` | Verified product surface; adapters can resolve every listed venue | Yes | One row per catalogued `(venue, form)` | Eligible only when `Quote.status=ok` and other §5.2 gates |
+| `unverified` | Catalog retained (📗/📌); market may exist but product has not promoted fan-out / verification | No (explicit `forms=` may still request) | Rows for listed venues; **empty `representations` → one form-level summary row** (no invented venue) | **Never** — even if an explicit request returns `status=ok` numbers |
+| `absent` | Probed and known missing (e.g. Solana prop × xStock `NO_ROUTES_FOUND` = survey `absent_no_route`) | No | Same as unverified: venue rows only when a real resolvable venue is listed; else one summary row | **Never** |
+
+**How a reader tells the three “empty” cases apart:**
+
+| What the user sees | Signal |
+| --- | --- |
+| Live market, currently no fill/route on this size | `Quote.status=no_quote` (or `unsupported_asset`) → cell "—" |
+| Pull poller never sampled this tier | `Quote.status=not_sampled` → muted "not sampled" (WHI-865) |
+| Form never promoted / not verified | Form row chrome **unverified** badge (`FormCoverage=unverified`); may have no quote stream |
+| Form probed, no route anywhere we care about | Form row chrome **no route** badge (`FormCoverage=absent`) |
+
+Rules:
+
+1. **Do not fabricate a venue** the owning adapter cannot resolve (phantom catalog row). Empty `representations` is honest; inventing `humidifi`/`pancakeswap_bsc` without a resolvable mint/ticker is defect class WHI-892 #3.
+2. **Venue-less form → one summary row** (FE synthetic row key `catalog|<form>`), not a blank board and not a footnote-only omission. Footnotes may *add* context; they must not be the sole signal.
+3. **Quote statuses stay on cells**; form coverage badges stay on the row label. Non-live rows are dimmed / `disabled` for best+heat even if numbers appear after an explicit probe.
+4. Catalog tests must fail when any catalogued `(underlying, form, venue)` is not resolvable by that venue's adapter symbol/token map.
+
 ### 6.2 `Quote`
 
 ```text
@@ -701,7 +727,10 @@ FormInfo {
   # 具体 Quote.instrument_type 由 (venue, form) 在 adapter/catalog 解析
   representations:  dict[str, str]     # venue slug → display label
   coverage:         "live" | "unverified" | "absent"
-    # live = 当前会 fan-out；unverified = catalog 保留（WHI-798 📗/📌）；absent = 明确无市场
+    # live = default fan-out + verified product surface
+    # unverified = catalog 保留（WHI-798 📗/📌）；dashboard shows row + badge; never §5.2 best
+    # absent = probed-and-routeless / explicit no market (survey absent_no_route);
+    #          dashboard shows "no route"; never invent adapter venues (WHI-892 §6.1.1)
 }
 ```
 
@@ -961,3 +990,4 @@ bps API 保留 4 位小数；展示可再圆整到 2 位。
 | 2026-08-06 | **v3 / WHI-880**：underlying-first stocks。§2.2 增 `form`/`form_class`；§3.3 重写为单一 underlying mid 链 + SPCX 特例 + `basis_bps` 规则（推翻 v2 分 form mid）；§5.2.1 best 按 form_class；§6.2/6.3/6.4 增 `form` 与行身份；§6.7 API 草案 + legacy breaking rename。公式算术不变 |
 | 2026-08-06 | Review r1：P2 mid 固定尝试序 + config 表面；澄清 spread 含形态基差但禁止双重计数；stream/store 键必含 form；`FormInfo` 去掉错误的单一 `instrument_type`；stock `representations` 强制 null；category/`equity_ref` breaking 表；simulate 标为 WHI-881 顺带 |
 | 2026-08-06 | Review r2：`stock_mid_p2_order` 标 unvalidated；P1 mark 可读未 fan-out perp；AMM basis Phase1=null；instrument_type 派生表；stream `forms` 过滤；legacy 固定 422；符号只走 catalog 映射 |
+| 2026-08-06 | **WHI-892**：§6.1.1 form coverage display contract（list, do not omit；venue-less → summary row；unverified/absent never best；phantom venue ban + catalog↔adapter test）。§6.7 `FormInfo.coverage` 注释对齐 |

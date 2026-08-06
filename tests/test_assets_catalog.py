@@ -157,11 +157,12 @@ def test_whi884_p0_live_forms() -> None:
     # QQQ still keeps live bstock (Phase-1).
     assert "bstock" in {f.id for f in live_forms("QQQ")}
 
-    # AMZN xstock: mint exists, prop NO_ROUTES → unverified (still catalogued).
+    # AMZN xstock: mint exists, prop NO_ROUTES → absent (WHI-890 §6.2 / WHI-892).
     amzn = get_asset("AMZN")
     assert amzn is not None and amzn.forms is not None
     xstock = next(f for f in amzn.forms if f.id == "xstock")
-    assert xstock.coverage == "unverified"
+    assert xstock.coverage == "absent"
+    assert xstock.representations == {}
     assert "xstock" not in {f.id for f in live_forms("AMZN")}
     # GOOGL/META/AMZN *X are live fan-out; CRCL *X is not (survey §5.2).
     assert "xstock_cex" in {f.id for f in live_forms("GOOGL")}
@@ -252,6 +253,75 @@ def test_catalog_bsc_stock_venues_no_phantoms() -> None:
                 elif isinstance(adapter, TesseraBscAdapter):
                     token = adapter._token_for_form(asset.id, form=form.id)
                     assert token is not None
+
+
+def test_catalog_stock_venues_adapter_resolvable() -> None:
+    """WHI-892: every catalogued (underlying, form, venue) must resolve.
+
+    Symbol/token map resolution only (cold adapters may return a narrow
+    ``supported_assets`` before startup meta load — e.g. Lighter/ApeX). A
+    phantom is a catalog label the static maps cannot turn into a wire id.
+    """
+    from spread_compare.adapters.amm_pancakeswap import PancakeSwapBscAdapter
+    from spread_compare.adapters.prop_kyberswap import TesseraBscAdapter
+    from spread_compare.cex_symbols import resolve_cex_symbol
+    from spread_compare.perp_symbols import (
+        UnsupportedPerpSymbolError,
+        resolve_apex_base,
+        resolve_hl_coin,
+        resolve_lighter_symbol,
+    )
+
+    cex = frozenset({"binance", "bybit"})
+    for asset in list_assets():
+        if asset.category != "stock" or asset.forms is None:
+            continue
+        for form in asset.forms:
+            for venue, label in form.representations.items():
+                key = f"{asset.id}/{form.id}/{venue} label={label!r}"
+                if venue in cex:
+                    book = "perp" if form.id == "perp" else "spot"
+                    sym = resolve_cex_symbol(
+                        asset.id, book, form=form.id, venue=venue
+                    )
+                    assert sym, f"CEX unresolvable: {key}"
+                elif venue == "hyperliquid":
+                    try:
+                        coin = resolve_hl_coin(asset.id)
+                    except UnsupportedPerpSymbolError as exc:
+                        raise AssertionError(f"HL unresolvable: {key}") from exc
+                    assert coin.venue_symbol
+                elif venue == "lighter":
+                    assert resolve_lighter_symbol(asset.id).venue_symbol, key
+                elif venue == "apex":
+                    assert resolve_apex_base(asset.id).venue_symbol, key
+                elif venue == "pancakeswap_bsc":
+                    adapter = get_adapter(venue)
+                    assert isinstance(adapter, PancakeSwapBscAdapter)
+                    token = adapter._base_token(asset.id, form=form.id)
+                    assert token.address, key
+                elif venue == "tessera_bsc":
+                    adapter = get_adapter(venue)
+                    assert isinstance(adapter, TesseraBscAdapter)
+                    token = adapter._token_for_form(asset.id, form=form.id)
+                    assert token is not None and token.address, key
+                else:
+                    raise AssertionError(
+                        f"catalog lists venue {venue!r} with no resolvability "
+                        f"check (would be a silent phantom): {key}"
+                    )
+
+
+def test_xstock_forms_absent_empty_venues() -> None:
+    """WHI-892: probed-and-routeless xstock is absent, not silent empty unverified."""
+    for asset in list_assets():
+        if asset.category != "stock" or asset.forms is None:
+            continue
+        xstock = get_form(asset.id, "xstock")
+        if xstock is None:
+            continue
+        assert xstock.coverage == "absent", asset.id
+        assert xstock.representations == {}, asset.id
 
 
 def test_tradeable_stables_subset_of_peg_set() -> None:
