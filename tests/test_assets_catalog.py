@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import spread_compare.adapters  # noqa: F401 — ensure registration
+from spread_compare.adapters import get as get_adapter
 from spread_compare.assets import (
     ASSETS,
     CRYPTO_BLUE_CHIPS,
@@ -165,13 +167,91 @@ def test_whi884_p0_live_forms() -> None:
     assert "xstock_cex" in {f.id for f in live_forms("GOOGL")}
     assert "xstock_cex" not in {f.id for f in live_forms("CRCL")}
 
-    # AMD/PLTR bstock catalogued but not live fan-out (survey §5.2).
+    # AMD/PLTR bstock catalogued but not live fan-out (survey §5.2 / WHI-890).
     amd_bstock = get_form("AMD", "bstock")
     assert amd_bstock is not None and amd_bstock.coverage == "unverified"
     pltr_bstock = get_form("PLTR", "bstock")
     assert pltr_bstock is not None and pltr_bstock.coverage == "unverified"
     assert "bstock" not in {f.id for f in live_forms("AMD")}
     assert "bstock" not in {f.id for f in live_forms("PLTR")}
+
+
+def test_whi891_pancake_phase_a_bstock_live() -> None:
+    """WHI-891: Phase-A Pancake bStocks are live; Tessera only on the quartet."""
+    phase_a = {
+        "SPY": "SPYB",
+        "AAPL": "AAPLB",
+        "TSLA": "TSLAB",
+        "MSFT": "MSFTB",
+        "GOOGL": "GOOGLB",
+        "META": "METAB",
+        "AMZN": "AMZNB",
+    }
+    for underlying, ticker in phase_a.items():
+        bstock = get_form(underlying, "bstock")
+        assert bstock is not None, underlying
+        assert bstock.coverage == "live", underlying
+        assert bstock.representations["pancakeswap_bsc"] == ticker
+        # Tessera stayed absent_no_route for these (WHI-890 §5.2 / §8 Phase B).
+        assert "tessera_bsc" not in bstock.representations
+        assert "pancakeswap_bsc" in venues_for_form(underlying, "bstock")
+        assert "tessera_bsc" not in venues_for_form(underlying, "bstock")
+
+    # Existing green Tessera quartet unchanged.
+    for underlying, ticker in (
+        ("NVDA", "NVDAB"),
+        ("QQQ", "QQQB"),
+        ("SPCX", "SPCXB"),
+    ):
+        bstock = get_form(underlying, "bstock")
+        assert bstock is not None
+        assert bstock.representations["pancakeswap_bsc"] == ticker
+        assert bstock.representations["tessera_bsc"] == ticker
+
+    # Thin / zero-pool bStocks stay without Pancake (WHI-890 §4.2–§4.3).
+    for underlying in ("CRCL", "AMD", "PLTR", "MSTR"):
+        bstock = get_form(underlying, "bstock")
+        assert bstock is not None
+        assert "pancakeswap_bsc" not in bstock.representations
+        if underlying in ("AMD", "PLTR"):
+            assert bstock.coverage == "unverified"
+
+
+def test_catalog_bsc_stock_venues_no_phantoms() -> None:
+    """WHI-891 AC: any catalogued Pancake/Tessera stock row is adapter-supported.
+
+    Iterates *all* forms (not only coverage=live): an unverified form can still
+    carry a representation and be requested via ``forms=`` on GET /quotes
+    (venues_for_form ignores coverage). Pre-PR TSLA/bstock was the phantom
+    shape — ``pancakeswap_bsc`` listed without a resolvable token path.
+
+    Checks both ``supported_assets`` membership and form→token resolution so a
+    catalog representation on a non-mapped form of a supported underlying
+    (e.g. TSLA/xstock → pancakeswap_bsc) cannot pass silently.
+    """
+    from spread_compare.adapters.amm_pancakeswap import PancakeSwapBscAdapter
+    from spread_compare.adapters.prop_kyberswap import TesseraBscAdapter
+
+    bsc_venues = frozenset({"pancakeswap_bsc", "tessera_bsc"})
+    for asset in list_assets():
+        if asset.category != "stock" or asset.forms is None:
+            continue
+        for form in asset.forms:
+            for venue in form.representations:
+                if venue not in bsc_venues:
+                    continue
+                adapter = get_adapter(venue)
+                supported = {a.upper() for a in adapter.supported_assets()}
+                assert asset.id.upper() in supported, (
+                    f"{asset.id}/{form.id} catalogs {venue} but adapter "
+                    f"supported_assets()={sorted(supported)}"
+                )
+                if isinstance(adapter, PancakeSwapBscAdapter):
+                    token = adapter._base_token(asset.id, form=form.id)
+                    assert token.address
+                elif isinstance(adapter, TesseraBscAdapter):
+                    token = adapter._token_for_form(asset.id, form=form.id)
+                    assert token is not None
 
 
 def test_tradeable_stables_subset_of_peg_set() -> None:

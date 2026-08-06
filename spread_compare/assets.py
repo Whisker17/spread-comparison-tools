@@ -198,9 +198,9 @@ _STOCK_ROWS: Final[tuple[AssetInfo, ...]] = (
                 "bstock",
                 {
                     "binance": "TSLABUSDT",
+                    # WHI-891: Pancake TVL bar (WHI-890 §4.1); Tessera absent.
                     "pancakeswap_bsc": "TSLAB",
                 },
-                coverage="unverified",
             ),
             _form(
                 "xstock_cex",
@@ -228,8 +228,11 @@ _STOCK_ROWS: Final[tuple[AssetInfo, ...]] = (
             ),
             _form(
                 "bstock",
-                {"binance": "AAPLBUSDT"},
-                coverage="unverified",
+                {
+                    "binance": "AAPLBUSDT",
+                    # WHI-891: Pancake TVL bar (WHI-890 §4.1); Tessera absent.
+                    "pancakeswap_bsc": "AAPLB",
+                },
             ),
             _form(
                 "xstock_cex",
@@ -257,8 +260,11 @@ _STOCK_ROWS: Final[tuple[AssetInfo, ...]] = (
             ),
             _form(
                 "bstock",
-                {"binance": "MSFTBUSDT"},
-                coverage="unverified",
+                {
+                    "binance": "MSFTBUSDT",
+                    # WHI-891: Pancake TVL bar (WHI-890 §4.1); Tessera absent.
+                    "pancakeswap_bsc": "MSFTB",
+                },
             ),
             _form("xstock", {}, coverage="unverified"),
         ),
@@ -358,7 +364,11 @@ _STOCK_ROWS: Final[tuple[AssetInfo, ...]] = (
             ),
             _form(
                 "bstock",
-                {"binance": "GOOGLBUSDT"},
+                {
+                    "binance": "GOOGLBUSDT",
+                    # WHI-891: Pancake TVL bar (WHI-890 §4.1); Tessera absent.
+                    "pancakeswap_bsc": "GOOGLB",
+                },
             ),
             _form(
                 "xstock_cex",
@@ -436,7 +446,11 @@ _STOCK_ROWS: Final[tuple[AssetInfo, ...]] = (
             ),
             _form(
                 "bstock",
-                {"binance": "METABUSDT"},
+                {
+                    "binance": "METABUSDT",
+                    # WHI-891: Pancake TVL bar (WHI-890 §4.1); Tessera absent.
+                    "pancakeswap_bsc": "METAB",
+                },
             ),
             _form(
                 "xstock_cex",
@@ -463,7 +477,11 @@ _STOCK_ROWS: Final[tuple[AssetInfo, ...]] = (
             ),
             _form(
                 "bstock",
-                {"binance": "AMZNBUSDT"},
+                {
+                    "binance": "AMZNBUSDT",
+                    # WHI-891: Pancake TVL bar (WHI-890 §4.1); Tessera absent.
+                    "pancakeswap_bsc": "AMZNB",
+                },
             ),
             _form(
                 "xstock_cex",
@@ -492,7 +510,11 @@ _STOCK_ROWS: Final[tuple[AssetInfo, ...]] = (
             ),
             _form(
                 "bstock",
-                {"binance": "SPYBUSDT"},
+                {
+                    "binance": "SPYBUSDT",
+                    # WHI-891: thickest new Pancake pool (WHI-890 §4.1 A1).
+                    "pancakeswap_bsc": "SPYB",
+                },
             ),
             _form("ondo", {}, coverage="unverified"),
             _form("xstock", {}, coverage="unverified"),

@@ -32,18 +32,30 @@ defines none: `docs/GIT_WORKFLOW.md` § High-risk paths), **Medium**
 
 ## Open
 
-- **P0 stock bStocks lack Pancake/Tessera rows despite surveyed pools** (Medium, WHI-884).
-  `spread_compare/assets.py` / `adapters/_prop_common.BSC_TOKENS` — WHI-883 §5.2/§6.4
-  phase B allows optional Pancake for TVL ≳ $10k (SPYB thick; GOOGL/META/AMZN mid).
-  WHI-884 ships BN spot only (zero RPC/Jupiter delta; no on-chain token addresses in
-  catalog). Tessera whitelist still QQQB/SPCXB/NVDAB/NVDAon. Fix: per-token address
-  capture + Kyber green, then extend `BSC_TOKENS` / form representations.
-
 - **Solana xStocks stay off Jupiter poller after P0 catalog expansion** (Medium, WHI-884).
-  `config/poller.yaml` jupiter group / `prop_jupiter` — WHI-883 §6: Free-plan budget
-  cannot absorb 8× xStock × 3 prop × 3 tier × 2 side. Forms catalogued as
-  `unverified`/`absent` (AMZN prop NO_ROUTES). Fix: per-mint route probe then
-  re-budget before any poller membership.
+  `config/poller.yaml` jupiter group / `prop_jupiter` — WHI-883 §6 + WHI-890 §6:
+  Free-plan budget cannot absorb xStock × 3 prop × tiers × sides; reconfirmed
+  all 14 underlyings × 3 props = `absent_no_route` (WHI-891 left Jupiter +0).
+  Forms stay `unverified` / venue-less. Fix: green re-probe with mint decimals
+  then a named Free-plan offset before any poller membership.
+
+- **BSC RPC bucket shared by poller sweep and live `/simulate`** (Medium, WHI-891).
+  `config/poller.yaml` rpc group / `config/rpc.yaml` `BSC_RPC_URL` — WHI-891
+  raised Pancake stock rows 6→13 so the contiguous Pancake block is ~26 s of
+  fully-saturated 5 RPS BSC bucket per 45 s interval (was ~12 s / 30 s).
+  `POST /simulate` stays live and shares the endpoint limiter; BSC pairs can
+  see more `rate_limited` during the sweep. Interval offset only addresses
+  skip_count, not simulate headroom. Fix: raise `BSC_RPC_URL.rps`, lower group
+  `max_rps` below the endpoint cap, or sample fewer AMM notionals (survey §8
+  offset #3).
+
+- **Thin Phase-A pools still sample full §4.1 deep tiers** (Low, WHI-891).
+  `config/poller.yaml` rpc `notionals_usd` — METAB/AMZNB (~$45k TVL) and
+  GOOGLB/MSFTB (~$105k) will routinely `no_quote` / `excessive_impact` at
+  $100k/$1M (~28 of +70 new items never fill). Pre-existed for NVDAON; now
+  7×. Survey §8 offset #3 would drop AMM tiers. Fix: sample 3 tiers for AMM
+  the way Jupiter already does, or mark deep tiers `not_sampled` for thin
+  pools.
 
 - **Stock quote payload has no `form_class`; FE re-derives it** (Low, WHI-882).
   `frontend/src/lib/pairIdentity.ts::formClassOf` /
@@ -267,6 +279,13 @@ defines none: `docs/GIT_WORKFLOW.md` § High-risk paths), **Medium**
 ---
 
 ## Resolved
+
+- **P0 stock bStocks lack Pancake/Tessera rows despite surveyed pools**
+  (Medium, WHI-884 → fixed in WHI-891).
+  `spread_compare/assets.py` / `adapters/_prop_common.BSC_TOKENS` — Phase-A
+  Pancake bStocks (SPYB/AAPLB/TSLAB/MSFTB/GOOGLB/METAB/AMZNB + existing
+  quartet) wired with `coverage=live`. Tessera stays the green quartet only
+  (WHI-890 §5.2); thin/zero-pool bStocks and non-NVDA Ondo remain catalog-only.
 
 - **`probe_min_healthy_books` is a process-level floor, not per-stream**
   (Low, WHI-819 → fixed in WHI-856). `probe_min_healthy_books_per_stream` plus

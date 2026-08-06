@@ -208,8 +208,35 @@ describe("stocks section config (WHI-882 underlying-first)", () => {
 
   it("detects bstock forms for the rebase footnote", () => {
     expect(hasBstockForm(resolveStockForms("NVDA", null))).toBe(true);
-    expect(hasBstockForm(resolveStockForms("TSLA", null))).toBe(false);
+    // WHI-891: TSLA bstock is live (BN + Pancake); AMD stays perp-only.
+    expect(hasBstockForm(resolveStockForms("TSLA", null))).toBe(true);
+    expect(hasBstockForm(resolveStockForms("AMD", null))).toBe(false);
     expect(hasBstockForm(STOCK_FORMS_STATIC.QQQ)).toBe(true);
+  });
+
+  it("WHI-891 Phase-A underlyings expose Pancake bstock without Tessera", () => {
+    for (const [underlying, ticker] of [
+      ["SPY", "SPYB"],
+      ["AAPL", "AAPLB"],
+      ["TSLA", "TSLAB"],
+      ["MSFT", "MSFTB"],
+      ["GOOGL", "GOOGLB"],
+      ["META", "METAB"],
+      ["AMZN", "AMZNB"],
+    ] as const) {
+      const forms = resolveStockForms(underlying, null);
+      const bstock = forms.find((f) => f.id === "bstock");
+      expect(bstock, underlying).toBeDefined();
+      expect(bstock!.representations.pancakeswap_bsc).toBe(ticker);
+      expect(bstock!.representations.tessera_bsc).toBeUndefined();
+      const rows = buildStockMatrixRows(forms);
+      expect(rows.map((r) => r.rowKey)).toContain(
+        makeRowKey("pancakeswap_bsc", "bstock"),
+      );
+      expect(rows.map((r) => r.rowKey)).not.toContain(
+        makeRowKey("tessera_bsc", "bstock"),
+      );
+    }
   });
 
   it("ships a persistent bStocks rebase footnote", () => {

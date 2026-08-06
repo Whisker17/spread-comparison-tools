@@ -161,6 +161,10 @@ TVL bar + Tessera Kyber green gate + full Solana xStock prop matrix
 (`docs/research/WHI-890-stock-dex-prop-amm-coverage-survey.md`); Tessera stays
 4-token; Pancake has 7 new bStock live candidates; all xStock props
 `absent_no_route` (no Jupiter budget delta).
+Pancake bStock fan-out (WHI-891): wire Phase-A tokens SPYB/AAPLB/TSLAB/MSFTB/
+GOOGLB/METAB/AMZNB into `BSC_TOKENS` + Pancake adapter + catalog
+`coverage=live` (Tessera whitelist unchanged; Solana props still out); rpc
+poller `interval_sec` 30→45 with proportional age/stale gates.
 
 **Not implemented:** remaining venue adapters (WHI-805), collector.
 Do not assume a module exists until its issue lands.

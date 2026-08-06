@@ -149,6 +149,16 @@ export const STOCK_FORMS_STATIC: Readonly<
         apex: "TSLA-USDT",
       },
     },
+    {
+      id: "bstock",
+      form_class: "tokenized",
+      coverage: "live",
+      // WHI-891: Pancake Phase A; Tessera absent (WHI-890).
+      representations: {
+        binance: "TSLABUSDT",
+        pancakeswap_bsc: "TSLAB",
+      },
+    },
   ],
   AAPL: [
     {
@@ -163,6 +173,15 @@ export const STOCK_FORMS_STATIC: Readonly<
         apex: "AAPL-USDT",
       },
     },
+    {
+      id: "bstock",
+      form_class: "tokenized",
+      coverage: "live",
+      representations: {
+        binance: "AAPLBUSDT",
+        pancakeswap_bsc: "AAPLB",
+      },
+    },
   ],
   MSFT: [
     {
@@ -175,6 +194,15 @@ export const STOCK_FORMS_STATIC: Readonly<
         hyperliquid: "xyz:MSFT",
         lighter: "MSFT",
         apex: "MSFT-USDT",
+      },
+    },
+    {
+      id: "bstock",
+      form_class: "tokenized",
+      coverage: "live",
+      representations: {
+        binance: "MSFTBUSDT",
+        pancakeswap_bsc: "MSFTB",
       },
     },
   ],
@@ -250,7 +278,10 @@ export const STOCK_FORMS_STATIC: Readonly<
       id: "bstock",
       form_class: "tokenized",
       coverage: "live",
-      representations: { binance: "GOOGLBUSDT" },
+      representations: {
+        binance: "GOOGLBUSDT",
+        pancakeswap_bsc: "GOOGLB",
+      },
     },
     {
       id: "xstock_cex",
@@ -304,7 +335,10 @@ export const STOCK_FORMS_STATIC: Readonly<
       id: "bstock",
       form_class: "tokenized",
       coverage: "live",
-      representations: { binance: "METABUSDT" },
+      representations: {
+        binance: "METABUSDT",
+        pancakeswap_bsc: "METAB",
+      },
     },
     {
       id: "xstock_cex",
@@ -330,7 +364,10 @@ export const STOCK_FORMS_STATIC: Readonly<
       id: "bstock",
       form_class: "tokenized",
       coverage: "live",
-      representations: { binance: "AMZNBUSDT" },
+      representations: {
+        binance: "AMZNBUSDT",
+        pancakeswap_bsc: "AMZNB",
+      },
     },
     {
       id: "xstock_cex",
@@ -355,7 +392,10 @@ export const STOCK_FORMS_STATIC: Readonly<
       id: "bstock",
       form_class: "tokenized",
       coverage: "live",
-      representations: { binance: "SPYBUSDT" },
+      representations: {
+        binance: "SPYBUSDT",
+        pancakeswap_bsc: "SPYB",
+      },
     },
   ],
   MSTR: [
@@ -382,18 +422,18 @@ export const STOCK_FORMS_STATIC: Readonly<
 
 export const STOCK_ASSET_SUBTITLES: Readonly<Record<string, string>> = {
   NVDA: "NVIDIA · equity perp + bStocks + Ondo (shared mid)",
-  TSLA: "Tesla · equity perp",
-  AAPL: "Apple · equity perp",
-  MSFT: "Microsoft · equity perp",
+  TSLA: "Tesla · equity perp + bStocks (BN + Pancake)",
+  AAPL: "Apple · equity perp + bStocks (BN + Pancake)",
+  MSFT: "Microsoft · equity perp + bStocks (BN + Pancake)",
   QQQ: "Invesco QQQ · equity perp + bStocks (BSC)",
   SPCX: "SpaceX · bStocks (BSC)",
   CRCL: "Circle · equity perp + bStocks",
-  GOOGL: "Alphabet · equity perp + bStocks + xStocks CEX",
+  GOOGL: "Alphabet · equity perp + bStocks (BN + Pancake) + xStocks CEX",
   AMD: "AMD · equity perp (Bybit AMDSTOCKUSDT)",
   PLTR: "Palantir · equity perp",
-  META: "Meta · equity perp + bStocks + xStocks CEX",
-  AMZN: "Amazon · equity perp + bStocks + xStocks CEX",
-  SPY: "SPDR S&P 500 · equity perp (no HL exact) + bStocks",
+  META: "Meta · equity perp + bStocks (BN + Pancake) + xStocks CEX",
+  AMZN: "Amazon · equity perp + bStocks (BN + Pancake) + xStocks CEX",
+  SPY: "SPDR S&P 500 · equity perp (no HL exact) + bStocks (BN + Pancake)",
   MSTR: "MicroStrategy · equity perp + bStocks",
 };
 

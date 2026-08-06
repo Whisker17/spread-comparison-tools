@@ -58,6 +58,14 @@ def test_cex_ws_includes_p0_books_and_amd_bybit_wire() -> None:
     bn_spot = _cex_symbols("spot", venue="binance", tokenized_forms=("bstock",))
     assert "CRCLBUSDT" in bn_spot
     assert "SPYBUSDT" in bn_spot
+    # WHI-891: TSLA/AAPL/MSFT bstock flip to live (BN *BUSDT exchangeInfo
+    # TRADING verified 2026-08-06). GOOGL/META/AMZN/SPY were already live.
+    assert "TSLABUSDT" in bn_spot
+    assert "AAPLBUSDT" in bn_spot
+    assert "MSFTBUSDT" in bn_spot
+    assert "GOOGLBUSDT" in bn_spot
+    assert "METABUSDT" in bn_spot
+    assert "AMZNBUSDT" in bn_spot
     # AMD/PLTR bstock is catalog-only (unverified) — not WS-subscribed.
     assert "AMDBUSDT" not in bn_spot
     assert "PLTRBUSDT" not in bn_spot

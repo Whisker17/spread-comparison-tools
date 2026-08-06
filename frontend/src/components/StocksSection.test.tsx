@@ -170,7 +170,7 @@ describe("StocksSection (WHI-882)", () => {
   it("attaches the bStocks rebase footnote only to boards with bstock forms", () => {
     render(<StocksSection />, { wrapper: Wrapper });
 
-    // NVDA / QQQ / SPCX have live bstock; TSLA / AAPL / MSFT do not.
+    // WHI-891: TSLA joins NVDA/QQQ with live bstock; AMD stays perp-only.
     expect(
       within(screen.getByTestId("stocks-board-NVDA")).getByTestId(
         "bstocks-rebase-footnote",
@@ -182,7 +182,12 @@ describe("StocksSection (WHI-882)", () => {
       ),
     ).toBeTruthy();
     expect(
-      within(screen.getByTestId("stocks-board-TSLA")).queryByTestId(
+      within(screen.getByTestId("stocks-board-TSLA")).getByTestId(
+        "bstocks-rebase-footnote",
+      ),
+    ).toBeTruthy();
+    expect(
+      within(screen.getByTestId("stocks-board-AMD")).queryByTestId(
         "bstocks-rebase-footnote",
       ),
     ).toBeNull();
@@ -218,7 +223,12 @@ describe("StocksSection (WHI-882)", () => {
 
     const tsla = matrixParamsFor("TSLA");
     expect(tsla.instrument_type).toBeUndefined();
-    expect(tsla.forms).toEqual(["perp"]);
+    // WHI-891: live bstock (BN + Pancake) alongside perp.
+    expect([...(tsla.forms ?? [])].sort()).toEqual(["bstock", "perp"].sort());
+
+    const amd = matrixParamsFor("AMD");
+    expect(amd.instrument_type).toBeUndefined();
+    expect(amd.forms).toEqual(["perp"]);
   });
 
   it("renders one shared size selector and fetches only the selected tier", () => {

@@ -77,15 +77,23 @@ groups:
     max_stale_sec: 180.0
   rpc:
     # On-chain quoter eth_call budget is shared per RPC endpoint (WHI-842).
-    # Full matrix ≈100 calls at 5 RPS → ~20 s start-spacing;
-    # interval_sec = 30s = 1.5× headroom (retries / Multicall variance).
+    # WHI-891: +7 Phase-A Pancake bStocks (WHI-890 §8). Poller paces one
+    # work item (asset×form×tier×side) per 1/max_rps; Multicall3 batches
+    # fee tiers *inside* an item and does not reduce item count. Item-count
+    # floor at 5 RPS: ~100 items → 20 s pre-PR; ~170 items → 34 s after.
+    # Per-item slack 30/100=300 ms → 45/170≈265 ms (tighter). Named offset:
+    # interval_sec 30 → 45 so the floor still fits; any RPC RTT above the
+    # inter-call delay adds wall time and can produce skip_count — watch
+    # /health after deploy. Age/stale gates scale with the new interval
+    # (2× / 4×). Tessera/Kyber and Jupiter loads unchanged (no Tessera
+    # expansion; Solana xStock props all absent_no_route).
     notionals_usd:
       - 100
       - 1000
       - 10000
       - 100000
       - 1000000
-    interval_sec: 30.0
+    interval_sec: 45.0
     max_rps: 5.0
-    max_quote_age_for_best_sec: 60.0
-    max_stale_sec: 120.0
+    max_quote_age_for_best_sec: 90.0
+    max_stale_sec: 180.0

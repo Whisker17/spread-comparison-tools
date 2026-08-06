@@ -295,6 +295,7 @@ BSC_TOKENS: Final[dict[str, TokenInfo]] = {
     "USDT": TokenInfo(
         "0x55d398326f99059fF775485246999027B3197955", 18, "USDT"
     ),
+    # Production-live bStock / Ondo (pre-WHI-891 quartet).
     "QQQB": TokenInfo(
         "0x205812cdbed920aff76c6580abd681a46d11efc7", 18, "QQQB"
     ),
@@ -307,12 +308,45 @@ BSC_TOKENS: Final[dict[str, TokenInfo]] = {
     "NVDAON": TokenInfo(
         "0xa9ee28c80f960b889dfbd1902055218cba016f75", 18, "NVDAon"
     ),
+    # WHI-890 Phase A: Pancake v3/USDT TVL ≳ $10k (survey §4.1 / §8).
+    # Tessera Kyber stayed green only for the quartet above — do not assume
+    # these light Tessera; adapters gate via ``supported`` + catalog maps.
+    "SPYB": TokenInfo(
+        "0x7138b48df7d98d7e3cc221bfe7192d0a178182d8", 18, "SPYB"
+    ),
+    "AAPLB": TokenInfo(
+        "0x431a3bee82e2ca41e49895cbece5bb0f76a89b7a", 18, "AAPLB"
+    ),
+    "TSLAB": TokenInfo(
+        "0x5b1910eaad6450e50f816082aa078c41f10c292f", 18, "TSLAB"
+    ),
+    "MSFTB": TokenInfo(
+        "0x80106cb3ead06659a5ad19df39d9b4733863b9b0", 18, "MSFTB"
+    ),
+    "GOOGLB": TokenInfo(
+        "0x3f53de71c126bdabae20f9cd64848d317f6c3238", 18, "GOOGLB"
+    ),
+    "METAB": TokenInfo(
+        "0x7425889fe94f9d693e8daefe88bcced6acfef4c0", 18, "METAB"
+    ),
+    "AMZNB": TokenInfo(
+        "0x1a4b499833a79a09ad7cf1d42d7dacf71e92eb00", 18, "AMZNB"
+    ),
 }
 
-# Stock underlying × form → BSC_TOKENS ticker (WHI-881). Shared by Pancake + Tessera BSC.
+# Stock underlying × form → BSC_TOKENS ticker (WHI-881 / WHI-891).
+# Shared lookup table; each adapter's ``supported`` + catalog form venue maps
+# decide which venues actually fan out (Tessera whitelist stays the quartet).
 BSC_STOCK_FORM_TICKER: Final[dict[tuple[str, str], str]] = {
     ("QQQ", "bstock"): "QQQB",
     ("SPCX", "bstock"): "SPCXB",
     ("NVDA", "bstock"): "NVDAB",
     ("NVDA", "ondo"): "NVDAON",
+    ("SPY", "bstock"): "SPYB",
+    ("AAPL", "bstock"): "AAPLB",
+    ("TSLA", "bstock"): "TSLAB",
+    ("MSFT", "bstock"): "MSFTB",
+    ("GOOGL", "bstock"): "GOOGLB",
+    ("META", "bstock"): "METAB",
+    ("AMZN", "bstock"): "AMZNB",
 }

@@ -1,11 +1,12 @@
-"""PancakeSwap v3 on BSC via on-chain QuoterV2 (WHI-804 / WHI-826 / WHI-881).
+"""PancakeSwap v3 on BSC via on-chain QuoterV2 (WHI-804 / WHI-826 / WHI-881 / WHI-891).
 
 Quote leg is USDT on BSC. Single-venue semantics only — no 0x/1inch.
 Phase 1: fixed v3 fee-tier probe (skip Smart Router / multi-hop).
 
-Stock underlyings resolve to tokenized tickers by form (WHI-881):
-QQQ/bstock→QQQB, SPCX/bstock→SPCXB, NVDA/bstock→NVDAB, NVDA/ondo→NVDAON.
-Token addresses still keyed by ticker in the Tessera BSC table (WHI-797 §7.4).
+Stock underlyings resolve to tokenized tickers by form (WHI-881 / WHI-891):
+QQQ/bstock→QQQB, SPCX/bstock→SPCXB, NVDA/bstock→NVDAB, NVDA/ondo→NVDAON,
+plus Phase-A bStocks SPY/AAPL/TSLA/MSFT/GOOGL/META/AMZN (WHI-890 §8).
+Token addresses keyed by ticker in ``BSC_TOKENS`` (shared SSOT with Tessera).
 """
 
 from __future__ import annotations
@@ -33,16 +34,11 @@ _QUOTER_V2 = "0xB048Bbc1Ee6b733FFfCFb9e9CeF7375518e25997"
 
 # Bridged ETH on BSC (not in prop BSC table): WHI-798 §3.2.
 _ETH = TokenInfo("0x2170Ed0880ac9A755fd29B2688956BD959F933F8", 18, "ETH")
-# Token table stays ticker-keyed (QQQB/NVDAB/…); underlyings resolve via form.
-_TOKEN_BY_TICKER: Final[dict[str, TokenInfo]] = {
-    "BTC": BSC_TOKENS["BTC"],
-    "ETH": _ETH,
-    "QQQB": BSC_TOKENS["QQQB"],
-    "SPCXB": BSC_TOKENS["SPCXB"],
-    "NVDAB": BSC_TOKENS["NVDAB"],
-    "NVDAON": BSC_TOKENS["NVDAON"],
-}
+# BSC_TOKENS is the address SSOT; ETH is the only Pancake-local override.
+# Stock underlyings resolve form → ticker via BSC_STOCK_FORM_TICKER, then here.
+_TOKEN_BY_TICKER: Final[dict[str, TokenInfo]] = {**BSC_TOKENS, "ETH": _ETH}
 _USDT = BSC_TOKENS["USDT"]
+
 
 @register_adapter
 class PancakeSwapBscAdapter(AmmDexAdapter):
@@ -51,13 +47,20 @@ class PancakeSwapBscAdapter(AmmDexAdapter):
     venue: str = "pancakeswap_bsc"
     rpc_env: str = "BSC_RPC_URL"
     native_binance_symbol: str = "BNBUSDT"
-    # Underlyings (WHI-881); crypto form=null, stocks require form.
+    # Underlyings (WHI-881 / WHI-891); crypto form=null, stocks require form.
     supported: tuple[str, ...] = (
         "BTC",
         "ETH",
         "QQQ",
         "SPCX",
         "NVDA",
+        "SPY",
+        "AAPL",
+        "TSLA",
+        "MSFT",
+        "GOOGL",
+        "META",
+        "AMZN",
     )
     lp_fee_tiers: tuple[int, ...] = PANCAKE_FEE_TIERS
 
@@ -72,6 +75,8 @@ class PancakeSwapBscAdapter(AmmDexAdapter):
         if form is None:
             raise ValueError(f"{key} requires form on {self.venue}")
         ticker = BSC_STOCK_FORM_TICKER.get((key, form.lower()))
+        # Membership is effectively form-map presence: every map value is a
+        # BSC_TOKENS key, and _TOKEN_BY_TICKER is {**BSC_TOKENS, ETH}.
         if ticker is None or ticker not in _TOKEN_BY_TICKER:
             raise ValueError(f"{key} form={form!r} has no PancakeSwap BSC token")
         return ticker
