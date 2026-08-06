@@ -21,7 +21,7 @@ from spread_compare.adapters._amm_common import (
     probe_quoter_v2,
     to_raw,
 )
-from spread_compare.adapters._prop_common import BSC_TOKENS
+from spread_compare.adapters._prop_common import BSC_STOCK_FORM_TICKER, BSC_TOKENS
 from spread_compare.adapters.registry import register_adapter
 from spread_compare.models import ReferenceMid, Side
 
@@ -43,15 +43,6 @@ _TOKEN_BY_TICKER: Final[dict[str, TokenInfo]] = {
     "NVDAON": BSC_TOKENS["NVDAON"],
 }
 _USDT = BSC_TOKENS["USDT"]
-
-# Logical underlying → form → BSC token ticker (WHI-881).
-_FORM_TICKER: Final[dict[tuple[str, str], str]] = {
-    ("QQQ", "bstock"): "QQQB",
-    ("SPCX", "bstock"): "SPCXB",
-    ("NVDA", "bstock"): "NVDAB",
-    ("NVDA", "ondo"): "NVDAON",
-}
-
 
 @register_adapter
 class PancakeSwapBscAdapter(AmmDexAdapter):
@@ -80,7 +71,7 @@ class PancakeSwapBscAdapter(AmmDexAdapter):
             return key
         if form is None:
             raise ValueError(f"{key} requires form on {self.venue}")
-        ticker = _FORM_TICKER.get((key, form.lower()))
+        ticker = BSC_STOCK_FORM_TICKER.get((key, form.lower()))
         if ticker is None or ticker not in _TOKEN_BY_TICKER:
             raise ValueError(f"{key} form={form!r} has no PancakeSwap BSC token")
         return ticker

@@ -407,23 +407,17 @@ class MidService:
 
         P0 ``cex_tradfi_index`` → P1 ``proxy_perp_mark_median`` → P2 tokenized
         CEX spot TOB in fixed order from ``mid.stock_mid_p2_order``.
-        SPCX (and any underlying without perp/index) falls through to P2 only.
+        SPCX (and any underlying without a perp form) falls through to P2 only
+        (WHI-799 §3.3.2).
         """
-        errors: list[str] = []
-        # P0 / P1 only when the underlying can have an equity/perp ref.
-        # SPCX has neither — skip straight to P2 (WHI-799 §3.3.2).
-        has_equity_ref = asset in STOCK_PERP_UNDERLYINGS or asset in {
-            a for a in STOCK_ASSETS if a != "SPCX"
-        }
-        # QQQ has unverified perp form but no Phase-1 live equity index path we
-        # treat as P0/P1 success-required; still try P0/P1 when perp form exists.
-        if asset == "SPCX":
-            has_equity_ref = False
-        elif asset in STOCK_ASSETS:
-            # Try P0/P1 for any stock that has a perp form in catalog (incl. unverified).
-            from spread_compare.assets import get_form
+        from spread_compare.assets import get_form
 
-            has_equity_ref = get_form(asset, "perp") is not None
+        errors: list[str] = []
+        # P0/P1 when catalog has a perp form (live or unverified) or known
+        # equity-perp underlyings not yet in the Phase-1 catalog rows.
+        has_equity_ref = (
+            get_form(asset, "perp") is not None or asset in STOCK_PERP_UNDERLYINGS
+        )
 
         if has_equity_ref:
             try:
@@ -451,17 +445,11 @@ class MidService:
                 errors.append(f"p2 {step.form}@{step.venue}: {exc}")
                 result = None
             if result is not None:
-                if asset == "SPCX" and result.sources_detail is None:
-                    result = _SourceResult(
-                        result.mid,
-                        result.mid_source,
-                        result.timestamp,
-                        sources_detail=["private_underlying_no_equity_ref"],
-                    )
-                elif asset == "SPCX":
+                if asset == "SPCX":
                     detail = list(result.sources_detail or [])
-                    if "private_underlying_no_equity_ref" not in detail:
-                        detail.append("private_underlying_no_equity_ref")
+                    tag = "private_underlying_no_equity_ref"
+                    if tag not in detail:
+                        detail.append(tag)
                     result = _SourceResult(
                         result.mid,
                         result.mid_source,

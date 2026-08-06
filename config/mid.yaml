@@ -13,6 +13,7 @@ max_age_for_ws_quote_sec: 2.0
 
 # WHI-881 / WHI-799 §3.3.1: stock underlying P2 tokenized CEX TOB order.
 # First success wins; wire symbols come from (asset, form) cex_symbols map.
+# **unvalidated** pending docs/DESIGN.md §2 — engineering starting point only.
 stock_mid_p2_order:
   - form: bstock
     venue: binance

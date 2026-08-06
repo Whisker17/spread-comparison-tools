@@ -68,7 +68,12 @@ class SimulatorError(Exception):
 class InvalidSimulatePairError(SimulatorError):
     """Request pair cannot be simulated (unknown asset or non-stable cross)."""
 
-    def __init__(self, message: str, *, reason: Literal["unknown_asset", "cross_pair"]) -> None:
+    def __init__(
+        self,
+        message: str,
+        *,
+        reason: Literal["unknown_asset", "cross_pair", "legacy_asset_id"],
+    ) -> None:
         super().__init__(message)
         self.reason = reason
 
@@ -174,7 +179,7 @@ def resolve_simulate_pair(sell_asset: str, buy_asset: str) -> ResolvedPair:
         raise InvalidSimulatePairError(
             f"{non_stable} is a retired token id; use asset={underlying} "
             f"with form={form_id} (WHI-881)",
-            reason="unknown_asset",
+            reason="legacy_asset_id",
         )
     if get_asset(non_stable) is None:
         raise InvalidSimulatePairError(
@@ -410,9 +415,16 @@ class TradeSimulator:
             form_filter = None
         form_list = resolve_forms_filter(pair.asset, form_filter)
 
-        work: list[tuple[str, str | None]] = [
-            (slug, f) for f in form_list for slug in venue_slugs
-        ]
+        # Same (venue, form) expansion as the aggregator — never stamp a
+        # tokenized form on a perp-DEX book (WHI-799 §5.2.1 / WHI-881).
+        from spread_compare.aggregator import QuoteAggregator
+
+        work: list[tuple[str, str | None]] = []
+        for f in form_list:
+            for slug in QuoteAggregator._venues_for_form_expansion(
+                pair.asset, f, venue_slugs
+            ):
+                work.append((slug, f))
         raw_rows = await asyncio.gather(
             *(
                 self._simulate_venue(

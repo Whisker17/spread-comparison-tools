@@ -137,8 +137,13 @@ def _cex_symbols(book_side: str, *, exclude_bstocks: bool = False) -> list[str]:
         if sym:
             out.append(sym)
     if book_side == "spot" and not exclude_bstocks:
-        # Binance bStocks: form-aware fan-out (WHI-881); not bare asset keys.
+        # Binance bStocks: only Phase-1 live form coverage (WHI-881 / WHI-798 §6.2).
+        from spread_compare.assets import get_form
+
         for asset in supported_cex_assets("spot", form="bstock"):
+            form_row = get_form(asset, "bstock")
+            if form_row is None or form_row.coverage != "live":
+                continue
             sym = resolve_cex_symbol(asset, "spot", form="bstock")
             if sym:
                 out.append(sym)

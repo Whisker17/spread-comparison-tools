@@ -15,6 +15,7 @@ import httpx
 
 from spread_compare.adapters._prop_common import (
     BASE_TOKENS,
+    BSC_STOCK_FORM_TICKER,
     BSC_TOKENS,
     PropFill,
     PropNoQuoteError,
@@ -393,15 +394,6 @@ class TesseraBaseAdapter(KyberSwapPropAdapter):
     supported: ClassVar[tuple[str, ...]] = ("ETH", "BTC", "AERO", "VIRTUAL", "EURC")
 
 
-# Stock underlying → form → BSC_TOKENS ticker (WHI-881).
-_BSC_FORM_TICKER: Final[dict[tuple[str, str], str]] = {
-    ("QQQ", "bstock"): "QQQB",
-    ("SPCX", "bstock"): "SPCXB",
-    ("NVDA", "bstock"): "NVDAB",
-    ("NVDA", "ondo"): "NVDAON",
-}
-
-
 @register_adapter
 class TesseraBscAdapter(KyberSwapPropAdapter):
     """Tessera on BSC via KyberSwap ``includedSources=tessera``."""
@@ -418,7 +410,7 @@ class TesseraBscAdapter(KyberSwapPropAdapter):
     ) -> TokenInfo | None:
         if form is None:
             return None
-        ticker = _BSC_FORM_TICKER.get((asset.upper(), form.lower()))
+        ticker = BSC_STOCK_FORM_TICKER.get((asset.upper(), form.lower()))
         if ticker is None:
             return None
         return self.tokens.get(ticker)

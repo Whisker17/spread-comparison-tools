@@ -31,6 +31,28 @@ class StockMidP2Step(BaseModel):
     form: str
     venue: str
 
+    @field_validator("form")
+    @classmethod
+    def _known_form(cls, value: str) -> str:
+        from spread_compare.assets import FORM_IDS
+
+        key = value.strip().lower()
+        if key not in FORM_IDS:
+            raise ValueError(
+                f"stock_mid_p2_order form must be one of {list(FORM_IDS)}, got {value!r}"
+            )
+        return key
+
+    @field_validator("venue")
+    @classmethod
+    def _known_cex_venue(cls, value: str) -> str:
+        key = value.strip().lower()
+        if key not in {"binance", "bybit"}:
+            raise ValueError(
+                f"stock_mid_p2_order venue must be binance or bybit, got {value!r}"
+            )
+        return key
+
 
 class MidSettings(BaseModel):
     """``config/mid.yaml`` — reference-mid priority chain controls (WHI-799 §3.2)."""
