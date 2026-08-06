@@ -64,7 +64,7 @@ Status vocabulary (aligned with WHI-883):
 4. **BSC public RPC `eth_call`**: `decimals()` / `symbol()` / `name()` for every retained address.
 5. Rejected mis-hits recorded, not promoted: `SQQQon` (UltraPro Short QQQ Ondo) searched as QQQon; `Armstrong` / flapsh junk for MSTRon.
 
-GeckoTerminal was used early then abandoned after HTTP 429; DexScreener + Pancake list were sufficient.
+GeckoTerminal was used early (then rate-limited) for pool names / fee hints; DexScreener + Pancake list were primary for addresses.
 
 ### 3.2 Address + decimals table (transcribable into `BSC_TOKENS`)
 
@@ -96,8 +96,11 @@ All decimals measured **18** via `eth_call`. Listed symbol is on-chain `symbol()
 | SPYON | ondo | `0x6a708ead771238919d85930b5a0f10454e1c331a` | 18 | SPDR S&P 500 ETF (Ondo Tokenized) | DexScreener + on-chain |
 | SPCXON | ondo | `0xd0a58bc9d88d3ff48c0294cb7e45937d0e41a928` | 18 | SpaceX (Ondo Tokenized) | DexScreener + on-chain |
 
-**Still `unverified` (no trustworthy BSC address this round):** `QQQon` (search hit was `SQQQon` — wrong asset), `METAon`, `MSTRon`, `AMDon`, `PLTRon`.
+| QQQon | ondo | `0x0cde6936d305d5b34667fc46425e852efd73559a` | 18 | Invesco QQQ (Ondo Tokenized) | DexScreener exact + on-chain (USDC pool, thin) |
 
+**Still `unverified` (no trustworthy BSC address this round):** `METAon`, `MSTRon`, `AMDon`, `PLTRon` — CoinGecko + DexScreener exact-symbol hunt in `missing_hunt.json` found no clean BSC hit. Earlier false positives (`SQQQon` inverse ETF; flapsh `Armstrong`) were rejected and **must not** appear as pool stats for those rows.
+
+Address SSOT for implementation: [`samples/whi-890-raw/bsc_tokens.json`](./samples/whi-890-raw/bsc_tokens.json).  
 Drop-in Python fragment: [`samples/whi-890-raw/bsc_tokens_transcription.py.txt`](./samples/whi-890-raw/bsc_tokens_transcription.py.txt).
 
 ---
@@ -106,34 +109,37 @@ Drop-in Python fragment: [`samples/whi-890-raw/bsc_tokens_transcription.py.txt`]
 
 Bar (WHI-883 §6.4 phase B, unvalidated product tunable): **TVL ≳ $10 000** on a **v3 + USDT** pool. Measured numbers below are DexScreener `liquidity.usd` / `volume.h24` at survey time — auditable in `bsc_tokens.json`.
 
+Fee tiers below come from GeckoTerminal pool **names** (e.g. `NVDAB / USDT 0.25%`) when DexScreener JSON only exposed `labels: ["v3"]`. Recorded in `bsc_tokens.json` as `fee_tier` + `fee_tier_provenance`. WHI-891 should still treat fee tier as a quoter probe input (adapter already multi-tier probes), not as a single hard-coded tier.
+
 ### 4.1 Clears bar → `live` (fan-out candidates)
 
-| ticker | TVL (USD) | 24h vol (USD) | pair (DexScreener) |
-| --- | --- | --- | --- |
-| SPCXB | **4 197 265** | 20 289 494 | already live |
-| QQQB | **2 404 454** | 128 654 761 | already live |
-| NVDAB | **1 255 015** | 5 474 809 | already live |
-| SPYB | **794 898** | 11 558 443 | **new** |
-| AAPLB | **308 675** | 788 523 | **new** |
-| TSLAB | **218 943** | 427 768 | **new** |
-| MSFTB | **110 612** | 41 146 | **new** |
-| GOOGLB | **105 357** | 75 602 | **new** |
-| METAB | **45 772** | 8 380 | **new** |
-| AMZNB | **44 735** | 35 789 | **new** |
-| NVDAON | **10 526** | 3 531 | already live (just above bar) |
+| ticker | TVL (USD) | 24h vol (USD) | fee (name) | pair (DexScreener) |
+| --- | --- | --- | --- | --- |
+| SPCXB | **4 197 265** | 20 289 494 | 0.25% | already live |
+| QQQB | **2 404 454** | 128 654 761 | 0.25% | already live |
+| NVDAB | **1 255 015** | 5 474 809 | 0.25% | already live |
+| SPYB | **794 898** | 11 558 443 | **0.01%** | **new** |
+| AAPLB | **308 675** | 788 523 | 0.25% | **new** |
+| TSLAB | **218 943** | 427 768 | 0.25% | **new** |
+| MSFTB | **110 612** | 41 146 | 0.25% | **new** |
+| GOOGLB | **105 357** | 75 602 | 0.25% | **new** |
+| METAB | **45 772** | 8 380 | 0.25% | **new** |
+| AMZNB | **44 735** | 35 789 | 0.25% | **new** |
+| NVDAON | **10 526** | 3 531 | 1% | already live (just above bar) |
 
 ### 4.2 Below bar / wrong quote → `live_thin` (catalog only)
 
 | ticker | TVL | Note |
 | --- | --- | --- |
 | GOOGLON | 2 191 | v3/USDT thin |
+| QQQon | 1 641 | v3/**USDC** (not USDT) thin — address verified |
 | SPYON | 1 061 | v3/USDT thin |
 | AMZNON | 5 898 | best pool WBNB, not USDT |
 | CRCLON | 2 888 | non-USDT quote |
 | TSLAON | 178 | non-USDT quote |
 | SPCXON | 485 | non-USDT quote |
 | AAPLON | 23 | v3/USDT dust |
-| MSFTON | ~0 | dust |
+| MSFTON | ~0 | listed pool, effectively empty book |
 | CRCLB | ~0 | address OK; USDT pool empty at capture |
 
 ### 4.3 Address but zero pairs → `absent_no_route`
@@ -144,24 +150,29 @@ Bar (WHI-883 §6.4 phase B, unvalidated product tunable): **TVL ≳ $10 000** 
 
 ## 5. Tessera BSC (Kyber) route check
 
-Probe: `GET https://aggregator-api.kyberswap.com/bsc/api/v1/routes` with `includedSources=tessera`, both sides, notionals **$100 / $1 000 / $10 000** (USDT 18 decimals). Raw: `kyber_tessera_probes.json`.
+Probe: `GET https://aggregator-api.kyberswap.com/bsc/api/v1/routes` with `includedSources=tessera`, both sides.
 
-### 5.1 Green set (unchanged)
+- **All tokens with addresses:** WHI-799 §4.1 subset **$100 / $1 000 / $10 000** (survey breadth).
+- **Green quartet only:** also **$100 000 / $1 000 000** (full §4.1 depth for production-sized Tessera).
 
-| ticker | buy $100 | buy $1k | buy $10k | sell $100 | sell $1k | sell $10k | gas (typical) |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| QQQB | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 693831 |
-| SPCXB | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 693831 |
-| NVDAON | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 693831 |
-| NVDAB | ✅ | ❌ route not found | ❌ | ✅ | ✅ | ✅ | 693831 |
+Raw: `kyber_tessera_probes.json` (entries with `tier_extension: whi-890-r1` are the $100k/$1M pass).
 
-Gas figure is stable across green routes in this capture (`gasUsd` ≈ $0.41).
+### 5.1 Green set (unchanged membership; size matrix expanded)
 
-**NVDAB note:** Tessera inventory / size cap appears **one-sided at larger notionals** during this window. Production earlier measured ~20 bps at $1k buy — treat size sensitivity as operational risk for WHI-891, not as “absent”.
+| ticker | buy $100 | $1k | $10k | $100k | $1M | sell $100 | $1k | $10k | $100k | $1M | gas |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| QQQB | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ❌ | 693831 |
+| SPCXB | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ✅ | ✅ | ✅ | ❌ | 693831 |
+| NVDAON | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ✅ | ✅ | ✅ | ❌ | 693831 |
+| NVDAB | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ | ✅ | ✅ | ❌ | 693831 |
+
+Gas is stable on green routes (`gasUsd` ≈ $0.41). **No green route at $1M either side** in this capture.
+
+**Size-cap notes for WHI-891:** Tessera depth is notional- and side-dependent. NVDAB buy is the most constrained (only $100). Do not assume the production $1k board measurement generalises across all sizes/days — re-measure if product cares about $100k cells.
 
 ### 5.2 Everything else → `absent_no_route`
 
-Including thick Pancake names (`SPYB`, `AAPLB`, `TSLAB`, `GOOGLB`, …): Kyber returned **`route not found`** (code 4008) on all probed tiers/sides. That is the “per-token Kyber green” gate from WHI-883 §6.4 — **failed**.
+Including thick Pancake names (`SPYB`, `AAPLB`, `TSLAB`, `GOOGLB`, …) and newly verified `QQQon`: Kyber returned **`route not found`** (code 4008) on all probed tiers/sides. That is the “per-token Kyber green” gate from WHI-883 §6.4 — **failed** for expansion.
 
 ---
 
@@ -193,7 +204,12 @@ Full map: `samples/whi-890-raw/xstock_mints.json`.
 ### 6.2 Jupiter prop matrix
 
 Probe: `GET …/swap/v1/quote?onlyDirectRoutes=true&dexes=<HumidiFi|TesseraV|BisonFi>`  
-Buy: $1 000 USDC → mint. Sell: 5 whole tokens → USDC (heuristic).  
+
+| Side | amount | Notes |
+| --- | --- | --- |
+| Buy | `1_000_000_000` raw USDC | = **$1 000** (USDC 6 decimals) — exact |
+| Sell | `5_000_000` raw mint | **assumes 6-decimal mint** (= 5 whole tokens). xStock mint decimals were **not** re-fetched this round; if a mint is 8-decimal this is 0.05 tokens. Verdict still holds: Jupiter returned `NO_ROUTES_FOUND` (errorCode) for a **direct** prop route, independent of size. Re-runs should resolve decimals via mint metadata first. |
+
 Control: SOL → USDC × HumidiFi returned **200 + routePlan label HumidiFi** (path healthy).
 
 **Result: 14 underlyings × 3 props × 2 sides = 84 probes → 84 × `NO_ROUTES_FOUND`.**
@@ -247,7 +263,9 @@ Do **not** add stock load “and see” — the arithmetic saturates at +1 asset
 
 ## 7. Coverage matrix (summary)
 
-Full TSV: [`samples/WHI-890-underlying-form-venue-matrix.tsv`](./samples/WHI-890-underlying-form-venue-matrix.tsv) (42 rows = 14 underlyings × 3 forms). No blank cells.
+Full TSV: [`samples/WHI-890-underlying-form-venue-matrix.tsv`](./samples/WHI-890-underlying-form-venue-matrix.tsv) (42 rows = 14 underlyings × 3 forms).  
+
+**Cell discipline:** every cell is one of `live` / `live_thin` / `absent_no_route` / `unverified` / `n/a` (or a non-empty address / `unverified` / `n/a` for address columns). Cross-domain blanks (e.g. Solana mint on a Pancake column) are **`n/a`**, never empty. Rejected mis-hit TVL must never appear on `unverified` rows.
 
 ### 7.1 bstock × BSC venues
 
@@ -275,8 +293,9 @@ Full TSV: [`samples/WHI-890-underlying-form-venue-matrix.tsv`](./samples/WHI-890
 | underlying | ticker | Pancake | Tessera | Note |
 | --- | --- | --- | --- | --- |
 | NVDA | NVDAON | live | live | only ondo already in production |
+| QQQ | QQQon | live_thin (USDC) | absent_no_route | address verified; thin |
 | others with address | *ON | live_thin or dust | absent_no_route | do not fan out |
-| QQQ / META / MSTR / AMD / PLTR | — | unverified | unverified | no trusted address |
+| META / MSTR / AMD / PLTR | — | unverified | unverified | no trusted address (`missing_hunt.json`) |
 
 ### 7.3 xstock × Solana props
 
@@ -306,7 +325,23 @@ Implement **in order**; do not skip ahead.
 
 Keep existing: NVDAB, QQQB, SPCXB, NVDAON.
 
-**RPC / poller cost:** each new token adds Multcall quoter probes on the `rpc` group (full §4.1 tiers today). Unlike Jupiter, RPC group is paced at 5 RPS / 30 s interval — headroom is larger, but WHI-891 should still recompute worst-case sweep size after adding 7 assets (order-of-magnitude: +7 × fee-tier probes × notionals × sides on the existing AMM path). Prefer shipping A1–A3 first if RPC pressure shows up.
+**RPC / poller cost (computed, not deferred):**
+
+| Quantity | Today (order of mag.) | After +7 Phase A tokens |
+| --- | --- | --- |
+| `rpc` group pacing | `max_rps: 5`, `interval_sec: 30` (`config/poller.yaml`) | same |
+| Comment in poller | “Full matrix ≈100 calls → ~20 s start-spacing” | — |
+| Marginal cost model | per extra token ≈ full §4.1 × both sides through quoter path | **+7 × ~10 ≈ +70 calls** if linear in tokens |
+| Start-spacing @ 5 RPS | 100/5 ≈ 20 s | 170/5 ≈ **34 s** |
+| vs `interval_sec` 30 | 1.5× headroom | **~0.88× — expected in-flight skip / overlap** |
+
+**Named offset before shipping all 7 (pick one):**
+
+1. **Ship A1–A3 only first** (SPYB, AAPLB, TSLAB) → +~30 calls → ~26 s start-spacing (still fits 30 s with thin headroom), then a follow-up for A4–A7 after measuring production skip counts; or  
+2. Raise `rpc.interval_sec` 30 → **45** (and `max_quote_age_for_best_sec` / `max_stale_sec` in proportion); or  
+3. Sample fewer notionals on AMM the way Jupiter already does (3 tiers not 5) — product trade-off.
+
+Do not land all seven without one of the above.
 
 **Not in Phase A:** CRCLB (empty pool), AMDB/PLTRB/MSTRB (zero pairs), all thin ondo except keep NVDAON.
 
@@ -326,10 +361,10 @@ Keep existing: NVDAB, QQQB, SPCXB, NVDAON.
 
 | Item | Action |
 | --- | --- |
-| Ondo tokens other than NVDAON | Keep addresses in research artifact; do not fan out until USDT v3 TVL ≥ $10k **and** (if Tessera desired) Kyber green |
+| Ondo tokens other than NVDAON | Keep addresses in research artifact; do not fan out until **USDT** v3 TVL ≥ $10k **and** (if Tessera desired) Kyber green. QQQon is verified but USDC/thin |
 | AMDB / PLTRB / MSTRB | Address known; re-check pairs later; no quoter wire |
-| QQQon / METAon / MSTRon / AMDon / PLTRon | Remain `unverified` until official Ondo BSC list or explorer-backed address |
-| Solana xStock props | Re-probe before any poller discussion; if green, apply §6.3 offset table |
+| METAon / MSTRon / AMDon / PLTRon | Remain `unverified` (`missing_hunt.json`) |
+| Solana xStock props | Re-probe (with mint decimals) before any poller discussion; if green, apply §6.3 offset table |
 
 ---
 

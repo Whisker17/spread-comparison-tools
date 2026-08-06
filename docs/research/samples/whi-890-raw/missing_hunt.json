@@ -1,1 +1,77 @@
-{}
+{
+  "QQQon": {
+    "coingecko": [
+      {
+        "id": "invesco-qqq-etf-ondo-tokenized-etf",
+        "name": "Invesco QQQ ETF (Ondo Tokenized ETF)",
+        "symbol": "QQQON"
+      },
+      {
+        "id": "proshares-ultrapro-qqq-ondo-tokenized",
+        "name": "ProShares UltraPro QQQ (Ondo Tokenized)",
+        "symbol": "TQQQON"
+      },
+      {
+        "id": "proshares-ultrapro-short-qqq-ondo-tokenized",
+        "name": "ProShares UltraPro Short QQQ (Ondo Tokenized)",
+        "symbol": "SQQQON"
+      }
+    ],
+    "dex_exact": [
+      {
+        "symbol": "QQQon",
+        "address": "0x0cdE6936d305d5B34667fC46425E852efd73559a",
+        "name": "Invesco QQQ (Ondo Tokenized)",
+        "liq": 1641.24,
+        "dex": "pancakeswap",
+        "quote": "USDC"
+      },
+      {
+        "symbol": "QQQon",
+        "address": "0x0cdE6936d305d5B34667fC46425E852efd73559a",
+        "name": "Invesco QQQ (Ondo Tokenized)",
+        "liq": 371.04,
+        "dex": "uniswap",
+        "quote": "USDC"
+      },
+      {
+        "symbol": "QQQon",
+        "address": "0x0cdE6936d305d5B34667fC46425E852efd73559a",
+        "name": "Invesco QQQ (Ondo Tokenized)",
+        "liq": 36.28,
+        "dex": "pancakeswap",
+        "quote": "WBNB"
+      },
+      {
+        "symbol": "QQQon",
+        "address": "0xd9015A0BF69D807dA511c7c9B3DCEF56ddEf7777",
+        "name": "QQQon",
+        "liq": 7296.46,
+        "dex": "flapsh",
+        "quote": "WBNB"
+      }
+    ]
+  },
+  "METAon": {
+    "coingecko": [
+      {
+        "id": "meta-platforms-ondo-tokenized-stock",
+        "name": "Meta Platforms (Ondo Tokenized Stock)",
+        "symbol": "METAON"
+      }
+    ],
+    "dex_exact": []
+  },
+  "MSTRon": {
+    "coingecko": [],
+    "dex_exact": []
+  },
+  "AMDon": {
+    "coingecko": [],
+    "dex_exact": []
+  },
+  "PLTRon": {
+    "coingecko": [],
+    "dex_exact": []
+  }
+}

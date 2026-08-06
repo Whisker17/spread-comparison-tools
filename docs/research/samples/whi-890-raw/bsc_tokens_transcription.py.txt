@@ -49,6 +49,9 @@
     "QQQB": TokenInfo(
         "0x205812cdbed920aff76c6580abd681a46d11efc7", 18, "QQQB"
     ),
+    "QQQON": TokenInfo(
+        "0x0cde6936d305d5b34667fc46425e852efd73559a", 18, "QQQon"
+    ),
     "SPCXB": TokenInfo(
         "0xbe9d156892e55e7154bcd3cb0fea677f9d3103e1", 18, "SPCXB"
     ),
