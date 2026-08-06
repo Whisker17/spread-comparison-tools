@@ -100,7 +100,7 @@ export interface paths {
         };
         /**
          * Get Assets
-         * @description Logical assets + per-venue representation labels (WHI-798 §3.3).
+         * @description Logical assets + representations / nested forms (WHI-798 §3.3 / WHI-881).
          */
         get: operations["get_assets_assets_get"];
         put?: never;
@@ -208,6 +208,9 @@ export interface components {
         /**
          * AssetResponse
          * @description One row of ``GET /assets``.
+         *
+         *     Stocks: ``representations`` is null and ``forms`` lists nested forms.
+         *     Non-stocks: flat ``representations`` and ``forms`` is null.
          */
         AssetResponse: {
             /** Id */
@@ -216,11 +219,16 @@ export interface components {
             category: string;
             /**
              * Representations
-             * @description Venue slug → representation label (WHI-798 §3.3).
+             * @description Venue slug → representation label (non-stocks; null for stocks).
              */
-            representations: {
+            representations?: {
                 [key: string]: string;
-            };
+            } | null;
+            /**
+             * Forms
+             * @description Nested forms for stock underlyings (null for non-stocks).
+             */
+            forms?: components["schemas"]["FormInfoResponse"][] | null;
         };
         /**
          * EngineHealthView
@@ -350,6 +358,22 @@ export interface components {
             /** Volume Requirement */
             volume_requirement?: string | null;
         };
+        /**
+         * FormInfoResponse
+         * @description One stock form on ``GET /assets`` (WHI-881).
+         */
+        FormInfoResponse: {
+            /** Id */
+            id: string;
+            /** Form Class */
+            form_class: string;
+            /** Representations */
+            representations: {
+                [key: string]: string;
+            };
+            /** Coverage */
+            coverage: string;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -404,6 +428,8 @@ export interface components {
             venue: string;
             /** Asset */
             asset: string;
+            /** Form */
+            form?: string | null;
             /** Venue Symbol */
             venue_symbol?: string | null;
             /**
@@ -536,7 +562,7 @@ export interface components {
              * Reason
              * @enum {string}
              */
-            reason: "unknown_asset" | "cross_pair";
+            reason: "unknown_asset" | "cross_pair" | "legacy_asset_id";
         };
         /**
          * SimulatePairsResponse
@@ -588,6 +614,16 @@ export interface components {
              * @description Override adapter default instrument type when the class supports it
              */
             instrument_type?: ("spot" | "perp" | "amm_pool" | "prop_amm") | null;
+            /**
+             * Forms
+             * @description Optional stock form filter (WHI-881); default = all live forms
+             */
+            forms?: string[] | null;
+            /**
+             * Form
+             * @description Single stock form shorthand; ignored when forms is set
+             */
+            form?: string | null;
         };
         /**
          * SimulateResponse
@@ -668,6 +704,8 @@ export interface components {
              * @default false
              */
             quote_stale: boolean;
+            /** Form */
+            form?: string | null;
         };
         /**
          * SizeQuotePair
@@ -680,6 +718,8 @@ export interface components {
             venue: string;
             /** Asset */
             asset: string;
+            /** Form */
+            form?: string | null;
             /**
              * Instrument Type
              * @enum {string}
@@ -800,6 +840,8 @@ export interface components {
             venue: string;
             /** Asset */
             asset: string;
+            /** Form */
+            form?: string | null;
             /**
              * Instrument Type
              * @enum {string}
@@ -931,6 +973,8 @@ export interface operations {
                 side?: ("buy" | "sell") | null;
                 /** @description Override adapter default instrument type */
                 instrument_type?: ("spot" | "perp" | "amm_pool" | "prop_amm") | null;
+                /** @description Comma-separated stock form ids (WHI-881); default = all live forms for stocks, ignored for non-stocks */
+                forms?: string | null;
             };
             header?: never;
             path?: never;

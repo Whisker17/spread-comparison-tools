@@ -158,25 +158,38 @@ describe("buildSubscribeMessage", () => {
       venues: ["mock"],
       side: undefined,
       instrument_type: undefined,
+      forms: undefined,
     });
   });
 
   it("emits filters form for multi-board pages", () => {
     const msg = buildSubscribeMessage([
-      { assets: ["QQQB"], notionals: ["1000"] },
+      { assets: ["NVDA"], notionals: ["1000"] },
       {
         assets: ["TSLA"],
         notionals: ["1000"],
-        instrument_type: "perp",
+        forms: ["perp"],
       },
     ]);
     expect(msg).toMatchObject({
       type: "subscribe",
       filters: [
-        { assets: ["QQQB"], notionals: ["1000"] },
-        { assets: ["TSLA"], notionals: ["1000"], instrument_type: "perp" },
+        { assets: ["NVDA"], notionals: ["1000"] },
+        { assets: ["TSLA"], notionals: ["1000"], forms: ["perp"] },
       ],
     });
+  });
+
+  it("includes form in pair identity keys", () => {
+    const a = pair("tessera_bsc", "s1", "10");
+    a.form = "bstock";
+    a.instrument_type = "prop_amm";
+    const b = pair("tessera_bsc", "s1", "12");
+    b.form = "ondo";
+    b.instrument_type = "prop_amm";
+    expect(pairIdentityKey(a)).toBe("tessera_bsc|1000|prop_amm|bstock");
+    expect(pairIdentityKey(b)).toBe("tessera_bsc|1000|prop_amm|ondo");
+    expect(pairIdentityKey(a)).not.toBe(pairIdentityKey(b));
   });
 });
 

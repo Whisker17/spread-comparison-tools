@@ -164,6 +164,24 @@
               "title": "Instrument Type"
             },
             "description": "Override adapter default instrument type"
+          },
+          {
+            "name": "forms",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Comma-separated stock form ids (WHI-881); default = all live forms for stocks, ignored for non-stocks",
+              "title": "Forms"
+            },
+            "description": "Comma-separated stock form ids (WHI-881); default = all live forms for stocks, ignored for non-stocks"
           }
         ],
         "responses": {
@@ -222,7 +240,7 @@
           "quotes"
         ],
         "summary": "Get Assets",
-        "description": "Logical assets + per-venue representation labels (WHI-798 \u00a73.3).",
+        "description": "Logical assets + representations / nested forms (WHI-798 \u00a73.3 / WHI-881).",
         "operationId": "get_assets_assets_get",
         "responses": {
           "200": {
@@ -420,23 +438,44 @@
             "title": "Category"
           },
           "representations": {
-            "additionalProperties": {
-              "type": "string"
-            },
-            "type": "object",
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Representations",
-            "description": "Venue slug \u2192 representation label (WHI-798 \u00a73.3)."
+            "description": "Venue slug \u2192 representation label (non-stocks; null for stocks)."
+          },
+          "forms": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/FormInfoResponse"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Forms",
+            "description": "Nested forms for stock underlyings (null for non-stocks)."
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
           "id",
-          "category",
-          "representations"
+          "category"
         ],
         "title": "AssetResponse",
-        "description": "One row of ``GET /assets``."
+        "description": "One row of ``GET /assets``.\n\nStocks: ``representations`` is null and ``forms`` lists nested forms.\nNon-stocks: flat ``representations`` and ``forms`` is null."
       },
       "EngineHealthView": {
         "properties": {
@@ -830,6 +869,39 @@
         "title": "FeeTier",
         "description": "One fee tier inside a FeeSchedule (WHI-799 \u00a75.5)."
       },
+      "FormInfoResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "form_class": {
+            "type": "string",
+            "title": "Form Class"
+          },
+          "representations": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Representations"
+          },
+          "coverage": {
+            "type": "string",
+            "title": "Coverage"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "form_class",
+          "representations",
+          "coverage"
+        ],
+        "title": "FormInfoResponse",
+        "description": "One stock form on ``GET /assets`` (WHI-881)."
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -909,6 +981,17 @@
           "asset": {
             "type": "string",
             "title": "Asset"
+          },
+          "form": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Form"
           },
           "venue_symbol": {
             "anyOf": [
@@ -1281,7 +1364,8 @@
             "type": "string",
             "enum": [
               "unknown_asset",
-              "cross_pair"
+              "cross_pair",
+              "legacy_asset_id"
             ],
             "title": "Reason"
           }
@@ -1383,6 +1467,33 @@
             ],
             "title": "Instrument Type",
             "description": "Override adapter default instrument type when the class supports it"
+          },
+          "forms": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Forms",
+            "description": "Optional stock form filter (WHI-881); default = all live forms"
+          },
+          "form": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Form",
+            "description": "Single stock form shorthand; ignored when forms is set"
           }
         },
         "additionalProperties": false,
@@ -1601,6 +1712,17 @@
             "type": "boolean",
             "title": "Quote Stale",
             "default": false
+          },
+          "form": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Form"
           }
         },
         "additionalProperties": false,
@@ -1628,6 +1750,17 @@
           "asset": {
             "type": "string",
             "title": "Asset"
+          },
+          "form": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Form"
           },
           "instrument_type": {
             "type": "string",
@@ -1901,6 +2034,17 @@
           "asset": {
             "type": "string",
             "title": "Asset"
+          },
+          "form": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Form"
           },
           "instrument_type": {
             "type": "string",

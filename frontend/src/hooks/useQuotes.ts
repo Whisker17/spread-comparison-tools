@@ -35,6 +35,7 @@ export type UseQuotesParams = {
   venues?: readonly string[];
   side?: "buy" | "sell";
   instrument_type?: InstrumentType;
+  forms?: readonly string[];
   /** Polling interval ms; 0 / false disables. Default DEFAULT_POLL_MS (15s). */
   refetchInterval?: number | false;
   enabled?: boolean;
@@ -48,6 +49,7 @@ export function quotesQueryKey(params: UseQuotesParams) {
     params.venues?.join(",") ?? "",
     params.side ?? "",
     params.instrument_type ?? "",
+    params.forms?.join(",") ?? "",
   ] as const;
 }
 
@@ -70,6 +72,7 @@ export function useQuotes(
           venues: params.venues,
           side: params.side,
           instrument_type: params.instrument_type,
+          forms: params.forms,
         },
         { signal },
       ),
@@ -85,6 +88,7 @@ export type UseQuotesMatrixParams = {
   venues?: readonly string[];
   side?: "buy" | "sell";
   instrument_type?: InstrumentType;
+  forms?: readonly string[];
   refetchInterval?: number | false;
   enabled?: boolean;
 };
@@ -104,6 +108,7 @@ export function quotesMatrixQueryKey(params: UseQuotesMatrixParams) {
     params.venues?.join(",") ?? "",
     params.side ?? "",
     params.instrument_type ?? "",
+    params.forms?.join(",") ?? "",
   ] as const;
 }
 
@@ -128,6 +133,7 @@ export function useQuotesMatrix(
           venues: params.venues,
           side: params.side,
           instrument_type: params.instrument_type,
+          forms: params.forms,
         },
         { signal },
       ),

@@ -49,10 +49,10 @@ Tailwind + typed OpenAPI client (`openapi-typescript`), `SpreadMatrix` /
 `/status-fixtures`, TanStack Query polling; backend CORS for localhost:3000.
 M3 blue chips section (WHI-809): `/blue-chips` BTC/ETH/SOL live matrices +
 representation labels + snapshot summary (WHI-799 §5.2) + 30s poll; SOL hides
-EVM AMM rows. M3 stocks section (WHI-810): `/stocks` P0-A bStocks BSC three-way
-(QQQB/SPCXB/NVDAB/NVDAON × Binance spot × Pancake × Tessera) + P0-B equity perps
-(TSLA/NVDA/AAPL/MSFT × five orderbook venues); US market-hours badge, mid-source
-emphasis, bStocks rebase footnote; reuses AssetSpreadBlock + summary engine.
+EVM AMM rows. M3 stocks section (WHI-810, rebuilt WHI-882): `/stocks` underlying-first —
+one matrix per underlying (NVDA/TSLA/AAPL/MSFT/QQQ/SPCX) with venue × form
+rows (perp / bStocks / Ondo …), form badges, form_class §5.2 best, shared mid;
+US market-hours badge, mid-source emphasis, bStocks rebase footnote.
 M3 others section (WHI-811): `/others` P0 (DOGE/WIF/XRP/SUI/LINK/AVAX/ADA/BNB)
 + P1 scaled memes (PEPE/BONK with `venue_symbol` 1× note) + P2 collapsed
 watchlist (JUP/AERO/VIRTUAL/EURC); CEX+perp only (no prop AMM requests).
@@ -142,11 +142,13 @@ underlying, forms as a dimension (`perp`/`bstock`/`ondo`/`xstock`/
 Underlying-first catalog/API/stream/poller (WHI-881): stock underlyings
 with nested forms in `assets.py`; `(asset, form)` CEX/AMM/prop resolution;
 `GET /assets` nests forms; `GET /quotes?forms=` + store/stream keys include
-form; legacy token ids (NVDAB/QQQB/…) return structured 422; FE still
-WHI-882.
+form; legacy token ids (NVDAB/QQQB/…) return structured 422.
+Underlying-first stocks frontend (WHI-882): `/stocks` one board per
+underlying; matrix rows keyed `venue|form`; form badges; form_class best in
+summary/matrix; regenerated OpenAPI client; stream `pairIdentityKey` includes
+form.
 
-**Not implemented:** remaining venue adapters (WHI-805), collector;
-underlying-first frontend (WHI-882).
+**Not implemented:** remaining venue adapters (WHI-805), collector.
 Do not assume a module exists until its issue lands.
 
 **Blocking gap:** `docs/DESIGN.md` is still mostly the empty template stub (§4.2 module

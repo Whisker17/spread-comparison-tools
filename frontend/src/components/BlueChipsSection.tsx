@@ -56,7 +56,10 @@ function BlueChipsSectionInner() {
   const repsByAsset = useMemo(() => {
     const map = new Map<string, Readonly<Record<string, string>>>();
     for (const row of assetsQuery.data ?? []) {
-      map.set(row.id.toUpperCase(), row.representations);
+      // Stocks nest representations under forms (WHI-881); blue chips stay flat.
+      if (row.representations) {
+        map.set(row.id.toUpperCase(), row.representations);
+      }
     }
     return map;
   }, [assetsQuery.data]);

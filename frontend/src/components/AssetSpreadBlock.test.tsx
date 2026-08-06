@@ -16,7 +16,7 @@ import { AssetSpreadBlock } from "@/components/AssetSpreadBlock";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import {
   STOCKS_MID_SOURCE_HINT,
-  tokenizedStocksBoard,
+  stocksBoard,
 } from "@/config/sections/stocks";
 
 const { useQuotesMatrixMock } = vi.hoisted(() => ({
@@ -39,7 +39,7 @@ const MID: FakeMid = {
 function fakeQuery(mid?: FakeMid) {
   return {
     data: {
-      asset: "QQQB",
+      asset: "QQQ",
       pairs: [],
       mids: mid ? [mid] : [],
       snapshotIds: ["snap-abcdef123456"],
@@ -63,14 +63,14 @@ function renderBlock(
   return render(
     withProviders(
       <AssetSpreadBlock
-        section={tokenizedStocksBoard}
-        asset="QQQB"
+        section={stocksBoard}
+        asset="QQQ"
         notional={props.notional ?? "1000"}
         venues={["binance", "pancakeswap_bsc", "tessera_bsc"]}
         venueLabels={{
-          binance: "Binance · spot · QQQBUSDT",
-          pancakeswap_bsc: "PancakeSwap (BSC) · QQQB · USDT",
-          tessera_bsc: "Tessera (BSC) · QQQB · USDT",
+          binance: "Binance · bStocks · QQQBUSDT",
+          pancakeswap_bsc: "PancakeSwap (BSC) · bStocks · QQQB · USDT",
+          tessera_bsc: "Tessera (BSC) · bStocks · QQQB · USDT",
         }}
         orderbookVenues={["binance"]}
         midSourceHint={STOCKS_MID_SOURCE_HINT}
@@ -91,7 +91,7 @@ describe("AssetSpreadBlock mid-source rendering (WHI-810)", () => {
   it("renders the emphasized badge with the section's hint when opted in", () => {
     renderBlock({ emphasizeMidSource: true });
 
-    const badge = screen.getByTestId("mid-source-badge-QQQB");
+    const badge = screen.getByTestId("mid-source-badge-QQQ");
     expect(badge.textContent).toContain("cex_tradfi_index");
     expect(badge.getAttribute("title")).toBe(STOCKS_MID_SOURCE_HINT);
   });
@@ -99,8 +99,8 @@ describe("AssetSpreadBlock mid-source rendering (WHI-810)", () => {
   it("falls back to the plain mid-source line when not emphasized", () => {
     renderBlock();
 
-    expect(screen.queryByTestId("mid-source-badge-QQQB")).toBeNull();
-    const meta = screen.getByTestId("snapshot-meta-QQQB");
+    expect(screen.queryByTestId("mid-source-badge-QQQ")).toBeNull();
+    const meta = screen.getByTestId("snapshot-meta-QQQ");
     expect(meta.textContent).toContain("Mid source");
     expect(meta.textContent).toContain("cex_tradfi_index");
   });
@@ -109,8 +109,8 @@ describe("AssetSpreadBlock mid-source rendering (WHI-810)", () => {
     useQuotesMatrixMock.mockReturnValue(fakeQuery());
     renderBlock({ emphasizeMidSource: true });
 
-    expect(screen.queryByTestId("mid-source-badge-QQQB")).toBeNull();
-    expect(screen.getByTestId("snapshot-meta-QQQB").textContent).not.toContain(
+    expect(screen.queryByTestId("mid-source-badge-QQQ")).toBeNull();
+    expect(screen.getByTestId("snapshot-meta-QQQ").textContent).not.toContain(
       "Mid source",
     );
   });
@@ -120,8 +120,8 @@ describe("AssetSpreadBlock mid-source rendering (WHI-810)", () => {
 
     expect(useQuotesMatrixMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        asset: "QQQB",
-        instrument_type: tokenizedStocksBoard.instrumentType,
+        asset: "QQQ",
+        instrument_type: stocksBoard.instrumentType,
       }),
     );
   });
@@ -133,7 +133,7 @@ describe("AssetSpreadBlock single-tier fetch (WHI-864)", () => {
 
     expect(useQuotesMatrixMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        asset: "QQQB",
+        asset: "QQQ",
         notionals: ["10000"],
       }),
     );
@@ -146,7 +146,7 @@ describe("AssetSpreadBlock single-tier fetch (WHI-864)", () => {
   it("tags the block with the active notional for network/debug inspection", () => {
     renderBlock({ notional: "100000" });
     expect(
-      screen.getByTestId("asset-block-QQQB").getAttribute("data-notional"),
+      screen.getByTestId("asset-block-QQQ").getAttribute("data-notional"),
     ).toBe("100000");
   });
 });
