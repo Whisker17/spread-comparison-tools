@@ -1,0 +1,138 @@
+{
+  "META": {
+    "symbol": "META",
+    "status": "active",
+    "daily_quote_token_volume": 261785.820297,
+    "last_trade_price": 591.13,
+    "multiplier": "1.000000000000000000",
+    "market_id": 117
+  },
+  "TSLA": {
+    "symbol": "TSLA",
+    "status": "active",
+    "daily_quote_token_volume": 317875.320495,
+    "last_trade_price": 322.11,
+    "multiplier": "1.000000000000000000",
+    "market_id": 112
+  },
+  "PLTR": {
+    "symbol": "PLTR",
+    "status": "active",
+    "daily_quote_token_volume": 998371.70607,
+    "last_trade_price": 157.722,
+    "multiplier": "1.000000000000000000",
+    "market_id": 111
+  },
+  "SPY": {
+    "symbol": "SPY",
+    "status": "active",
+    "daily_quote_token_volume": 3536576.025837,
+    "last_trade_price": 770.91,
+    "multiplier": "1.000000000000000000",
+    "market_id": 128
+  },
+  "AMZN": {
+    "symbol": "AMZN",
+    "status": "active",
+    "daily_quote_token_volume": 285813.4741,
+    "last_trade_price": 272.782,
+    "multiplier": "1.000000000000000000",
+    "market_id": 114
+  },
+  "QQQ": {
+    "symbol": "QQQ",
+    "status": "active",
+    "daily_quote_token_volume": 2322440.43298,
+    "last_trade_price": 717.07,
+    "multiplier": "1.000000000000000000",
+    "market_id": 129
+  },
+  "AAPL": {
+    "symbol": "AAPL",
+    "status": "active",
+    "daily_quote_token_volume": 500830.109498,
+    "last_trade_price": 313.81,
+    "multiplier": "1.000000000000000000",
+    "market_id": 113
+  },
+  "COIN": {
+    "symbol": "COIN",
+    "status": "active",
+    "daily_quote_token_volume": 215975.934316,
+    "last_trade_price": 150.141,
+    "multiplier": "1.000000000000000000",
+    "market_id": 109
+  },
+  "MSFT": {
+    "symbol": "MSFT",
+    "status": "active",
+    "daily_quote_token_volume": 351613.603286,
+    "last_trade_price": 486.34,
+    "multiplier": "1.000000000000000000",
+    "market_id": 115
+  },
+  "AMD": {
+    "symbol": "AMD",
+    "status": "active",
+    "daily_quote_token_volume": 1279436.685577,
+    "last_trade_price": 479.12,
+    "multiplier": "1.000000000000000000",
+    "market_id": 138
+  },
+  "CRCL": {
+    "symbol": "CRCL",
+    "status": "active",
+    "daily_quote_token_volume": 2616990.771696,
+    "last_trade_price": 62.311,
+    "multiplier": "1.000000000000000000",
+    "market_id": 121
+  },
+  "ORCL": {
+    "symbol": "ORCL",
+    "status": "active",
+    "daily_quote_token_volume": 13904.793793,
+    "last_trade_price": 142.56,
+    "multiplier": "1.000000000000000000",
+    "market_id": 165
+  },
+  "HOOD": {
+    "symbol": "HOOD",
+    "status": "active",
+    "daily_quote_token_volume": 697322.323448,
+    "last_trade_price": 92.908,
+    "multiplier": "1.000000000000000000",
+    "market_id": 108
+  },
+  "MSTR": {
+    "symbol": "MSTR",
+    "status": "active",
+    "daily_quote_token_volume": 439125.360996,
+    "last_trade_price": 97.88,
+    "multiplier": "1.000000000000000000",
+    "market_id": 122
+  },
+  "AVGO": {
+    "symbol": "AVGO",
+    "status": "active",
+    "daily_quote_token_volume": 0,
+    "last_trade_price": 0,
+    "multiplier": "1.000000000000000000",
+    "market_id": 210
+  },
+  "NVDA": {
+    "symbol": "NVDA",
+    "status": "active",
+    "daily_quote_token_volume": 962899.488432,
+    "last_trade_price": 220.109,
+    "multiplier": "1.000000000000000000",
+    "market_id": 110
+  },
+  "GOOGL": {
+    "symbol": "GOOGL",
+    "status": "active",
+    "daily_quote_token_volume": 1193060.156192,
+    "last_trade_price": 364.82,
+    "multiplier": "1.000000000000000000",
+    "market_id": 116
+  }
+}

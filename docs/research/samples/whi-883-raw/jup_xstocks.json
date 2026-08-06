@@ -1,0 +1,138 @@
+{
+  "AMZN": {
+    "symbol": "AMZNx",
+    "id": "Xs3eBt7uRfJX8QUs4suhyU8p2M6DoUDrJyWBa8LLZsg",
+    "liquidity": 202288.1722464406,
+    "holderCount": 6229,
+    "mcap": 46735477.78431585,
+    "name": "Amazon xStock"
+  },
+  "GOOGL": {
+    "symbol": "GOOGLx",
+    "id": "XsCPL9dNWBMvFtTmwcCA5v3xWPSMEBCszbQdiLLq6aN",
+    "liquidity": 330254.5981763782,
+    "holderCount": 18363,
+    "mcap": 58340769.83462386,
+    "name": "Alphabet xStock"
+  },
+  "META": {
+    "symbol": "METAx",
+    "id": "Xsa62P5mvPszXL1krVUnU5ar38bBSVcWAB6fmPCo5Zu",
+    "liquidity": 46198.82975547185,
+    "holderCount": 5852,
+    "mcap": 42817305.52451856,
+    "name": "Meta xStock"
+  },
+  "AMD": {
+    "symbol": "AMDx",
+    "id": "XsXcJ6GZ9kVnjqGsjBnktRcuwMBmvKWh8S93RefZ1rF",
+    "liquidity": 1684.5052828286357,
+    "holderCount": 935,
+    "mcap": 35355407.95015343,
+    "name": "AMD xStock"
+  },
+  "PLTR": {
+    "symbol": "PLTRx",
+    "id": "XsoBhf2ufR8fTyNSjqfU71DYGaE6Z3SUGAidpzriAA4",
+    "liquidity": 54129.09349329666,
+    "holderCount": 1126,
+    "mcap": 23129194.53466861,
+    "name": "Palantir xStock"
+  },
+  "COIN": {
+    "symbol": "COINx",
+    "id": "Xs7ZdzSHLU9ftNJsii5fCeJhoRWSC32SQGzGQtePxNu",
+    "liquidity": 254691.28983205734,
+    "holderCount": 3750,
+    "mcap": 20474349.532971665,
+    "name": "Coinbase xStock"
+  },
+  "HOOD": {
+    "symbol": "HOODx",
+    "id": "XsvNBAYkrDRNhA7wPHQfX3ZUXZyZLdnCQDfHZ56bzpg",
+    "liquidity": 295070.8173457265,
+    "holderCount": 4562,
+    "mcap": 55280296.737502605,
+    "name": "Robinhood xStock"
+  },
+  "MSTR": {
+    "symbol": "MSTRx",
+    "id": "XsP7xzNPvEHS1m6qfanPUGjNmdnmsLKEoNAnHjdxxyZ",
+    "liquidity": 480750.3846390862,
+    "holderCount": 9068,
+    "mcap": 39175085.63077763,
+    "name": "MicroStrategy xStock"
+  },
+  "AVGO": {
+    "symbol": "AVGOx",
+    "id": "XsgSaSvNSqLTtFuyWPBhK9196Xb9Bbdyjj4fH3cPJGo",
+    "liquidity": 76144.87304341105,
+    "holderCount": 492,
+    "mcap": 19134219.175209127,
+    "name": "Broadcom xStock"
+  },
+  "ORCL": {
+    "symbol": "ORCLx",
+    "id": "XsjFwUPiLofddX5cWFHW35GCbXcSu1BCUGfxoQAQjeL",
+    "liquidity": 4281.26870994254,
+    "holderCount": 900,
+    "mcap": 12939494.0631071,
+    "name": "Oracle xStock"
+  },
+  "SPY": {
+    "symbol": "SPYx",
+    "id": "XsoCS1TfEyfFhfvj8EtZ528L3CaKBDBRqRapnBbDF2W",
+    "liquidity": 2532328.590828763,
+    "holderCount": 26652,
+    "mcap": 73790660.30795038,
+    "name": "SP500 xStock"
+  },
+  "QQQ": {
+    "symbol": "QQQx",
+    "id": "Xs8S1uUs1zvS2p7iwtsG3b6fkhpvmwz4GYU3gWAmWHZ",
+    "liquidity": 2041398.5897975015,
+    "holderCount": 9700,
+    "mcap": 60559885.65447488,
+    "name": "Nasdaq xStock"
+  },
+  "CRCL": {
+    "symbol": "CRCLx",
+    "id": "XsueG8BtpquVJX9LVLLEGuViXUungE6WmK5YZ3p3bd1",
+    "liquidity": 866513.7771244396,
+    "holderCount": 13062,
+    "mcap": 50859746.6831638,
+    "name": "Circle xStock"
+  },
+  "TSLA": {
+    "symbol": "TSLAx",
+    "id": "XsDoVfqeBukxuZHWhdvWHBhgEHjGNst4MLodqsJHzoB",
+    "liquidity": 669611.5290546437,
+    "holderCount": 28017,
+    "mcap": 73927495.023307,
+    "name": "Tesla xStock"
+  },
+  "NVDA": {
+    "symbol": "NVDAx",
+    "id": "Xsc9qvGR1efVDFGLrVsmkzv3qi45LTBjeUKSPmx9qEh",
+    "liquidity": 1855633.33672919,
+    "holderCount": 63314,
+    "mcap": 70606902.38886839,
+    "name": "NVIDIA xStock"
+  },
+  "AAPL": {
+    "symbol": "AAPLx",
+    "id": "XsbEhLAtcf6HdfpFZ5xEMdqW8nfAvcsP5bdudRLJzJp",
+    "liquidity": 83989.64181793614,
+    "holderCount": 15103,
+    "mcap": 48105035.712728694,
+    "name": "Apple xStock"
+  },
+  "MSFT": {
+    "symbol": "MSFTx",
+    "id": "XspzcW1PRtgf6Wj92HCiZdjzKCyFekVD8P5Ueh3dRMX",
+    "liquidity": 237842.6354588708,
+    "holderCount": 4906,
+    "mcap": 51277726.774306566,
+    "name": "Microsoft xStock"
+  }
+}

@@ -1,0 +1,176 @@
+# WHI-883 underlying × form × venue inventory
+# snapshot_date_utc: 2026-08-06
+# coverage_status (column status): live | live_thin | proxy | disabled | absent | absent_no_route | unverified
+# NOTE: column name `status` is coverage_status for inventory — NOT Quote.status (WHI-799 §6.1)
+# form vocabulary SSOT: WHI-798 §4.6
+# volume_or_liq_usd metric varies by venue (perp 24h quote / CEX turnover / pool 24h / Jupiter liq) — see evidence
+asset	form	form_class	venue	instrument_type	wire_symbol	status	volume_or_liq_usd	evidence	notes
+AMZN	perp	perp	binance	perp	AMZNUSDT	live	37350286.1289	GET fapi/v1/exchangeInfo+ticker/24hr TRADIFI_PERPETUAL	
+AMZN	perp	perp	bybit	perp	AMZNUSDT	live	3332083.4487	GET v5 instruments-info linear + tickers	
+AMZN	perp	perp	hyperliquid	perp	xyz:AMZN	live	20518569.524910003	POST info metaAndAssetCtxs dex=xyz (see hl_xyz_vol.json)	HIP-3; adapter wire xyz:TICKER; exact only if status=live
+AMZN	perp	perp	lighter	perp	AMZN	live	285813.4741	GET orderBookDetails (see lighter_equity_slim.json)	multiplier=1.000000000000000000
+AMZN	perp	perp	apex	perp	AMZN-USDT	live		GET /api/v3/symbols contractConfig.stockContract (see apex_equity_slim.json)	stockContract enableTrade=True
+AMZN	bstock	tokenized	binance	spot	AMZNBUSDT	live	144129.21953	GET api/v3/exchangeInfo+ticker/24hr	bStocks
+AMZN	bstock	tokenized	pancakeswap_bsc	spot	AMZNB	live	9731.3155157027	GeckoTerminal search/pools (gecko_pools.json)	dex=pancakeswap-v3-bsc id=bsc_0x7530beb7bde5843f668cf31b996fa1f748c9b6b1 tvl_usd=44648.2287
+AMZN	bstock	tokenized	tessera_bsc	spot	AMZNB	unverified		Tessera subset; no per-token address probe this pass	not absent
+AMZN	ondo	tokenized	pancakeswap_bsc	spot	AMZNon	unverified	153.8720619236	GeckoTerminal search/pools	dex=pancakeswap_v2 tvl=5882.203 id=bsc_0x8617ba6deee616694601adc41ab7ffe0e610907e — not adapter Pancake v3 path or non-USDT pairing risk
+AMZN	ondo	tokenized	tessera_bsc	spot	AMZNon	unverified		not in known Tessera live subset	
+AMZN	xstock_cex	tokenized	bybit	spot	AMZNXUSDT	live	455183.86795	GET v5 instruments-info spot	
+AMZN	xstock	tokenized	solana_mint	spot	AMZNx	live	202288.1722464406	Jupiter tokens/v2/search (jup_xstocks.json)	mint=Xs3eBt7uRfJX8QUs4suhyU8p2M6DoUDrJyWBa8LLZsg
+AMZN	xstock	tokenized	prop_amm_sol	spot	AMZNx	absent_no_route		Jupiter quote onlyDirectRoutes+dexes= (jup_prop_xstock_probes.json)	probed
+GOOGL	perp	perp	binance	perp	GOOGLUSDT	live	188376346.9918	GET fapi/v1/exchangeInfo+ticker/24hr TRADIFI_PERPETUAL	
+GOOGL	perp	perp	bybit	perp	GOOGLUSDT	live	11706652.7213	GET v5 instruments-info linear + tickers	
+GOOGL	perp	perp	hyperliquid	perp	xyz:GOOGL	live	84548432.91342	POST info metaAndAssetCtxs dex=xyz (see hl_xyz_vol.json)	HIP-3; adapter wire xyz:TICKER; exact only if status=live
+GOOGL	perp	perp	lighter	perp	GOOGL	live	1193060.156192	GET orderBookDetails (see lighter_equity_slim.json)	multiplier=1.000000000000000000
+GOOGL	perp	perp	apex	perp	GOOGL-USDT	live		GET /api/v3/symbols contractConfig.stockContract (see apex_equity_slim.json)	stockContract enableTrade=True
+GOOGL	bstock	tokenized	binance	spot	GOOGLBUSDT	live	1745101.17186	GET api/v3/exchangeInfo+ticker/24hr	bStocks
+GOOGL	bstock	tokenized	pancakeswap_bsc	spot	GOOGLB	live	72717.3652871559	GeckoTerminal search/pools (gecko_pools.json)	dex=pancakeswap-v3-bsc id=bsc_0x89001d846f7ca36ee089f73eefc25657e1798144 tvl_usd=109723.0158
+GOOGL	bstock	tokenized	tessera_bsc	spot	GOOGLB	unverified		Tessera subset; no per-token address probe this pass	not absent
+GOOGL	ondo	tokenized	pancakeswap_bsc	spot	GOOGLon	live	806.3974269177	GeckoTerminal search/pools	dex=pancakeswap-v3-bsc tvl=2194.0976 id=bsc_0x6731932c92e882cc22a10749324c70a7d6adde60
+GOOGL	ondo	tokenized	tessera_bsc	spot	GOOGLon	unverified		not in known Tessera live subset	
+GOOGL	xstock_cex	tokenized	bybit	spot	GOOGLXUSDT	live	1401119.70087	GET v5 instruments-info spot	
+GOOGL	xstock	tokenized	solana_mint	spot	GOOGLx	live	330254.5981763782	Jupiter tokens/v2/search (jup_xstocks.json)	mint=XsCPL9dNWBMvFtTmwcCA5v3xWPSMEBCszbQdiLLq6aN
+GOOGL	xstock	tokenized	prop_amm_sol	spot	GOOGLx	unverified		Not individually quote-probed this pass; AMZNx/NVDAx family samples NO_ROUTES — do not assume for thick mints (SPYx/QQQx) without probe	asset-first: keep row; do not Jupiter-poll until green
+META	perp	perp	binance	perp	METAUSDT	live	55074268.9234	GET fapi/v1/exchangeInfo+ticker/24hr TRADIFI_PERPETUAL	
+META	perp	perp	bybit	perp	METAUSDT	live	3892922.2565	GET v5 instruments-info linear + tickers	
+META	perp	perp	hyperliquid	perp	xyz:META	live	55123652.73855001	POST info metaAndAssetCtxs dex=xyz (see hl_xyz_vol.json)	HIP-3; adapter wire xyz:TICKER; exact only if status=live
+META	perp	perp	lighter	perp	META	live	261785.820297	GET orderBookDetails (see lighter_equity_slim.json)	multiplier=1.000000000000000000
+META	perp	perp	apex	perp	META-USDT	live		GET /api/v3/symbols contractConfig.stockContract (see apex_equity_slim.json)	stockContract enableTrade=True
+META	bstock	tokenized	binance	spot	METABUSDT	live	434756.0802	GET api/v3/exchangeInfo+ticker/24hr	bStocks
+META	bstock	tokenized	pancakeswap_bsc	spot	METAB	live	9574.4163007692	GeckoTerminal search/pools (gecko_pools.json)	dex=pancakeswap-v3-bsc id=bsc_0xc2151a561e928d16576d75ea88544543ac63d80b tvl_usd=45852.5043
+META	bstock	tokenized	tessera_bsc	spot	METAB	unverified		Tessera subset; no per-token address probe this pass	not absent
+META	ondo	tokenized	pancakeswap_bsc	spot	METAon	unverified	0.617788334	GeckoTerminal search/pools	dex=uniswap-v4-bsc tvl=153.8965 id=bsc_0xa00db4210e573410994faf5f45d83ac74e0d982d50dcf51b0e8c78f0ce9a7c6a — not adapter Pancake v3 path or non-USDT pairing risk
+META	ondo	tokenized	tessera_bsc	spot	METAon	unverified		not in known Tessera live subset	
+META	xstock_cex	tokenized	bybit	spot	METAXUSDT	live	193604.20441	GET v5 instruments-info spot	
+META	xstock	tokenized	solana_mint	spot	METAx	live	46198.82975547185	Jupiter tokens/v2/search (jup_xstocks.json)	mint=Xsa62P5mvPszXL1krVUnU5ar38bBSVcWAB6fmPCo5Zu
+META	xstock	tokenized	prop_amm_sol	spot	METAx	unverified		Not individually quote-probed this pass; AMZNx/NVDAx family samples NO_ROUTES — do not assume for thick mints (SPYx/QQQx) without probe	asset-first: keep row; do not Jupiter-poll until green
+AMD	perp	perp	binance	perp	AMDUSDT	live	128404440.4226	GET fapi/v1/exchangeInfo+ticker/24hr TRADIFI_PERPETUAL	
+AMD	perp	perp	bybit	perp	AMDSTOCKUSDT	live	7752704.6552	GET v5 instruments-info linear + tickers	Bybit linear AMDSTOCKUSDT
+AMD	perp	perp	hyperliquid	perp	xyz:AMD	live	96190314.71609	POST info metaAndAssetCtxs dex=xyz (see hl_xyz_vol.json)	HIP-3; adapter wire xyz:TICKER; exact only if status=live
+AMD	perp	perp	lighter	perp	AMD	live	1279436.685577	GET orderBookDetails (see lighter_equity_slim.json)	multiplier=1.000000000000000000
+AMD	perp	perp	apex	perp	AMD-USDT	live		GET /api/v3/symbols contractConfig.stockContract (see apex_equity_slim.json)	stockContract enableTrade=True
+AMD	bstock	tokenized	binance	spot	AMDBUSDT	live	4510893.0991	GET api/v3/exchangeInfo+ticker/24hr	bStocks
+AMD	bstock	tokenized	pancakeswap_bsc	spot	AMDB	unverified	0.09332830171	GeckoTerminal search/pools (gecko_pools.json)	dex=pancakeswap-infinity-clmm id=bsc_0xc02c97e897267ea363d3d22113e3d076f62c40d1c4725ee24c52d00121547d3d tvl_usd=0.00658006312191068 — not Pancake v3 Quoter path used by amm_pancakeswap adapter
+AMD	bstock	tokenized	tessera_bsc	spot	AMDB	unverified		Tessera subset; no per-token address probe this pass	not absent
+AMD	ondo	tokenized	pancakeswap_bsc	spot	AMDon	unverified		Ondo form not pinned this pass (Gecko miss/429)	asset-first: keep row
+AMD	ondo	tokenized	tessera_bsc	spot	AMDon	unverified		not in known Tessera live subset	
+AMD	xstock_cex	tokenized	bybit	spot	AMDXUSDT	absent		no Trading *X pair this pass	
+AMD	xstock	tokenized	solana_mint	spot	AMDx	live	1684.5052828286357	Jupiter tokens/v2/search (jup_xstocks.json)	mint=XsXcJ6GZ9kVnjqGsjBnktRcuwMBmvKWh8S93RefZ1rF
+AMD	xstock	tokenized	prop_amm_sol	spot	AMDx	unverified		Not individually quote-probed this pass; AMZNx/NVDAx family samples NO_ROUTES — do not assume for thick mints (SPYx/QQQx) without probe	asset-first: keep row; do not Jupiter-poll until green
+PLTR	perp	perp	binance	perp	PLTRUSDT	live	58491875.0439	GET fapi/v1/exchangeInfo+ticker/24hr TRADIFI_PERPETUAL	
+PLTR	perp	perp	bybit	perp	PLTRUSDT	live	4335692.4404	GET v5 instruments-info linear + tickers	
+PLTR	perp	perp	hyperliquid	perp	xyz:PLTR	live	23126019.919759993	POST info metaAndAssetCtxs dex=xyz (see hl_xyz_vol.json)	HIP-3; adapter wire xyz:TICKER; exact only if status=live
+PLTR	perp	perp	lighter	perp	PLTR	live	998371.70607	GET orderBookDetails (see lighter_equity_slim.json)	multiplier=1.000000000000000000
+PLTR	perp	perp	apex	perp	PLTR-USDT	live		GET /api/v3/symbols contractConfig.stockContract (see apex_equity_slim.json)	stockContract enableTrade=True
+PLTR	bstock	tokenized	binance	spot	PLTRBUSDT	live	312310.66512	GET api/v3/exchangeInfo+ticker/24hr	bStocks
+PLTR	bstock	tokenized	pancakeswap_bsc	spot	PLTRB	unverified	0.0	GeckoTerminal search/pools (gecko_pools.json)	dex=pancakeswap_v2 id=bsc_0xe0af5420ebc825d60df5bf7e1141dde172368860 tvl_usd=0.1746 — not Pancake v3 Quoter path used by amm_pancakeswap adapter
+PLTR	bstock	tokenized	tessera_bsc	spot	PLTRB	unverified		Tessera subset; no per-token address probe this pass	not absent
+PLTR	ondo	tokenized	pancakeswap_bsc	spot	PLTRon	unverified		Ondo form not pinned this pass (Gecko miss/429)	asset-first: keep row
+PLTR	ondo	tokenized	tessera_bsc	spot	PLTRon	unverified		not in known Tessera live subset	
+PLTR	xstock_cex	tokenized	bybit	spot	PLTRXUSDT	absent		no Trading *X pair this pass	
+PLTR	xstock	tokenized	solana_mint	spot	PLTRx	live	54129.09349329666	Jupiter tokens/v2/search (jup_xstocks.json)	mint=XsoBhf2ufR8fTyNSjqfU71DYGaE6Z3SUGAidpzriAA4
+PLTR	xstock	tokenized	prop_amm_sol	spot	PLTRx	unverified		Not individually quote-probed this pass; AMZNx/NVDAx family samples NO_ROUTES — do not assume for thick mints (SPYx/QQQx) without probe	asset-first: keep row; do not Jupiter-poll until green
+COIN	perp	perp	binance	perp	COINUSDT	live	27814465.0697	GET fapi/v1/exchangeInfo+ticker/24hr TRADIFI_PERPETUAL	
+COIN	perp	perp	bybit	perp	COINUSDT	live	2295481.2299	GET v5 instruments-info linear + tickers	
+COIN	perp	perp	hyperliquid	perp	xyz:COIN	live	7716131.0571099995	POST info metaAndAssetCtxs dex=xyz (see hl_xyz_vol.json)	HIP-3; adapter wire xyz:TICKER; exact only if status=live
+COIN	perp	perp	lighter	perp	COIN	live	215975.934316	GET orderBookDetails (see lighter_equity_slim.json)	multiplier=1.000000000000000000
+COIN	perp	perp	apex	perp	COIN-USDT	live		GET /api/v3/symbols contractConfig.stockContract (see apex_equity_slim.json)	stockContract enableTrade=True
+COIN	bstock	tokenized	binance	spot	COINBUSDT	live	647810.63862	GET api/v3/exchangeInfo+ticker/24hr	bStocks
+COIN	bstock	tokenized	pancakeswap_bsc	spot	COINB	unverified		Gecko 429 or no pool this pass	
+COIN	bstock	tokenized	tessera_bsc	spot	COINB	unverified		Tessera subset; no per-token address probe this pass	not absent
+COIN	ondo	tokenized	pancakeswap_bsc	spot	COINon	unverified	23.8880039128	GeckoTerminal search/pools	dex=pancakeswap-v3-bsc tvl=1241.2535 id=bsc_0x7de5f4a237315a7c8fd31974bb6603c1d965e9ac; gecko name appears BTC-quoted (比特币 / *on) — not USDT bStock-comparable
+COIN	ondo	tokenized	tessera_bsc	spot	COINon	unverified		not in known Tessera live subset	
+COIN	xstock_cex	tokenized	bybit	spot	COINXUSDT	live	1409494.59852	GET v5 instruments-info spot	
+COIN	xstock	tokenized	solana_mint	spot	COINx	live	254691.28983205734	Jupiter tokens/v2/search (jup_xstocks.json)	mint=Xs7ZdzSHLU9ftNJsii5fCeJhoRWSC32SQGzGQtePxNu
+COIN	xstock	tokenized	prop_amm_sol	spot	COINx	unverified		Not individually quote-probed this pass; AMZNx/NVDAx family samples NO_ROUTES — do not assume for thick mints (SPYx/QQQx) without probe	asset-first: keep row; do not Jupiter-poll until green
+HOOD	perp	perp	binance	perp	HOODUSDT	live	14363166.4733	GET fapi/v1/exchangeInfo+ticker/24hr TRADIFI_PERPETUAL	
+HOOD	perp	perp	bybit	perp	HOODUSDT	live	959717.9335	GET v5 instruments-info linear + tickers	
+HOOD	perp	perp	hyperliquid	perp	xyz:HOOD	live	6112186.296925999	POST info metaAndAssetCtxs dex=xyz (see hl_xyz_vol.json)	HIP-3; adapter wire xyz:TICKER; exact only if status=live
+HOOD	perp	perp	lighter	perp	HOOD	live	697322.323448	GET orderBookDetails (see lighter_equity_slim.json)	multiplier=1.000000000000000000
+HOOD	perp	perp	apex	perp	HOOD-USDT	live		GET /api/v3/symbols contractConfig.stockContract (see apex_equity_slim.json)	stockContract enableTrade=True
+HOOD	bstock	tokenized	binance	spot	HOODBUSDT	live	301965.52239	GET api/v3/exchangeInfo+ticker/24hr	bStocks
+HOOD	bstock	tokenized	pancakeswap_bsc	spot	HOODB	live	133486.893423186	GeckoTerminal search/pools (gecko_pools.json)	dex=pancakeswap-v3-bsc id=bsc_0xfeef70ff6f58f0a900e28a77e5a8945afb343923 tvl_usd=51455.2616
+HOOD	bstock	tokenized	tessera_bsc	spot	HOODB	unverified		Tessera subset; no per-token address probe this pass	not absent
+HOOD	ondo	tokenized	pancakeswap_bsc	spot	HOODon	unverified		Ondo form not pinned this pass (Gecko miss/429)	asset-first: keep row
+HOOD	ondo	tokenized	tessera_bsc	spot	HOODon	unverified		not in known Tessera live subset	
+HOOD	xstock_cex	tokenized	bybit	spot	HOODXUSDT	live	1079809.38403	GET v5 instruments-info spot	
+HOOD	xstock	tokenized	solana_mint	spot	HOODx	live	295070.8173457265	Jupiter tokens/v2/search (jup_xstocks.json)	mint=XsvNBAYkrDRNhA7wPHQfX3ZUXZyZLdnCQDfHZ56bzpg
+HOOD	xstock	tokenized	prop_amm_sol	spot	HOODx	unverified		Not individually quote-probed this pass; AMZNx/NVDAx family samples NO_ROUTES — do not assume for thick mints (SPYx/QQQx) without probe	asset-first: keep row; do not Jupiter-poll until green
+MSTR	perp	perp	binance	perp	MSTRUSDT	live	64974990.5286	GET fapi/v1/exchangeInfo+ticker/24hr TRADIFI_PERPETUAL	
+MSTR	perp	perp	bybit	perp	MSTRUSDT	live	9820257.9593	GET v5 instruments-info linear + tickers	
+MSTR	perp	perp	hyperliquid	perp	xyz:MSTR	live	10673421.814896	POST info metaAndAssetCtxs dex=xyz (see hl_xyz_vol.json)	HIP-3; adapter wire xyz:TICKER; exact only if status=live
+MSTR	perp	perp	lighter	perp	MSTR	live	439125.360996	GET orderBookDetails (see lighter_equity_slim.json)	multiplier=1.000000000000000000
+MSTR	perp	perp	apex	perp	MSTR-USDT	live		GET /api/v3/symbols contractConfig.stockContract (see apex_equity_slim.json)	stockContract enableTrade=True
+MSTR	bstock	tokenized	binance	spot	MSTRBUSDT	live	410052.33458	GET api/v3/exchangeInfo+ticker/24hr	bStocks
+MSTR	bstock	tokenized	pancakeswap_bsc	spot	MSTRB	unverified	157.3026820179	GeckoTerminal hit non-pancake or missing dex	dex=uniswap-v4-bsc id=bsc_0x3b8ff73d1bc5a29b11e073d386e34862559568ce98e2f6e2d27f55c645033363
+MSTR	bstock	tokenized	tessera_bsc	spot	MSTRB	unverified		Tessera subset; no per-token address probe this pass	not absent
+MSTR	ondo	tokenized	pancakeswap_bsc	spot	MSTRon	unverified		Ondo form not pinned this pass (Gecko miss/429)	asset-first: keep row
+MSTR	ondo	tokenized	tessera_bsc	spot	MSTRon	unverified		not in known Tessera live subset	
+MSTR	xstock_cex	tokenized	bybit	spot	MSTRXUSDT	absent		no Trading *X pair this pass	
+MSTR	xstock	tokenized	solana_mint	spot	MSTRx	live	480750.3846390862	Jupiter tokens/v2/search (jup_xstocks.json)	mint=XsP7xzNPvEHS1m6qfanPUGjNmdnmsLKEoNAnHjdxxyZ
+MSTR	xstock	tokenized	prop_amm_sol	spot	MSTRx	unverified		Not individually quote-probed this pass; AMZNx/NVDAx family samples NO_ROUTES — do not assume for thick mints (SPYx/QQQx) without probe	asset-first: keep row; do not Jupiter-poll until green
+AVGO	perp	perp	binance	perp	AVGOUSDT	live	8605648.7567	GET fapi/v1/exchangeInfo+ticker/24hr TRADIFI_PERPETUAL	
+AVGO	perp	perp	bybit	perp	AVGOUSDT	live	544055.1079	GET v5 instruments-info linear + tickers	
+AVGO	perp	perp	hyperliquid	perp	xyz:AVGO	live	3047760.9520000005	POST info metaAndAssetCtxs dex=xyz (see hl_xyz_vol.json)	HIP-3; adapter wire xyz:TICKER; exact only if status=live
+AVGO	perp	perp	lighter	perp	AVGO	live_thin	0	GET orderBookDetails (see lighter_equity_slim.json)	multiplier=1.000000000000000000; daily_quote≈0
+AVGO	perp	perp	apex	perp	AVGO-USDT	live		GET /api/v3/symbols contractConfig.stockContract (see apex_equity_slim.json)	stockContract enableTrade=True
+AVGO	bstock	tokenized	binance	spot	AVGOBUSDT	live	295588.70885	GET api/v3/exchangeInfo+ticker/24hr	bStocks
+AVGO	bstock	tokenized	pancakeswap_bsc	spot	AVGOB	unverified	0.0	GeckoTerminal search/pools (gecko_pools.json)	dex=pancakeswap_v2 id=bsc_0x3ea169c878d73e12c1fb67b8827a9a74c4b6fc6d tvl_usd=0.2347 — not Pancake v3 Quoter path used by amm_pancakeswap adapter
+AVGO	bstock	tokenized	tessera_bsc	spot	AVGOB	unverified		Tessera subset; no per-token address probe this pass	not absent
+AVGO	ondo	tokenized	pancakeswap_bsc	spot	AVGOon	unverified		Ondo form not pinned this pass (Gecko miss/429)	asset-first: keep row
+AVGO	ondo	tokenized	tessera_bsc	spot	AVGOon	unverified		not in known Tessera live subset	
+AVGO	xstock_cex	tokenized	bybit	spot	AVGOXUSDT	absent		no Trading *X pair this pass	
+AVGO	xstock	tokenized	solana_mint	spot	AVGOx	live	76144.87304341105	Jupiter tokens/v2/search (jup_xstocks.json)	mint=XsgSaSvNSqLTtFuyWPBhK9196Xb9Bbdyjj4fH3cPJGo
+AVGO	xstock	tokenized	prop_amm_sol	spot	AVGOx	unverified		Not individually quote-probed this pass; AMZNx/NVDAx family samples NO_ROUTES — do not assume for thick mints (SPYx/QQQx) without probe	asset-first: keep row; do not Jupiter-poll until green
+ORCL	perp	perp	binance	perp	ORCLUSDT	live	28295891.9866	GET fapi/v1/exchangeInfo+ticker/24hr TRADIFI_PERPETUAL	
+ORCL	perp	perp	bybit	perp	ORCLUSDT	live	1594971.8359	GET v5 instruments-info linear + tickers	
+ORCL	perp	perp	hyperliquid	perp	xyz:ORCL	live	20128176.157970004	POST info metaAndAssetCtxs dex=xyz (see hl_xyz_vol.json)	HIP-3; adapter wire xyz:TICKER; exact only if status=live
+ORCL	perp	perp	lighter	perp	ORCL	live	13904.793793	GET orderBookDetails (see lighter_equity_slim.json)	multiplier=1.000000000000000000
+ORCL	perp	perp	apex	perp	ORCL-USDT	disabled		GET /api/v3/symbols contractConfig.stockContract (see apex_equity_slim.json)	stockContract enableTrade=False
+ORCL	bstock	tokenized	binance	spot	ORCLBUSDT	live	526179.47636	GET api/v3/exchangeInfo+ticker/24hr	bStocks
+ORCL	bstock	tokenized	pancakeswap_bsc	spot	ORCLB	live	1845.3215510642	GeckoTerminal search/pools (gecko_pools.json)	dex=pancakeswap-v3-bsc id=bsc_0xd5558acff19b7b0c96bdc8fb22c66c06ee17eeaa tvl_usd=2070.6956
+ORCL	bstock	tokenized	tessera_bsc	spot	ORCLB	unverified		Tessera subset; no per-token address probe this pass	not absent
+ORCL	ondo	tokenized	pancakeswap_bsc	spot	ORCLon	unverified		Ondo form not pinned this pass (Gecko miss/429)	asset-first: keep row
+ORCL	ondo	tokenized	tessera_bsc	spot	ORCLon	unverified		not in known Tessera live subset	
+ORCL	xstock_cex	tokenized	bybit	spot	ORCLXUSDT	absent		no Trading *X pair this pass	
+ORCL	xstock	tokenized	solana_mint	spot	ORCLx	live	4281.26870994254	Jupiter tokens/v2/search (jup_xstocks.json)	mint=XsjFwUPiLofddX5cWFHW35GCbXcSu1BCUGfxoQAQjeL
+ORCL	xstock	tokenized	prop_amm_sol	spot	ORCLx	unverified		Not individually quote-probed this pass; AMZNx/NVDAx family samples NO_ROUTES — do not assume for thick mints (SPYx/QQQx) without probe	asset-first: keep row; do not Jupiter-poll until green
+SPY	perp	perp	binance	perp	SPYUSDT	live	65895214.6232	GET fapi/v1/exchangeInfo+ticker/24hr TRADIFI_PERPETUAL	
+SPY	perp	perp	bybit	perp	SPYUSDT	live	2866991.8499	GET v5 instruments-info linear + tickers	
+SPY	perp	perp	lighter	perp	SPY	live	3536576.025837	GET orderBookDetails (see lighter_equity_slim.json)	multiplier=1.000000000000000000
+SPY	perp	perp	apex	perp	SPY-USDT	live		GET /api/v3/symbols contractConfig.stockContract (see apex_equity_slim.json)	stockContract enableTrade=True
+SPY	perp	perp	hyperliquid	perp	xyz:SP500	proxy		POST info metaAndAssetCtxs dex=xyz (hl_xyz_vol.json)	NO exact xyz:SPY — proxy index only; do not map as SPY
+SPY	bstock	tokenized	binance	spot	SPYBUSDT	live	1537868.44332	GET api/v3/exchangeInfo+ticker/24hr	bStocks
+SPY	bstock	tokenized	pancakeswap_bsc	spot	SPYB	live	10220214.4207579	GeckoTerminal search/pools (gecko_pools.json)	dex=pancakeswap-v3-bsc id=bsc_0x7aa6d92fc369a8c1edc631a3aac44efb0808ddbf tvl_usd=791541.7241
+SPY	bstock	tokenized	tessera_bsc	spot	SPYB	unverified		Tessera subset; no per-token address probe this pass	not absent
+SPY	ondo	tokenized	pancakeswap_bsc	spot	SPYon	live	648.9980415337	GeckoTerminal search/pools	dex=pancakeswap-v3-bsc tvl=1061.2336 id=bsc_0x3b31ad84092cefefc71f71a8f84aace37aca3ee1
+SPY	ondo	tokenized	tessera_bsc	spot	SPYon	unverified		not in known Tessera live subset	
+SPY	xstock_cex	tokenized	bybit	spot	SPYXUSDT	absent		no Trading *X pair this pass	
+SPY	xstock	tokenized	solana_mint	spot	SPYx	live	2532328.590828763	Jupiter tokens/v2/search (jup_xstocks.json)	mint=XsoCS1TfEyfFhfvj8EtZ528L3CaKBDBRqRapnBbDF2W
+SPY	xstock	tokenized	prop_amm_sol	spot	SPYx	unverified		Not individually quote-probed this pass; AMZNx/NVDAx family samples NO_ROUTES — do not assume for thick mints (SPYx/QQQx) without probe	asset-first: keep row; do not Jupiter-poll until green
+QQQ	perp	perp	binance	perp	QQQUSDT	live	219437777.5054	GET fapi/v1/exchangeInfo+ticker/24hr TRADIFI_PERPETUAL	
+QQQ	perp	perp	bybit	perp	QQQUSDT	live	9878889.4874	GET v5 instruments-info linear + tickers	
+QQQ	perp	perp	lighter	perp	QQQ	live	2322440.43298	GET orderBookDetails (see lighter_equity_slim.json)	multiplier=1.000000000000000000
+QQQ	perp	perp	apex	perp	QQQ-USDT	live		GET /api/v3/symbols contractConfig.stockContract (see apex_equity_slim.json)	stockContract enableTrade=True
+QQQ	perp	perp	hyperliquid	perp	xyz:XYZ100	proxy		POST info metaAndAssetCtxs dex=xyz (hl_xyz_vol.json)	NO exact xyz:QQQ — proxy only; do not map as QQQ
+QQQ	bstock	tokenized	binance	spot	QQQBUSDT	live	3271002.79694	GET api/v3/exchangeInfo+ticker/24hr	bStocks
+QQQ	bstock	tokenized	pancakeswap_bsc	spot	QQQB	live	72384228.7334357	GeckoTerminal search/pools (gecko_pools.json)	dex=pancakeswap-v3-bsc id=bsc_0xe531fcb1f5a195de7608b9f4f9518544c2cdb693 tvl_usd=2039444.1685
+QQQ	bstock	tokenized	tessera_bsc	spot	QQQB	live		Kyber includedSources=tessera (QQQB: kyber_tessera_probes.json 2026-08-06; NVDAB: WHI-798)	
+QQQ	ondo	tokenized	pancakeswap_bsc	spot	QQQon	unverified		Ondo form not pinned this pass (Gecko miss/429)	asset-first: keep row
+QQQ	ondo	tokenized	tessera_bsc	spot	QQQon	unverified		not in known Tessera live subset	
+QQQ	xstock_cex	tokenized	bybit	spot	QQQXUSDT	absent		no Trading *X pair this pass	
+QQQ	xstock	tokenized	solana_mint	spot	QQQx	live	2041398.5897975015	Jupiter tokens/v2/search (jup_xstocks.json)	mint=Xs8S1uUs1zvS2p7iwtsG3b6fkhpvmwz4GYU3gWAmWHZ
+QQQ	xstock	tokenized	prop_amm_sol	spot	QQQx	unverified		Not individually quote-probed this pass; AMZNx/NVDAx family samples NO_ROUTES — do not assume for thick mints (SPYx/QQQx) without probe	asset-first: keep row; do not Jupiter-poll until green
+CRCL	perp	perp	binance	perp	CRCLUSDT	live	380859437.6161	GET fapi/v1/exchangeInfo+ticker/24hr TRADIFI_PERPETUAL	
+CRCL	perp	perp	bybit	perp	CRCLUSDT	live	25342791.0707	GET v5 instruments-info linear + tickers	
+CRCL	perp	perp	hyperliquid	perp	xyz:CRCL	live	95186137.805762	POST info metaAndAssetCtxs dex=xyz (see hl_xyz_vol.json)	HIP-3; adapter wire xyz:TICKER; exact only if status=live
+CRCL	perp	perp	lighter	perp	CRCL	live	2616990.771696	GET orderBookDetails (see lighter_equity_slim.json)	multiplier=1.000000000000000000
+CRCL	perp	perp	apex	perp	CRCL-USDT	live		GET /api/v3/symbols contractConfig.stockContract (see apex_equity_slim.json)	stockContract enableTrade=True
+CRCL	bstock	tokenized	binance	spot	CRCLBUSDT	live	22033323.71	GET api/v3/exchangeInfo+ticker/24hr	bStocks
+CRCL	bstock	tokenized	pancakeswap_bsc	spot	CRCLB	unverified		Gecko 429 or no pool this pass	
+CRCL	bstock	tokenized	tessera_bsc	spot	CRCLB	unverified		Tessera subset; no per-token address probe this pass	not absent
+CRCL	ondo	tokenized	pancakeswap_bsc	spot	CRCLon	unverified	1452.1639941691	GeckoTerminal search/pools	dex=pancakeswap-v3-bsc tvl=2913.4561 id=bsc_0xc1d141d6a9f8e8eb7b9ce1aecd4a8932f047c075; gecko name appears BTC-quoted (比特币 / *on) — not USDT bStock-comparable
+CRCL	ondo	tokenized	tessera_bsc	spot	CRCLon	unverified		not in known Tessera live subset	
+CRCL	xstock_cex	tokenized	bybit	spot	CRCLXUSDT	live	3495516.50358	GET v5 instruments-info spot	
+CRCL	xstock	tokenized	solana_mint	spot	CRCLx	live	866513.7771244396	Jupiter tokens/v2/search (jup_xstocks.json)	mint=XsueG8BtpquVJX9LVLLEGuViXUungE6WmK5YZ3p3bd1
+CRCL	xstock	tokenized	prop_amm_sol	spot	CRCLx	unverified		Not individually quote-probed this pass; AMZNx/NVDAx family samples NO_ROUTES — do not assume for thick mints (SPYx/QQQx) without probe	asset-first: keep row; do not Jupiter-poll until green

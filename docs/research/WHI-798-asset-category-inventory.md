@@ -244,7 +244,7 @@ v1 从「预设 venue 集合的交集」出发，交集为空即降级——被�
 
 主题：成交集中在 **AI/半导体（NVDA、MU、SNDK、SKHY、NBIS）+ SpaceX + Tesla + Circle + QQQ**；同一 underlying 普遍有 3–4 个表示（SK Hynix 四重：SKHYB/SKHY/SKHYx/SKHYon，均 2026-07-10 IPO 日发行）。榜单会快速轮动（bStocks 上线不足 2 月即登顶），清单需周期性重扫。
 
-### 4.3 逐资产 venue 支持矩阵（tokenized 现货，live 验证 2026-08-03）
+### 4.3 逐资产 venue 支持矩阵（tokenized 现货，live 验证 2026-08-03；**AMD 行 2026-08-06 WHI-883 补丁**）
 
 图例：✅ live 验证有交易对 · ⛔ live 验证无 · ─ 不适用。venue 集合 = §2.1。
 （Binance spot = `*B`USDT 符号 status TRADING；Pancake = GeckoTerminal 有活跃 v3 池；Tessera BSC = KyberSwap `includedSources=tessera` 有直连报价；Bybit spot = `*X`USDT Trading；Sol xStocks mint 见 v1 数据 + samples TSV）
@@ -253,7 +253,7 @@ v1 从「预设 venue 集合的交集」出发，交集为空即降级——被�
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | Invesco QQQ | QQQB | ✅ | ✅（24h ~$23M） | **✅ 直连** | — | ⛔ | ⛔ | QQQx `Xs8S…WHZ` | ⛔ |
 | SpaceX | SPCXB | ✅ | ✅（~$10M） | **✅ 直连** | — | ⛔ | ✅ `SPCXXUSDT` | SPCXx | ⛔ |
-| NVIDIA | NVDAB | ✅ | ✅（~$12M） | **✅ 直连** | NVDAon（BSC/ETH/Sol） | ✅ NVDAon 池 | ✅ `NVDAXUSDT` | NVDAx `Xsc9…qEh` | ⛔（复测） |
+| NVIDIA | NVDAB | ✅ | ✅（~$12M；**WHI-883 注**：2026-08-06 Gecko 顶池为 NVDAB/**GPU** 非 USDT，Phase-1 NVDAB/USDT 池未在该日复钉） | **✅ 直连** | NVDAon（BSC/ETH/Sol） | ✅ NVDAon 池 | ✅ `NVDAXUSDT` | NVDAx `Xsc9…qEh` | ⛔（复测 HumidiFi；其它 prop 见 WHI-883） |
 | SK Hynix | SKHYB | ✅ | ✅ | ⛔（4000） | SKHYon | ⛔ | ⛔ | SKHYx | ⛔ |
 | Micron | MUB | ✅ | ✅ | ⛔ | MUon | 未验证 | ⛔ | — | ⛔ |
 | SanDisk | SNDKB | ✅ | ✅ | ⛔ | SNDKon | ⛔ | ⛔ | SNDK（Backpack） | ⛔ |
@@ -268,6 +268,7 @@ v1 从「预设 venue 集合的交集」出发，交集为空即降级——被�
 | Strategy (MSTR) | MSTRB | ✅ | 未验证 | 未验证 | — | 未验证 | ⛔ | MSTRx `XsP7…xyZ` | ⛔ |
 | Microsoft | MSFTB | ✅ | 未验证 | 未验证 | — | 未验证 | ⛔ | MSFTx `Xspz…RMX` | ⛔ |
 | SPDR S&P 500 | SPYB | ✅ | 未验证 | 未验证 | SPYon | 未验证 | ⛔ | SPYx `XsoC…F2W` | ⛔ |
+| **AMD（v2 无 *B；[WHI-883](./WHI-883-high-volume-stock-underlying-survey.md) 2026-08-06 修正）** | **AMDB** | **✅ AMDBUSDT** | 薄/非 v3 路径 | unverified | unverified | unverified | ⛔ 无 `*X` | AMDx（薄） | **unverified**（未 quote 探测；勿写 ⛔） |
 | Nebius | NBISB | ✅ | ✅ | 未验证 | NBISon | 未验证 | ⛔ | — | ⛔ |
 | McDonald's | MCDB？ | 未验证 | 未验证 | 未验证 | — | 未验证 | ✅ `MCDXUSDT` | MCDx | ⛔ |
 
@@ -298,7 +299,7 @@ v1 从「预设 venue 集合的交集」出发，交集为空即降级——被�
 | **P1** | 跨发行方基差（同 underlying 不同表示） | NVDA（NVDAB/NVDAx/NVDAon）、TSLA（TSLAB/TSLAx/TSLAon） | 各表示所在 venue |
 | **P1** | xStocks 路径 | TSLAx、NVDAx、AAPLx、CRCLx… | Bybit `*X` spot + Solana（Jupiter 公共 DEX；无 prop） |
 | **P1-lite** | ETF：tokenized vs perp 跨形态 | QQQ（QQQB ↔ QQQ perp）、SPY（SPYB ↔ SPY perp） | BSC 三方 + BN/BY/Lighter/ApeX perp；HL 仅 proxy |
-| **P2** | 扩展 mega-cap | AMZN、GOOGL、META、COIN、HOOD、MSTR、CRCL、PLTR、AMD | 视表示可用性 |
+| **P2** | 扩展 mega-cap | AMZN、GOOGL、META、COIN、HOOD、MSTR、CRCL、PLTR、AMD | 视表示可用性；**执行优先级与 2026-08-06 live 证据见 [WHI-883](./WHI-883-high-volume-stock-underlying-survey.md) §5**（CRCL/GOOGL/AMD… 升 P0） |
 | **排除** | pre-IPO SPV（PreStocks 等） | — | 非发行方授权，SEC 点名 |
 
 **对 WHI-810 的直接影响**：v1 交接语「prop 不在架、tokenized 不含 Binance `*B`」作废；新 P0 以 bStocks 三方对比为核心，配套需要 KyberSwap adapter（与 WHI-806 共用）。
@@ -477,13 +478,16 @@ SSOT 落地位置：`spread_compare/assets.py`（实现 issue [WHI-881](https://
 
 #### 6.2.2 规划名单（v2 P1/P2 — **不得静默删除**）
 
-下列 underlying 在 §4.3/§4.4 已有 live 证据，**尚未**全部进 Phase-1 fan-out；catalog / survey（WHI-883）必须沿用 §4.6 form 表收录，不得因「不在 §6.2.1」而从 inventory 消失：
+下列 underlying 在 §4.3/§4.4 已有 live 证据，**尚未**全部进 Phase-1 fan-out；catalog / survey 必须沿用 §4.6 form 表收录，不得因「不在 §6.2.1」而从 inventory 消失。
+
+> **2026-08-06 live 扩容调研**：[WHI-883](./WHI-883-high-volume-stock-underlying-survey.md) + [`samples/WHI-883-underlying-form-venue-matrix.tsv`](./samples/WHI-883-underlying-form-venue-matrix.tsv)。  
+> 该文给出 **P0/P1 切割**、丢弃「≥3 venues」硬阈值的理由、以及 Jupiter Free-plan 预算结论（xStocks **勿**进 poller）。下表保留 v2 规划语义；**执行优先级以 WHI-883 §5 为准**。
 
 | 优先级 | Underlyings | 备注 |
 | --- | --- | --- |
-| P1 跨 form / xStocks | TSLA（扩 bstock/ondo/xstock）、CRCL、… + Bybit `*X` 全集 | §4.5 |
-| P1-lite ETF | **SPY**（`bstock` SPYB；perp 四 venue；HL proxy-only）、QQQ perp（上表 📗） | 勿实现假 `xyz:SPY`/`xyz:QQQ` |
-| P2 mega-cap | AMZN、GOOGL、META、COIN、HOOD、MSTR、CRCL、PLTR、AMD（BY=`AMDSTOCKUSDT`） | §4.4/§4.5 |
+| P1 跨 form / xStocks | TSLA（扩 bstock/ondo/xstock）、CRCL、… + Bybit `*X` 全集 | §4.5；CRCL 在 WHI-883 升为 **P0** |
+| P1-lite ETF | **SPY**（`bstock` SPYB；perp 四 venue；HL proxy-only）、QQQ perp（上表 📗） | 勿实现假 `xyz:SPY`/`xyz:QQQ`；WHI-883 将 SPY 与 QQQ perp 扩容列入 P0 |
+| P2 mega-cap → **见 WHI-883 P0/P1** | AMZN、GOOGL、META、COIN、HOOD、MSTR、PLTR、AMD（BY=`AMDSTOCKUSDT`）、AVGO、ORCL | WHI-883 重扫：AMD **现有** `AMDBUSDT` bStock（修正 §4.3 旧「无 *B」） |
 
 #### 6.2.3 旧表对照（v2 兼容阅读）
 
@@ -536,9 +540,11 @@ Catalogued, not yet fan-out (📗/📌 — do NOT drop; coverage=unverified / no
   TSLA × bstock (BN+Pancake live per §4.3; Tessera ⛔)
   QQQ × perp (BN/BY/Lighter/ApeX live per §4.4; HL proxy-only)
 
-Planned underlyings (v2 §4.5 — keep in roadmap; expand via WHI-883 using §4.6 forms):
-  P1 / P1-lite: SPY, CRCL, … + full Bybit *X set
-  P2: AMZN, GOOGL, META, COIN, HOOD, MSTR, PLTR, AMD (BY=AMDSTOCKUSDT)
+Planned underlyings — **live survey 2026-08-06**: [WHI-883](./WHI-883-high-volume-stock-underlying-survey.md) §5
+  P0 add: CRCL, GOOGL, AMD, PLTR, META, AMZN, SPY, MSTR (+ QQQ perp expand)
+  P1: COIN, HOOD, ORCL, AVGO
+  Quirks: BY AMD=AMDSTOCKUSDT; HL no exact SPY/QQQ; ApeX ORCL enableTrade=false
+  Budget: do NOT Jupiter-poll Sol xStocks (prop NO_ROUTES; WHI-864)
 排除: pre-IPO SPV (PreStocks/Jarsy)
 ```
 
@@ -641,3 +647,4 @@ P2: JUP, venue-specific high-vol (HYPE, PUMP) — flagged
 | 2026-08-06 | **v3 / WHI-880**：underlying-first；§1.2 / §4.6 form 分类法；§6.2 改为 underlying×form×venue；§7.2 与下游交接更新；legacy id breaking rename 表；Q17/Q18 |
 | 2026-08-06 | Review r1：§ 编号修正（修订记录在 §11 后）；覆盖图例拆分；恢复 P1/P2 名单；修正 §6.2.1 与 §4.3 live 证据对齐 |
 | 2026-08-06 | Review r2：补 AAPL/MSFT `bstock`（及 AAPL `ondo`）📗/📌 行；交接交叉引用 §6.2.2 |
+| 2026-08-06 | **WHI-883**：companion survey 落地；§6.2.2 / §4.5 / §7.2 指针；§4.3 AMD 增 `AMDB` 行（08-06 live）；`samples/WHI-798-asset-venue-matrix.tsv` AMD 行同步。完整 underlying×form×venue 表见 [WHI-883](./WHI-883-high-volume-stock-underlying-survey.md) |

@@ -1,0 +1,25 @@
+{
+  "date_utc": "2026-08-06",
+  "method": "GET lite-api.jup.ag/swap/v1/quote onlyDirectRoutes=true amount=100e6 USDC",
+  "probes": [
+    {
+      "mint": "Xs3eBt7uRfJX8QUs4suhyU8p2M6DoUDrJyWBa8LLZsg",
+      "symbol": "AMZNx",
+      "dexes": [
+        "HumidiFi",
+        "TesseraV",
+        "BisonFi"
+      ],
+      "result": "NO_ROUTES_FOUND"
+    },
+    {
+      "mint": "Xsc9qvGR1efVDFGLrVsmkzv3qi45LTBjeUKSPmx9qEh",
+      "symbol": "NVDAx",
+      "dexes": [
+        "HumidiFi"
+      ],
+      "result": "NO_ROUTES_FOUND"
+    }
+  ],
+  "note": "Other xStocks not individually probed \u2014 mark unverified not absent_no_route"
+}

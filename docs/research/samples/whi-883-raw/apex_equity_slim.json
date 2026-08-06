@@ -1,0 +1,138 @@
+{
+  "SPY": {
+    "crossSymbolName": "SPYUSDT",
+    "symbol": "SPY-USDT",
+    "enableTrade": true,
+    "enableOpenPosition": true,
+    "enableDisplay": true,
+    "contractType": "STOCK_CONTRACT"
+  },
+  "QQQ": {
+    "crossSymbolName": "QQQUSDT",
+    "symbol": "QQQ-USDT",
+    "enableTrade": true,
+    "enableOpenPosition": true,
+    "enableDisplay": true,
+    "contractType": "STOCK_CONTRACT"
+  },
+  "AAPL": {
+    "crossSymbolName": "AAPLUSDT",
+    "symbol": "AAPL-USDT",
+    "enableTrade": true,
+    "enableOpenPosition": true,
+    "enableDisplay": true,
+    "contractType": "STOCK_CONTRACT"
+  },
+  "TSLA": {
+    "crossSymbolName": "TSLAUSDT",
+    "symbol": "TSLA-USDT",
+    "enableTrade": true,
+    "enableOpenPosition": true,
+    "enableDisplay": true,
+    "contractType": "STOCK_CONTRACT"
+  },
+  "AMZN": {
+    "crossSymbolName": "AMZNUSDT",
+    "symbol": "AMZN-USDT",
+    "enableTrade": true,
+    "enableOpenPosition": true,
+    "enableDisplay": true,
+    "contractType": "STOCK_CONTRACT"
+  },
+  "NVDA": {
+    "crossSymbolName": "NVDAUSDT",
+    "symbol": "NVDA-USDT",
+    "enableTrade": true,
+    "enableOpenPosition": true,
+    "enableDisplay": true,
+    "contractType": "STOCK_CONTRACT"
+  },
+  "GOOGL": {
+    "crossSymbolName": "GOOGLUSDT",
+    "symbol": "GOOGL-USDT",
+    "enableTrade": true,
+    "enableOpenPosition": true,
+    "enableDisplay": true,
+    "contractType": "STOCK_CONTRACT"
+  },
+  "META": {
+    "crossSymbolName": "METAUSDT",
+    "symbol": "META-USDT",
+    "enableTrade": true,
+    "enableOpenPosition": true,
+    "enableDisplay": true,
+    "contractType": "STOCK_CONTRACT"
+  },
+  "MSFT": {
+    "crossSymbolName": "MSFTUSDT",
+    "symbol": "MSFT-USDT",
+    "enableTrade": true,
+    "enableOpenPosition": true,
+    "enableDisplay": true,
+    "contractType": "STOCK_CONTRACT"
+  },
+  "MSTR": {
+    "crossSymbolName": "MSTRUSDT",
+    "symbol": "MSTR-USDT",
+    "enableTrade": true,
+    "enableOpenPosition": true,
+    "enableDisplay": true,
+    "contractType": "STOCK_CONTRACT"
+  },
+  "COIN": {
+    "crossSymbolName": "COINUSDT",
+    "symbol": "COIN-USDT",
+    "enableTrade": true,
+    "enableOpenPosition": true,
+    "enableDisplay": true,
+    "contractType": "STOCK_CONTRACT"
+  },
+  "CRCL": {
+    "crossSymbolName": "CRCLUSDT",
+    "symbol": "CRCL-USDT",
+    "enableTrade": true,
+    "enableOpenPosition": true,
+    "enableDisplay": true,
+    "contractType": "STOCK_CONTRACT"
+  },
+  "HOOD": {
+    "crossSymbolName": "HOODUSDT",
+    "symbol": "HOOD-USDT",
+    "enableTrade": true,
+    "enableOpenPosition": true,
+    "enableDisplay": true,
+    "contractType": "STOCK_CONTRACT"
+  },
+  "ORCL": {
+    "crossSymbolName": "ORCLUSDT",
+    "symbol": "ORCL-USDT",
+    "enableTrade": false,
+    "enableOpenPosition": false,
+    "enableDisplay": false,
+    "contractType": "STOCK_CONTRACT"
+  },
+  "PLTR": {
+    "crossSymbolName": "PLTRUSDT",
+    "symbol": "PLTR-USDT",
+    "enableTrade": true,
+    "enableOpenPosition": true,
+    "enableDisplay": true,
+    "contractType": "STOCK_CONTRACT"
+  },
+  "AMD": {
+    "crossSymbolName": "AMDUSDT",
+    "symbol": "AMD-USDT",
+    "enableTrade": true,
+    "enableOpenPosition": true,
+    "enableDisplay": true,
+    "contractType": "STOCK_CONTRACT"
+  },
+  "AVGO": {
+    "crossSymbolName": "AVGOUSDT",
+    "symbol": "AVGO-USDT",
+    "enableTrade": true,
+    "enableOpenPosition": true,
+    "enableDisplay": true,
+    "contractType": "STOCK_CONTRACT"
+  }
+}
