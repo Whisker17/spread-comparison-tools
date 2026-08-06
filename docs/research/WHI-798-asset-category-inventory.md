@@ -268,6 +268,7 @@ v1 从「预设 venue 集合的交集」出发，交集为空即降级——被�
 | Strategy (MSTR) | MSTRB | ✅ | 未验证 | 未验证 | — | 未验证 | ⛔ | MSTRx `XsP7…xyZ` | ⛔ |
 | Microsoft | MSFTB | ✅ | 未验证 | 未验证 | — | 未验证 | ⛔ | MSFTx `Xspz…RMX` | ⛔ |
 | SPDR S&P 500 | SPYB | ✅ | 未验证 | 未验证 | SPYon | 未验证 | ⛔ | SPYx `XsoC…F2W` | ⛔ |
+| **AMD（v2 无 *B；[WHI-883](./WHI-883-high-volume-stock-underlying-survey.md) 2026-08-06 修正）** | **AMDB** | **✅ AMDBUSDT** | 薄/异常池 | unverified | unverified | unverified | ⛔ 无 `*X` | AMDx（薄） | ⛔ |
 | Nebius | NBISB | ✅ | ✅ | 未验证 | NBISon | 未验证 | ⛔ | — | ⛔ |
 | McDonald's | MCDB？ | 未验证 | 未验证 | 未验证 | — | 未验证 | ✅ `MCDXUSDT` | MCDx | ⛔ |
 
@@ -477,13 +478,16 @@ SSOT 落地位置：`spread_compare/assets.py`（实现 issue [WHI-881](https://
 
 #### 6.2.2 规划名单（v2 P1/P2 — **不得静默删除**）
 
-下列 underlying 在 §4.3/§4.4 已有 live 证据，**尚未**全部进 Phase-1 fan-out；catalog / survey（WHI-883）必须沿用 §4.6 form 表收录，不得因「不在 §6.2.1」而从 inventory 消失：
+下列 underlying 在 §4.3/§4.4 已有 live 证据，**尚未**全部进 Phase-1 fan-out；catalog / survey 必须沿用 §4.6 form 表收录，不得因「不在 §6.2.1」而从 inventory 消失。
+
+> **2026-08-06 live 扩容调研**：[WHI-883](./WHI-883-high-volume-stock-underlying-survey.md) + [`samples/WHI-883-underlying-form-venue-matrix.tsv`](./samples/WHI-883-underlying-form-venue-matrix.tsv)。  
+> 该文给出 **P0/P1 切割**、丢弃「≥3 venues」硬阈值的理由、以及 Jupiter Free-plan 预算结论（xStocks **勿**进 poller）。下表保留 v2 规划语义；**执行优先级以 WHI-883 §5 为准**。
 
 | 优先级 | Underlyings | 备注 |
 | --- | --- | --- |
-| P1 跨 form / xStocks | TSLA（扩 bstock/ondo/xstock）、CRCL、… + Bybit `*X` 全集 | §4.5 |
-| P1-lite ETF | **SPY**（`bstock` SPYB；perp 四 venue；HL proxy-only）、QQQ perp（上表 📗） | 勿实现假 `xyz:SPY`/`xyz:QQQ` |
-| P2 mega-cap | AMZN、GOOGL、META、COIN、HOOD、MSTR、CRCL、PLTR、AMD（BY=`AMDSTOCKUSDT`） | §4.4/§4.5 |
+| P1 跨 form / xStocks | TSLA（扩 bstock/ondo/xstock）、CRCL、… + Bybit `*X` 全集 | §4.5；CRCL 在 WHI-883 升为 **P0** |
+| P1-lite ETF | **SPY**（`bstock` SPYB；perp 四 venue；HL proxy-only）、QQQ perp（上表 📗） | 勿实现假 `xyz:SPY`/`xyz:QQQ`；WHI-883 将 SPY 与 QQQ perp 扩容列入 P0 |
+| P2 mega-cap → **见 WHI-883 P0/P1** | AMZN、GOOGL、META、COIN、HOOD、MSTR、PLTR、AMD（BY=`AMDSTOCKUSDT`）、AVGO、ORCL | WHI-883 重扫：AMD **现有** `AMDBUSDT` bStock（修正 §4.3 旧「无 *B」） |
 
 #### 6.2.3 旧表对照（v2 兼容阅读）
 
@@ -536,9 +540,11 @@ Catalogued, not yet fan-out (📗/📌 — do NOT drop; coverage=unverified / no
   TSLA × bstock (BN+Pancake live per §4.3; Tessera ⛔)
   QQQ × perp (BN/BY/Lighter/ApeX live per §4.4; HL proxy-only)
 
-Planned underlyings (v2 §4.5 — keep in roadmap; expand via WHI-883 using §4.6 forms):
-  P1 / P1-lite: SPY, CRCL, … + full Bybit *X set
-  P2: AMZN, GOOGL, META, COIN, HOOD, MSTR, PLTR, AMD (BY=AMDSTOCKUSDT)
+Planned underlyings — **live survey 2026-08-06**: [WHI-883](./WHI-883-high-volume-stock-underlying-survey.md) §5
+  P0 add: CRCL, GOOGL, AMD, PLTR, META, AMZN, SPY, MSTR (+ QQQ perp expand)
+  P1: COIN, HOOD, ORCL, AVGO
+  Quirks: BY AMD=AMDSTOCKUSDT; HL no exact SPY/QQQ; ApeX ORCL enableTrade=false
+  Budget: do NOT Jupiter-poll Sol xStocks (prop NO_ROUTES; WHI-864)
 排除: pre-IPO SPV (PreStocks/Jarsy)
 ```
 

@@ -1,0 +1,162 @@
+# WHI-883 underlying × form × venue inventory
+# snapshot_date_utc: 2026-08-06
+# status: live | live_thin | proxy | disabled | absent | absent_no_route | unverified
+# form vocabulary SSOT: WHI-798 §4.6 (perp|bstock|ondo|xstock|xstock_cex)
+# New underlyings relative to Phase-1 catalog anchors (NVDA/TSLA/AAPL/MSFT/QQQ/SPCX)
+asset	form	form_class	venue	instrument_type	wire_symbol	status	volume_or_liq_usd	evidence	notes
+AMZN	perp	perp	binance	perp	AMZNUSDT	live	37350286.1289	GET fapi/v1/exchangeInfo status=TRADING contractType=TRADIFI_PERPETUAL; fapi/v1/ticker/24hr quoteVolume	
+AMZN	perp	perp	bybit	perp	AMZNUSDT	live	3332083.4487	GET v5/market/instruments-info?category=linear status=Trading; tickers turnover24h	
+AMZN	perp	perp	hyperliquid	perp	xyz:AMZN	live	20488418.926000003	POST info metaAndAssetCtxs dex=xyz; name in universe; dayNtlVlm	HIP-3 xyz; adapter wire xyz:TICKER
+AMZN	perp	perp	lighter	perp	AMZN	live	289205.819878	GET orderBooks + orderBookDetails status=active	multiplier=1
+AMZN	perp	perp	apex	perp	AMZN-USDT	live		GET /api/v3/symbols contractConfig.stockContract enableTrade	crossSymbolName=AMZNUSDT
+AMZN	bstock	tokenized	binance	spot	AMZNBUSDT	live	144129.21953	GET api/v3/exchangeInfo baseAsset=*B status=TRADING; ticker/24hr quoteVolume	bStocks family
+AMZN	bstock	tokenized	pancakeswap_bsc	spot	AMZNB	live	9731.3155157027	GeckoTerminal search/pools + pool id on bsc	pool=bsc_0x7530beb7bde5843f668cf31b996fa1f748c9b6b1 tvl_usd=44648.2287
+AMZN	bstock	tokenized	tessera_bsc	spot	AMZNB	unverified		Tessera pool set is a subset; not re-probed per-token without addresses this pass (Gecko detail 429)	mark unverified not absent; WHI-798: TSLAB/SKHYB no route
+AMZN	ondo	tokenized	pancakeswap_bsc	spot	AMZNon	live	153.8720619236	GeckoTerminal search/pools	tvl=5882.203 id=bsc_0x8617ba6deee616694601adc41ab7ffe0e610907e
+AMZN	ondo	tokenized	tessera_bsc	spot	AMZNon	unverified		not in known Tessera subset	
+AMZN	xstock_cex	tokenized	bybit	spot	AMZNXUSDT	live	455183.86795	GET v5/market/instruments-info?category=spot status=Trading	Bybit *X base
+AMZN	xstock	tokenized	solana_mint	spot	AMZNx	live	202288.1722464406	GET lite-api.jup.ag/tokens/v2/search	mint=Xs3eBt7uRfJX8QUs4suhyU8p2M6DoUDrJyWBa8LLZsg holders=6229
+AMZN	xstock	tokenized	prop_amm_sol	spot	AMZNx	absent_no_route		Jupiter quote onlyDirectRoutes+dexes=HumidiFi|TesseraV|BisonFi → NO_ROUTES_FOUND (AMZNx+NVDAx sampled 2026-08-06; family pattern)	do not enable Jupiter poller for xStocks until routes exist
+GOOGL	perp	perp	binance	perp	GOOGLUSDT	live	188376346.9918	GET fapi/v1/exchangeInfo status=TRADING contractType=TRADIFI_PERPETUAL; fapi/v1/ticker/24hr quoteVolume	
+GOOGL	perp	perp	bybit	perp	GOOGLUSDT	live	11706652.7213	GET v5/market/instruments-info?category=linear status=Trading; tickers turnover24h	
+GOOGL	perp	perp	hyperliquid	perp	xyz:GOOGL	live	84347111.45708004	POST info metaAndAssetCtxs dex=xyz; name in universe; dayNtlVlm	HIP-3 xyz; adapter wire xyz:TICKER
+GOOGL	perp	perp	lighter	perp	GOOGL	live	1201881.366052	GET orderBooks + orderBookDetails status=active	multiplier=1
+GOOGL	perp	perp	apex	perp	GOOGL-USDT	live		GET /api/v3/symbols contractConfig.stockContract enableTrade	crossSymbolName=GOOGLUSDT
+GOOGL	bstock	tokenized	binance	spot	GOOGLBUSDT	live	1745101.17186	GET api/v3/exchangeInfo baseAsset=*B status=TRADING; ticker/24hr quoteVolume	bStocks family
+GOOGL	bstock	tokenized	pancakeswap_bsc	spot	GOOGLB	live	72717.3652871559	GeckoTerminal search/pools + pool id on bsc	pool=bsc_0x89001d846f7ca36ee089f73eefc25657e1798144 tvl_usd=109723.0158
+GOOGL	bstock	tokenized	tessera_bsc	spot	GOOGLB	unverified		Tessera pool set is a subset; not re-probed per-token without addresses this pass (Gecko detail 429)	mark unverified not absent; WHI-798: TSLAB/SKHYB no route
+GOOGL	ondo	tokenized	pancakeswap_bsc	spot	GOOGLon	live	806.3974269177	GeckoTerminal search/pools	tvl=2194.0976 id=bsc_0x6731932c92e882cc22a10749324c70a7d6adde60
+GOOGL	ondo	tokenized	tessera_bsc	spot	GOOGLon	unverified		not in known Tessera subset	
+GOOGL	xstock_cex	tokenized	bybit	spot	GOOGLXUSDT	live	1401119.70087	GET v5/market/instruments-info?category=spot status=Trading	Bybit *X base
+GOOGL	xstock	tokenized	solana_mint	spot	GOOGLx	live	330254.5981763782	GET lite-api.jup.ag/tokens/v2/search	mint=XsCPL9dNWBMvFtTmwcCA5v3xWPSMEBCszbQdiLLq6aN holders=18363
+GOOGL	xstock	tokenized	prop_amm_sol	spot	GOOGLx	absent_no_route		Jupiter quote onlyDirectRoutes+dexes=HumidiFi|TesseraV|BisonFi → NO_ROUTES_FOUND (AMZNx+NVDAx sampled 2026-08-06; family pattern)	do not enable Jupiter poller for xStocks until routes exist
+META	perp	perp	binance	perp	METAUSDT	live	55074268.9234	GET fapi/v1/exchangeInfo status=TRADING contractType=TRADIFI_PERPETUAL; fapi/v1/ticker/24hr quoteVolume	
+META	perp	perp	bybit	perp	METAUSDT	live	3892922.2565	GET v5/market/instruments-info?category=linear status=Trading; tickers turnover24h	
+META	perp	perp	hyperliquid	perp	xyz:META	live	55303432.89071001	POST info metaAndAssetCtxs dex=xyz; name in universe; dayNtlVlm	HIP-3 xyz; adapter wire xyz:TICKER
+META	perp	perp	lighter	perp	META	live	262498.538515	GET orderBooks + orderBookDetails status=active	multiplier=1
+META	perp	perp	apex	perp	META-USDT	live		GET /api/v3/symbols contractConfig.stockContract enableTrade	crossSymbolName=METAUSDT
+META	bstock	tokenized	binance	spot	METABUSDT	live	434756.0802	GET api/v3/exchangeInfo baseAsset=*B status=TRADING; ticker/24hr quoteVolume	bStocks family
+META	bstock	tokenized	pancakeswap_bsc	spot	METAB	live	9574.4163007692	GeckoTerminal search/pools + pool id on bsc	pool=bsc_0xc2151a561e928d16576d75ea88544543ac63d80b tvl_usd=45852.5043
+META	bstock	tokenized	tessera_bsc	spot	METAB	unverified		Tessera pool set is a subset; not re-probed per-token without addresses this pass (Gecko detail 429)	mark unverified not absent; WHI-798: TSLAB/SKHYB no route
+META	ondo	tokenized	pancakeswap_bsc	spot	METAon	live_thin	0.617788334	GeckoTerminal search/pools	tvl=153.8965 id=bsc_0xa00db4210e573410994faf5f45d83ac74e0d982d50dcf51b0e8c78f0ce9a7c6a
+META	ondo	tokenized	tessera_bsc	spot	METAon	unverified		not in known Tessera subset	
+META	xstock_cex	tokenized	bybit	spot	METAXUSDT	live	193604.20441	GET v5/market/instruments-info?category=spot status=Trading	Bybit *X base
+META	xstock	tokenized	solana_mint	spot	METAx	live	46198.82975547185	GET lite-api.jup.ag/tokens/v2/search	mint=Xsa62P5mvPszXL1krVUnU5ar38bBSVcWAB6fmPCo5Zu holders=5852
+META	xstock	tokenized	prop_amm_sol	spot	METAx	absent_no_route		Jupiter quote onlyDirectRoutes+dexes=HumidiFi|TesseraV|BisonFi → NO_ROUTES_FOUND (AMZNx+NVDAx sampled 2026-08-06; family pattern)	do not enable Jupiter poller for xStocks until routes exist
+AMD	perp	perp	binance	perp	AMDUSDT	live	128404440.4226	GET fapi/v1/exchangeInfo status=TRADING contractType=TRADIFI_PERPETUAL; fapi/v1/ticker/24hr quoteVolume	
+AMD	perp	perp	bybit	perp	AMDSTOCKUSDT	live	7752704.6552	GET v5/market/instruments-info?category=linear status=Trading; tickers turnover24h	Bybit linear symbol AMDSTOCKUSDT (not AMDUSDT)
+AMD	perp	perp	hyperliquid	perp	xyz:AMD	live	96608964.72617999	POST info metaAndAssetCtxs dex=xyz; name in universe; dayNtlVlm	HIP-3 xyz; adapter wire xyz:TICKER
+AMD	perp	perp	lighter	perp	AMD	live	1300188.910537	GET orderBooks + orderBookDetails status=active	multiplier=1
+AMD	perp	perp	apex	perp	AMD-USDT	live		GET /api/v3/symbols contractConfig.stockContract enableTrade	crossSymbolName=AMDUSDT
+AMD	bstock	tokenized	binance	spot	AMDBUSDT	live	4510893.0991	GET api/v3/exchangeInfo baseAsset=*B status=TRADING; ticker/24hr quoteVolume	bStocks family
+AMD	bstock	tokenized	pancakeswap_bsc	spot	AMDB	live_thin	0.09332830171	GeckoTerminal search/pools + pool id on bsc	pool=bsc_0xc02c97e897267ea363d3d22113e3d076f62c40d1c4725ee24c52d00121547d3d tvl_usd=0.00658006312191068
+AMD	bstock	tokenized	tessera_bsc	spot	AMDB	unverified		Tessera pool set is a subset; not re-probed per-token without addresses this pass (Gecko detail 429)	mark unverified not absent; WHI-798: TSLAB/SKHYB no route
+AMD	ondo	tokenized	pancakeswap_bsc	spot	AMDon	unverified		Ondo form expected for mega-caps; pool not pinned this pass	
+AMD	xstock_cex	tokenized	bybit	spot	AMDXUSDT	absent		instruments-info spot no *X Trading pair	
+AMD	xstock	tokenized	solana_mint	spot	AMDx	live	1684.5052828286357	GET lite-api.jup.ag/tokens/v2/search	mint=XsXcJ6GZ9kVnjqGsjBnktRcuwMBmvKWh8S93RefZ1rF holders=935
+AMD	xstock	tokenized	prop_amm_sol	spot	AMDx	absent_no_route		Jupiter quote onlyDirectRoutes+dexes=HumidiFi|TesseraV|BisonFi → NO_ROUTES_FOUND (AMZNx+NVDAx sampled 2026-08-06; family pattern)	do not enable Jupiter poller for xStocks until routes exist
+PLTR	perp	perp	binance	perp	PLTRUSDT	live	58491875.0439	GET fapi/v1/exchangeInfo status=TRADING contractType=TRADIFI_PERPETUAL; fapi/v1/ticker/24hr quoteVolume	
+PLTR	perp	perp	bybit	perp	PLTRUSDT	live	4335692.4404	GET v5/market/instruments-info?category=linear status=Trading; tickers turnover24h	
+PLTR	perp	perp	hyperliquid	perp	xyz:PLTR	live	23275602.22125	POST info metaAndAssetCtxs dex=xyz; name in universe; dayNtlVlm	HIP-3 xyz; adapter wire xyz:TICKER
+PLTR	perp	perp	lighter	perp	PLTR	live	1013919.594591	GET orderBooks + orderBookDetails status=active	multiplier=1
+PLTR	perp	perp	apex	perp	PLTR-USDT	live		GET /api/v3/symbols contractConfig.stockContract enableTrade	crossSymbolName=PLTRUSDT
+PLTR	bstock	tokenized	binance	spot	PLTRBUSDT	live	312310.66512	GET api/v3/exchangeInfo baseAsset=*B status=TRADING; ticker/24hr quoteVolume	bStocks family
+PLTR	bstock	tokenized	pancakeswap_bsc	spot	PLTRB	live_thin	0.0	GeckoTerminal search/pools + pool id on bsc	pool=bsc_0xe0af5420ebc825d60df5bf7e1141dde172368860 tvl_usd=0.1746
+PLTR	bstock	tokenized	tessera_bsc	spot	PLTRB	unverified		Tessera pool set is a subset; not re-probed per-token without addresses this pass (Gecko detail 429)	mark unverified not absent; WHI-798: TSLAB/SKHYB no route
+PLTR	ondo	tokenized	pancakeswap_bsc	spot	PLTRon	unverified		Ondo form expected for mega-caps; pool not pinned this pass	
+PLTR	xstock_cex	tokenized	bybit	spot	PLTRXUSDT	absent		instruments-info spot no *X Trading pair	
+PLTR	xstock	tokenized	solana_mint	spot	PLTRx	live	54129.09349329666	GET lite-api.jup.ag/tokens/v2/search	mint=XsoBhf2ufR8fTyNSjqfU71DYGaE6Z3SUGAidpzriAA4 holders=1126
+PLTR	xstock	tokenized	prop_amm_sol	spot	PLTRx	absent_no_route		Jupiter quote onlyDirectRoutes+dexes=HumidiFi|TesseraV|BisonFi → NO_ROUTES_FOUND (AMZNx+NVDAx sampled 2026-08-06; family pattern)	do not enable Jupiter poller for xStocks until routes exist
+COIN	perp	perp	binance	perp	COINUSDT	live	27814465.0697	GET fapi/v1/exchangeInfo status=TRADING contractType=TRADIFI_PERPETUAL; fapi/v1/ticker/24hr quoteVolume	
+COIN	perp	perp	bybit	perp	COINUSDT	live	2295481.2299	GET v5/market/instruments-info?category=linear status=Trading; tickers turnover24h	
+COIN	perp	perp	hyperliquid	perp	xyz:COIN	live	7759343.938919999	POST info metaAndAssetCtxs dex=xyz; name in universe; dayNtlVlm	HIP-3 xyz; adapter wire xyz:TICKER
+COIN	perp	perp	lighter	perp	COIN	live	215279.769782	GET orderBooks + orderBookDetails status=active	multiplier=1
+COIN	perp	perp	apex	perp	COIN-USDT	live		GET /api/v3/symbols contractConfig.stockContract enableTrade	crossSymbolName=COINUSDT
+COIN	bstock	tokenized	binance	spot	COINBUSDT	live	647810.63862	GET api/v3/exchangeInfo baseAsset=*B status=TRADING; ticker/24hr quoteVolume	bStocks family
+COIN	bstock	tokenized	pancakeswap_bsc	spot	COINB	unverified		GeckoTerminal 429 or no pool this pass	do not drop; re-probe
+COIN	bstock	tokenized	tessera_bsc	spot	COINB	unverified		Tessera pool set is a subset; not re-probed per-token without addresses this pass (Gecko detail 429)	mark unverified not absent; WHI-798: TSLAB/SKHYB no route
+COIN	ondo	tokenized	pancakeswap_bsc	spot	COINon	live	23.8880039128	GeckoTerminal search/pools	tvl=1241.2535 id=bsc_0x7de5f4a237315a7c8fd31974bb6603c1d965e9ac
+COIN	xstock_cex	tokenized	bybit	spot	COINXUSDT	live	1409494.59852	GET v5/market/instruments-info?category=spot status=Trading	Bybit *X base
+COIN	xstock	tokenized	solana_mint	spot	COINx	live	254691.28983205734	GET lite-api.jup.ag/tokens/v2/search	mint=Xs7ZdzSHLU9ftNJsii5fCeJhoRWSC32SQGzGQtePxNu holders=3750
+COIN	xstock	tokenized	prop_amm_sol	spot	COINx	absent_no_route		Jupiter quote onlyDirectRoutes+dexes=HumidiFi|TesseraV|BisonFi → NO_ROUTES_FOUND (AMZNx+NVDAx sampled 2026-08-06; family pattern)	do not enable Jupiter poller for xStocks until routes exist
+HOOD	perp	perp	binance	perp	HOODUSDT	live	14363166.4733	GET fapi/v1/exchangeInfo status=TRADING contractType=TRADIFI_PERPETUAL; fapi/v1/ticker/24hr quoteVolume	
+HOOD	perp	perp	bybit	perp	HOODUSDT	live	959717.9335	GET v5/market/instruments-info?category=linear status=Trading; tickers turnover24h	
+HOOD	perp	perp	hyperliquid	perp	xyz:HOOD	live	6155039.609015998	POST info metaAndAssetCtxs dex=xyz; name in universe; dayNtlVlm	HIP-3 xyz; adapter wire xyz:TICKER
+HOOD	perp	perp	lighter	perp	HOOD	live	699654.70675	GET orderBooks + orderBookDetails status=active	multiplier=1
+HOOD	perp	perp	apex	perp	HOOD-USDT	live		GET /api/v3/symbols contractConfig.stockContract enableTrade	crossSymbolName=HOODUSDT
+HOOD	bstock	tokenized	binance	spot	HOODBUSDT	live	301965.52239	GET api/v3/exchangeInfo baseAsset=*B status=TRADING; ticker/24hr quoteVolume	bStocks family
+HOOD	bstock	tokenized	pancakeswap_bsc	spot	HOODB	live	133486.893423186	GeckoTerminal search/pools + pool id on bsc	pool=bsc_0xfeef70ff6f58f0a900e28a77e5a8945afb343923 tvl_usd=51455.2616
+HOOD	bstock	tokenized	tessera_bsc	spot	HOODB	unverified		Tessera pool set is a subset; not re-probed per-token without addresses this pass (Gecko detail 429)	mark unverified not absent; WHI-798: TSLAB/SKHYB no route
+HOOD	xstock_cex	tokenized	bybit	spot	HOODXUSDT	live	1079809.38403	GET v5/market/instruments-info?category=spot status=Trading	Bybit *X base
+HOOD	xstock	tokenized	solana_mint	spot	HOODx	live	295070.8173457265	GET lite-api.jup.ag/tokens/v2/search	mint=XsvNBAYkrDRNhA7wPHQfX3ZUXZyZLdnCQDfHZ56bzpg holders=4562
+HOOD	xstock	tokenized	prop_amm_sol	spot	HOODx	absent_no_route		Jupiter quote onlyDirectRoutes+dexes=HumidiFi|TesseraV|BisonFi → NO_ROUTES_FOUND (AMZNx+NVDAx sampled 2026-08-06; family pattern)	do not enable Jupiter poller for xStocks until routes exist
+MSTR	perp	perp	binance	perp	MSTRUSDT	live	64974990.5286	GET fapi/v1/exchangeInfo status=TRADING contractType=TRADIFI_PERPETUAL; fapi/v1/ticker/24hr quoteVolume	
+MSTR	perp	perp	bybit	perp	MSTRUSDT	live	9820257.9593	GET v5/market/instruments-info?category=linear status=Trading; tickers turnover24h	
+MSTR	perp	perp	hyperliquid	perp	xyz:MSTR	live	11275538.368654	POST info metaAndAssetCtxs dex=xyz; name in universe; dayNtlVlm	HIP-3 xyz; adapter wire xyz:TICKER
+MSTR	perp	perp	lighter	perp	MSTR	live	441168.652017	GET orderBooks + orderBookDetails status=active	multiplier=1
+MSTR	perp	perp	apex	perp	MSTR-USDT	live		GET /api/v3/symbols contractConfig.stockContract enableTrade	crossSymbolName=MSTRUSDT
+MSTR	bstock	tokenized	binance	spot	MSTRBUSDT	live	410052.33458	GET api/v3/exchangeInfo baseAsset=*B status=TRADING; ticker/24hr quoteVolume	bStocks family
+MSTR	bstock	tokenized	pancakeswap_bsc	spot	MSTRB	live_thin	157.3026820179	GeckoTerminal search/pools + pool id on bsc	pool=bsc_0x3b8ff73d1bc5a29b11e073d386e34862559568ce98e2f6e2d27f55c645033363 tvl_usd=-3.38898971373332
+MSTR	bstock	tokenized	tessera_bsc	spot	MSTRB	unverified		Tessera pool set is a subset; not re-probed per-token without addresses this pass (Gecko detail 429)	mark unverified not absent; WHI-798: TSLAB/SKHYB no route
+MSTR	xstock_cex	tokenized	bybit	spot	MSTRXUSDT	absent		instruments-info spot no *X Trading pair	
+MSTR	xstock	tokenized	solana_mint	spot	MSTRx	live	480750.3846390862	GET lite-api.jup.ag/tokens/v2/search	mint=XsP7xzNPvEHS1m6qfanPUGjNmdnmsLKEoNAnHjdxxyZ holders=9068
+MSTR	xstock	tokenized	prop_amm_sol	spot	MSTRx	absent_no_route		Jupiter quote onlyDirectRoutes+dexes=HumidiFi|TesseraV|BisonFi → NO_ROUTES_FOUND (AMZNx+NVDAx sampled 2026-08-06; family pattern)	do not enable Jupiter poller for xStocks until routes exist
+AVGO	perp	perp	binance	perp	AVGOUSDT	live	8605648.7567	GET fapi/v1/exchangeInfo status=TRADING contractType=TRADIFI_PERPETUAL; fapi/v1/ticker/24hr quoteVolume	
+AVGO	perp	perp	bybit	perp	AVGOUSDT	live	544055.1079	GET v5/market/instruments-info?category=linear status=Trading; tickers turnover24h	
+AVGO	perp	perp	hyperliquid	perp	xyz:AVGO	live	3052245.047000001	POST info metaAndAssetCtxs dex=xyz; name in universe; dayNtlVlm	HIP-3 xyz; adapter wire xyz:TICKER
+AVGO	perp	perp	lighter	perp	AVGO	live	0	GET orderBooks + orderBookDetails status=active	multiplier=1
+AVGO	perp	perp	apex	perp	AVGO-USDT	live		GET /api/v3/symbols contractConfig.stockContract enableTrade	crossSymbolName=AVGOUSDT
+AVGO	bstock	tokenized	binance	spot	AVGOBUSDT	live	295588.70885	GET api/v3/exchangeInfo baseAsset=*B status=TRADING; ticker/24hr quoteVolume	bStocks family
+AVGO	bstock	tokenized	pancakeswap_bsc	spot	AVGOB	live_thin	0.0	GeckoTerminal search/pools + pool id on bsc	pool=bsc_0x3ea169c878d73e12c1fb67b8827a9a74c4b6fc6d tvl_usd=0.2347
+AVGO	bstock	tokenized	tessera_bsc	spot	AVGOB	unverified		Tessera pool set is a subset; not re-probed per-token without addresses this pass (Gecko detail 429)	mark unverified not absent; WHI-798: TSLAB/SKHYB no route
+AVGO	xstock_cex	tokenized	bybit	spot	AVGOXUSDT	absent		instruments-info spot no *X Trading pair	
+AVGO	xstock	tokenized	solana_mint	spot	AVGOx	live	76144.87304341105	GET lite-api.jup.ag/tokens/v2/search	mint=XsgSaSvNSqLTtFuyWPBhK9196Xb9Bbdyjj4fH3cPJGo holders=492
+AVGO	xstock	tokenized	prop_amm_sol	spot	AVGOx	absent_no_route		Jupiter quote onlyDirectRoutes+dexes=HumidiFi|TesseraV|BisonFi → NO_ROUTES_FOUND (AMZNx+NVDAx sampled 2026-08-06; family pattern)	do not enable Jupiter poller for xStocks until routes exist
+ORCL	perp	perp	binance	perp	ORCLUSDT	live	28295891.9866	GET fapi/v1/exchangeInfo status=TRADING contractType=TRADIFI_PERPETUAL; fapi/v1/ticker/24hr quoteVolume	
+ORCL	perp	perp	bybit	perp	ORCLUSDT	live	1594971.8359	GET v5/market/instruments-info?category=linear status=Trading; tickers turnover24h	
+ORCL	perp	perp	hyperliquid	perp	xyz:ORCL	live	20087249.98984001	POST info metaAndAssetCtxs dex=xyz; name in universe; dayNtlVlm	HIP-3 xyz; adapter wire xyz:TICKER
+ORCL	perp	perp	lighter	perp	ORCL	live	14110.800005	GET orderBooks + orderBookDetails status=active	multiplier=1
+ORCL	perp	perp	apex	perp	ORCL-USDT	disabled		GET /api/v3/symbols contractConfig.stockContract enableTrade	crossSymbolName=ORCLUSDT
+ORCL	bstock	tokenized	binance	spot	ORCLBUSDT	live	526179.47636	GET api/v3/exchangeInfo baseAsset=*B status=TRADING; ticker/24hr quoteVolume	bStocks family
+ORCL	bstock	tokenized	pancakeswap_bsc	spot	ORCLB	live	1845.3215510642	GeckoTerminal search/pools + pool id on bsc	pool=bsc_0xd5558acff19b7b0c96bdc8fb22c66c06ee17eeaa tvl_usd=2070.6956
+ORCL	bstock	tokenized	tessera_bsc	spot	ORCLB	unverified		Tessera pool set is a subset; not re-probed per-token without addresses this pass (Gecko detail 429)	mark unverified not absent; WHI-798: TSLAB/SKHYB no route
+ORCL	xstock_cex	tokenized	bybit	spot	ORCLXUSDT	absent		instruments-info spot no *X Trading pair	
+ORCL	xstock	tokenized	solana_mint	spot	ORCLx	live	4281.26870994254	GET lite-api.jup.ag/tokens/v2/search	mint=XsjFwUPiLofddX5cWFHW35GCbXcSu1BCUGfxoQAQjeL holders=900
+ORCL	xstock	tokenized	prop_amm_sol	spot	ORCLx	absent_no_route		Jupiter quote onlyDirectRoutes+dexes=HumidiFi|TesseraV|BisonFi → NO_ROUTES_FOUND (AMZNx+NVDAx sampled 2026-08-06; family pattern)	do not enable Jupiter poller for xStocks until routes exist
+SPY	perp	perp	binance	perp	SPYUSDT	live	65895214.6232	GET fapi/v1/exchangeInfo status=TRADING contractType=TRADIFI_PERPETUAL; fapi/v1/ticker/24hr quoteVolume	
+SPY	perp	perp	bybit	perp	SPYUSDT	live	2866991.8499	GET v5/market/instruments-info?category=linear status=Trading; tickers turnover24h	
+SPY	perp	perp	hyperliquid	perp	xyz:SP500	proxy		POST info meta dex=xyz	NO exact xyz:SPY; proxy index only — do not catalog as exact SPY
+SPY	perp	perp	lighter	perp	SPY	live	3555459.143765	GET orderBooks + orderBookDetails status=active	multiplier=1
+SPY	perp	perp	apex	perp	SPY-USDT	live		GET /api/v3/symbols contractConfig.stockContract enableTrade	crossSymbolName=SPYUSDT
+SPY	bstock	tokenized	binance	spot	SPYBUSDT	live	1537868.44332	GET api/v3/exchangeInfo baseAsset=*B status=TRADING; ticker/24hr quoteVolume	bStocks family
+SPY	bstock	tokenized	pancakeswap_bsc	spot	SPYB	live	10220214.4207579	GeckoTerminal search/pools + pool id on bsc	pool=bsc_0x7aa6d92fc369a8c1edc631a3aac44efb0808ddbf tvl_usd=791541.7241
+SPY	bstock	tokenized	tessera_bsc	spot	SPYB	unverified		Tessera pool set is a subset; not re-probed per-token without addresses this pass (Gecko detail 429)	mark unverified not absent; WHI-798: TSLAB/SKHYB no route
+SPY	ondo	tokenized	pancakeswap_bsc	spot	SPYon	live	648.9980415337	GeckoTerminal search/pools	tvl=1061.2336 id=bsc_0x3b31ad84092cefefc71f71a8f84aace37aca3ee1
+SPY	ondo	tokenized	tessera_bsc	spot	SPYon	unverified		not in known Tessera subset	
+SPY	xstock_cex	tokenized	bybit	spot	SPYXUSDT	absent		instruments-info spot no *X Trading pair	
+SPY	xstock	tokenized	solana_mint	spot	SPYx	live	2532328.590828763	GET lite-api.jup.ag/tokens/v2/search	mint=XsoCS1TfEyfFhfvj8EtZ528L3CaKBDBRqRapnBbDF2W holders=26652
+SPY	xstock	tokenized	prop_amm_sol	spot	SPYx	absent_no_route		Jupiter quote onlyDirectRoutes+dexes=HumidiFi|TesseraV|BisonFi → NO_ROUTES_FOUND (AMZNx+NVDAx sampled 2026-08-06; family pattern)	do not enable Jupiter poller for xStocks until routes exist
+QQQ	perp	perp	binance	perp	QQQUSDT	live	219437777.5054	GET fapi/v1/exchangeInfo status=TRADING contractType=TRADIFI_PERPETUAL; fapi/v1/ticker/24hr quoteVolume	
+QQQ	perp	perp	bybit	perp	QQQUSDT	live	9878889.4874	GET v5/market/instruments-info?category=linear status=Trading; tickers turnover24h	
+QQQ	perp	perp	hyperliquid	perp	xyz:XYZ100	proxy		POST info meta dex=xyz	NO exact xyz:QQQ; proxy only
+QQQ	perp	perp	lighter	perp	QQQ	live	2370082.314449	GET orderBooks + orderBookDetails status=active	multiplier=1
+QQQ	perp	perp	apex	perp	QQQ-USDT	live		GET /api/v3/symbols contractConfig.stockContract enableTrade	crossSymbolName=QQQUSDT
+QQQ	bstock	tokenized	binance	spot	QQQBUSDT	live	3271002.79694	GET api/v3/exchangeInfo baseAsset=*B status=TRADING; ticker/24hr quoteVolume	bStocks family
+QQQ	bstock	tokenized	pancakeswap_bsc	spot	QQQB	live	72384228.7334357	GeckoTerminal search/pools + pool id on bsc	pool=bsc_0xe531fcb1f5a195de7608b9f4f9518544c2cdb693 tvl_usd=2039444.1685
+QQQ	bstock	tokenized	tessera_bsc	spot	QQQB	live		KyberSwap bsc routes includedSources=tessera (QQQB reconfirmed 2026-08-06; NVDAB per WHI-798/WHI-797)	
+QQQ	xstock_cex	tokenized	bybit	spot	QQQXUSDT	absent		instruments-info spot no *X Trading pair	
+QQQ	xstock	tokenized	solana_mint	spot	QQQx	live	2041398.5897975015	GET lite-api.jup.ag/tokens/v2/search	mint=Xs8S1uUs1zvS2p7iwtsG3b6fkhpvmwz4GYU3gWAmWHZ holders=9700
+QQQ	xstock	tokenized	prop_amm_sol	spot	QQQx	absent_no_route		Jupiter quote onlyDirectRoutes+dexes=HumidiFi|TesseraV|BisonFi → NO_ROUTES_FOUND (AMZNx+NVDAx sampled 2026-08-06; family pattern)	do not enable Jupiter poller for xStocks until routes exist
+CRCL	perp	perp	binance	perp	CRCLUSDT	live	380859437.6161	GET fapi/v1/exchangeInfo status=TRADING contractType=TRADIFI_PERPETUAL; fapi/v1/ticker/24hr quoteVolume	
+CRCL	perp	perp	bybit	perp	CRCLUSDT	live	25342791.0707	GET v5/market/instruments-info?category=linear status=Trading; tickers turnover24h	
+CRCL	perp	perp	hyperliquid	perp	xyz:CRCL	live	95194184.976581	POST info metaAndAssetCtxs dex=xyz; name in universe; dayNtlVlm	HIP-3 xyz; adapter wire xyz:TICKER
+CRCL	perp	perp	lighter	perp	CRCL	live	2618449.593251	GET orderBooks + orderBookDetails status=active	multiplier=1
+CRCL	perp	perp	apex	perp	CRCL-USDT	live		GET /api/v3/symbols contractConfig.stockContract enableTrade	crossSymbolName=CRCLUSDT
+CRCL	bstock	tokenized	binance	spot	CRCLBUSDT	live	22033323.71	GET api/v3/exchangeInfo baseAsset=*B status=TRADING; ticker/24hr quoteVolume	bStocks family
+CRCL	bstock	tokenized	pancakeswap_bsc	spot	CRCLB	unverified		GeckoTerminal 429 or no pool this pass	do not drop; re-probe
+CRCL	bstock	tokenized	tessera_bsc	spot	CRCLB	unverified		Tessera pool set is a subset; not re-probed per-token without addresses this pass (Gecko detail 429)	mark unverified not absent; WHI-798: TSLAB/SKHYB no route
+CRCL	ondo	tokenized	pancakeswap_bsc	spot	CRCLon	live	1452.1639941691	GeckoTerminal search/pools	tvl=2913.4561 id=bsc_0xc1d141d6a9f8e8eb7b9ce1aecd4a8932f047c075
+CRCL	ondo	tokenized	tessera_bsc	spot	CRCLon	unverified		not in known Tessera subset	
+CRCL	xstock_cex	tokenized	bybit	spot	CRCLXUSDT	live	3495516.50358	GET v5/market/instruments-info?category=spot status=Trading	Bybit *X base
+CRCL	xstock	tokenized	solana_mint	spot	CRCLx	live	866513.7771244396	GET lite-api.jup.ag/tokens/v2/search	mint=XsueG8BtpquVJX9LVLLEGuViXUungE6WmK5YZ3p3bd1 holders=13062
+CRCL	xstock	tokenized	prop_amm_sol	spot	CRCLx	absent_no_route		Jupiter quote onlyDirectRoutes+dexes=HumidiFi|TesseraV|BisonFi → NO_ROUTES_FOUND (AMZNx+NVDAx sampled 2026-08-06; family pattern)	do not enable Jupiter poller for xStocks until routes exist
