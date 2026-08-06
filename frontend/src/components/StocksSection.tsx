@@ -239,22 +239,43 @@ function UnderlyingBoard({
       <div className="sr-only" id={`stocks-board-${underlying}-title`}>
         {underlying}
       </div>
-      <AssetSpreadBlock
-        section={stocksBoard}
-        asset={underlying}
-        notional={notional}
-        assetTitle={underlying}
-        assetSubtitle={STOCK_ASSET_SUBTITLES[underlying]}
-        venues={rowKeys}
-        venueLabels={venueLabels}
-        summaryVenueLabels={summaryLabels}
-        orderbookVenues={orderbookRowKeys}
-        forms={formIds.length > 0 ? formIds : undefined}
-        emphasizeMidSource
-        midSourceHint={STOCKS_MID_SOURCE_HINT}
-        matrixRowHeaderLabel={STOCKS_MATRIX_ROW_HEADER}
-        matrixBestNoteExtra={STOCKS_BEST_NOTE}
-      />
+      {rowKeys.length === 0 ? (
+        <div
+          className="rounded-xl border border-dashed border-zinc-300 p-4 dark:border-zinc-700"
+          data-testid={`asset-block-${underlying}`}
+          data-asset={underlying}
+        >
+          <h2 className="text-lg font-semibold tracking-tight">{underlying}</h2>
+          {STOCK_ASSET_SUBTITLES[underlying] ? (
+            <p className="mt-0.5 text-xs text-zinc-600 dark:text-zinc-400">
+              {STOCK_ASSET_SUBTITLES[underlying]}
+            </p>
+          ) : null}
+          <p
+            className="mt-2 text-sm text-zinc-500"
+            data-testid={`no-live-forms-${underlying}`}
+          >
+            No live forms in the catalog for this underlying — nothing to quote.
+          </p>
+        </div>
+      ) : (
+        <AssetSpreadBlock
+          section={stocksBoard}
+          asset={underlying}
+          notional={notional}
+          assetTitle={underlying}
+          assetSubtitle={STOCK_ASSET_SUBTITLES[underlying]}
+          venues={rowKeys}
+          venueLabels={venueLabels}
+          summaryVenueLabels={summaryLabels}
+          orderbookVenues={orderbookRowKeys}
+          forms={formIds}
+          emphasizeMidSource
+          midSourceHint={STOCKS_MID_SOURCE_HINT}
+          matrixRowHeaderLabel={STOCKS_MATRIX_ROW_HEADER}
+          matrixBestNoteExtra={STOCKS_BEST_NOTE}
+        />
+      )}
     </section>
   );
 }
