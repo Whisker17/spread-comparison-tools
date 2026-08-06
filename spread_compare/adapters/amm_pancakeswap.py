@@ -75,6 +75,8 @@ class PancakeSwapBscAdapter(AmmDexAdapter):
         if form is None:
             raise ValueError(f"{key} requires form on {self.venue}")
         ticker = BSC_STOCK_FORM_TICKER.get((key, form.lower()))
+        # Membership is effectively form-map presence: every map value is a
+        # BSC_TOKENS key, and _TOKEN_BY_TICKER is {**BSC_TOKENS, ETH}.
         if ticker is None or ticker not in _TOKEN_BY_TICKER:
             raise ValueError(f"{key} form={form!r} has no PancakeSwap BSC token")
         return ticker
