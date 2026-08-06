@@ -9,7 +9,7 @@
 | 调研日期 | **2026-08-06**（UTC） |
 | 方法 | 各 venue **公网 market-list / meta API live 探测** + GeckoTerminal 池搜索 + Jupiter token search + Jupiter prop `dexes=` 抽检；形状对齐 [WHI-798](./WHI-798-asset-category-inventory.md) §4.6 / §6.2 v3 |
 | 机器可读表 | [`samples/WHI-883-underlying-form-venue-matrix.tsv`](./samples/WHI-883-underlying-form-venue-matrix.tsv) |
-| 原始摘要 | [`samples/whi-883-raw/`](./samples/whi-883-raw/)（probe_rows / gecko_pools / jup_xstocks / hl_xyz_names） |
+| 原始摘要 | [`samples/whi-883-raw/`](./samples/whi-883-raw/)（`probe_rows.csv`、`lighter_equity_slim.json`、`apex_equity_slim.json`、`hl_xyz_vol.json`、`gecko_pools.json`、`jup_xstocks.json`、`jup_prop_xstock_probes.json`、`kyber_tessera_probes.json`） |
 
 > **范围**：在 Phase-1 锚点（`NVDA` / `TSLA` / `AAPL` / `MSFT` / `QQQ` / `SPCX`）之外，为 Stocks section 扩容候选 underlying。  
 > **不做**：catalog / adapter / FE 代码（WHI-884）；不改 form 词汇表（WHI-880 / WHI-798 §4.6）。  
@@ -22,7 +22,7 @@
 1. **13 个候选 underlying 全部有可交易的 equity perp 路径**（Binance TradFi + Bybit linear + Lighter + ApeX stockContract；HL `xyz:` exact 除 SPY/QQQ 外全有）。相对 Phase-1 仅 4 个 perp ticker，扩容空间很大。
 2. **bStocks（`*B`）Binance spot 对本名单全覆盖**——含 WHI-798 快照中曾记为 absent 的 **`AMDB`**（本轮 `AMDBUSDT` TRADING，24h quote ≈ $4.5M）。Pancake v3 池对多数 `*B` 可搜到，但 **TVL/成交量高度不均**（QQQB/SPYB/NVDAB 厚；AVGOB/AMDB 等极薄）。
 3. **Bybit xStock spot（`*X`）是子集**：AMZN/GOOGL/META/COIN/HOOD/CRCL（+ 锚点 TSLA/NVDA/AAPL）live；**AMD / PLTR / MSTR / AVGO / ORCL / SPY / QQQ 无 `*X`**。
-4. **Solana xStocks mint 全员有**（Jupiter tokens v2）；**三家 Sol prop AMM 对 xStocks 仍无直连路由**（本轮 `AMZNx`/`NVDAx` `onlyDirectRoutes`+`dexes=` → `NO_ROUTES_FOUND`）。**不得**把 xStocks 塞进 Jupiter poller 白名单，否则 Free-plan 预算会烧在必然失败的 quote 上。
+4. **Solana xStocks mint 全员有**（Jupiter tokens v2）；**本轮仅抽检 `AMZNx`/`NVDAx`** 对三家 Sol prop → `NO_ROUTES_FOUND`（标 `absent_no_route`）。**其余 xStock 的 prop 列为 `unverified`**（含高 liq 的 SPYx/QQQx）——不得外推为「全员无路由」，也**不得**在未逐 mint 复测前把 xStocks 塞进 Jupiter poller。
 5. **Tessera BSC** 已知 live 子集仍是 **QQQB / SPCXB / NVDAB / NVDAon**（本轮 Kyber 复测 QQQB ✅）。其它 `*B`/`*on` 一律 **`unverified`**（Gecko pool-detail 429 阻断批量拿合约地址），**不**写成 absent。
 6. **P0 推荐 8 个新增/扩容 underlying**（见 §5）：`CRCL`, `GOOGL`, `AMD`, `PLTR`, `META`, `AMZN`, `SPY`, `MSTR`。  
    **P1**：`COIN`, `HOOD`, `ORCL`, `AVGO`，以及 `QQQ` 的 **perp form 扩容**（bstock 已在 Phase-1）。
@@ -37,12 +37,12 @@ Issue 提出的 **「≥3 venues to be worth a board」是未验证参数**，�
 | 真正拉开差距的是 **exact vs proxy（HL）**、**ApeX enableTrade**、以及 **tokenized 多 form** | 过滤应看形态质量，不是 raw venue 计数 |
 | 薄 bStock 池（TVL ≪ $1k）即使「有 venue」也不适合进 fan-out | 应用 **流动性门槛** 而不是 venue 数 |
 
-**决定：丢弃「≥3 venues」硬阈值**，改用下列 **可观测切割规则**（仍属本调研建议，供 WHI-884 采纳；未写入 DESIGN.md §2）：
+**决定：丢弃「≥3 venues」硬阈值**。下面两条是 **本调研提出的替代启发式**（同样 **未** 写入 `docs/DESIGN.md` §2；WHI-884 可采纳、改数或再丢弃）：
 
-| 规则 | 入板条件 |
+| 启发式（unvalidated） | 意图 |
 | --- | --- |
-| **Perp board** | exact ticker 在 `{binance, bybit, hyperliquid, lighter, apex}` 中 **≥4 家 live 且可交易**；HL 必须是 **exact `xyz:TICKER`**（禁止把 `xyz:SP500` / `xyz:XYZ100` 记成 SPY/QQQ exact） |
-| **Multi-form board** | 满足 perp board **或**（perp ≥3 exact **且** 至少 1 个 tokenized form 有 CEX spot live 或 AMM 池 TVL ≳ $10k） |
+| **Perp board 优先** | 优先 exact ticker 在 orderbook 五家里 **覆盖尽量完整** 的 underlying；HL 必须是 **exact `xyz:TICKER`**（禁止把 `xyz:SP500` / `xyz:XYZ100` 记成 SPY/QQQ exact）。本轮 P0 用 **观测到的 BN/HL 成交量** 排序，不是用 venue 计数阈值卡人。 |
+| **Multi-form 加分** | 有 live CEX tokenized spot（bStock / `*X`）或 **可识别的** AMM 池时，跨 form 板更有产品价值；薄池 / 非 adapter 路径（非 Pancake v3）标 `live_thin` / `unverified`，**不进 fan-out**。 |
 | **不进 fan-out（仍 catalog）** | `unverified` / `live_thin` / `proxy` / `disabled` / `absent_no_route` 行：`coverage=unverified` 或报价 `no_quote`，**不删 form** |
 
 ---
@@ -167,24 +167,25 @@ Form 词汇 SSOT：[WHI-798 §4.6](./WHI-798-asset-category-inventory.md) — `b
 
 ### 4.4 `xstock`（Solana mint）+ prop
 
-| asset | symbol | mint (prefix) | Jupiter liq (USD) | holders | Sol prop |
+| asset | symbol | mint (prefix) | Jupiter liq (USD) | holders | Sol prop (本轮) |
 | --- | --- | --- | --- | --- | --- |
-| SPY | SPYx | XsoCS1Tf…F2W | **$2.53M** | 27k | ⛔ no route |
-| QQQ | QQQx | Xs8S1uUs…WHZ | **$2.04M** | 9.7k | ⛔ |
-| NVDA | NVDAx | Xsc9qvGR…qEh | $1.86M | 63k | ⛔（复测） |
-| CRCL | CRCLx | XsueG8Bt…bd1 | $867k | 13k | ⛔ |
-| MSTR | MSTRx | XsP7xzNP…xyZ | $481k | 9.1k | ⛔ |
-| GOOGL | GOOGLx | XsCPL9dN…6aN | $330k | 18k | ⛔ |
-| HOOD | HOODx | XsvNBAYk…zpg | $295k | 4.6k | ⛔ |
-| COIN | COINx | Xs7ZdzSH…xNu | $255k | 3.8k | ⛔ |
-| AMZN | AMZNx | Xs3eBt7u…Zsg | $202k | 6.2k | ⛔（复测） |
-| AVGO | AVGOx | XsgSaSvN…JGo | $76k | 492 | ⛔ |
-| PLTR | PLTRx | XsoBhf2u…AA4 | $54k | 1.1k | ⛔ |
-| META | METAx | Xsa62P5m…o5Zu | $46k | 5.9k | ⛔ |
-| ORCL | ORCLx | XsjFwUPi…jeL | $4.3k | 900 | ⛔ |
-| AMD | AMDx | XsXcJ6GZ…r1rF | $1.7k | 935 | ⛔ |
+| SPY | SPYx | XsoCS1Tf…F2W | **$2.53M** | 27k | **unverified**（未 quote 探测） |
+| QQQ | QQQx | Xs8S1uUs…WHZ | **$2.04M** | 9.7k | **unverified** |
+| NVDA | NVDAx | Xsc9qvGR…qEh | $1.86M | 63k | **⛔ `absent_no_route`**（HumidiFi 抽检） |
+| CRCL | CRCLx | XsueG8Bt…bd1 | $867k | 13k | unverified |
+| MSTR | MSTRx | XsP7xzNP…xyZ | $481k | 9.1k | unverified |
+| GOOGL | GOOGLx | XsCPL9dN…6aN | $330k | 18k | unverified |
+| HOOD | HOODx | XsvNBAYk…zpg | $295k | 4.6k | unverified |
+| COIN | COINx | Xs7ZdzSH…xNu | $255k | 3.8k | unverified |
+| AMZN | AMZNx | Xs3eBt7u…Zsg | $202k | 6.2k | **⛔ `absent_no_route`**（三 prop 抽检） |
+| AVGO | AVGOx | XsgSaSvN…JGo | $76k | 492 | unverified |
+| PLTR | PLTRx | XsoBhf2u…AA4 | $54k | 1.1k | unverified |
+| META | METAx | Xsa62P5m…o5Zu | $46k | 5.9k | unverified |
+| ORCL | ORCLx | XsjFwUPi…jeL | $4.3k | 900 | unverified |
+| AMD | AMDx | XsXcJ6GZ…r1rF | $1.7k | 935 | unverified |
 
-完整 mint 见 [`samples/whi-883-raw/jup_xstocks.json`](./samples/whi-883-raw/jup_xstocks.json)。
+完整 mint：[`jup_xstocks.json`](./samples/whi-883-raw/jup_xstocks.json)。  
+Prop 抽检原始结果：[`jup_prop_xstock_probes.json`](./samples/whi-883-raw/jup_prop_xstock_probes.json)。
 
 ---
 
@@ -224,7 +225,7 @@ Form 词汇 SSOT：[WHI-798 §4.6](./WHI-798-asset-category-inventory.md) — `b
 
 | 项 | 原因 |
 | --- | --- |
-| 把 **Sol xStocks 写入 Jupiter poller** | prop 无路由；只会消耗 WHI-864 Free-plan 预算 |
+| 把 **Sol xStocks 写入 Jupiter poller** | 抽检 NO_ROUTES + 未测 mint 不得外推；poller 只会消耗 WHI-864 Free-plan 预算 |
 | 把 **HL `xyz:SP500` / `xyz:XYZ100`** 当作 SPY/QQQ exact 行 | 违背 exact-ticker 口径（WHI-798 §4.4） |
 | 为 **pre-IPO SPV** 扩容 | 仍排除（WHI-798 §4.5） |
 | 仅因「有 Pancake 池」就对薄 `*B` 开 Tessera/AMM fan-out | Tessera 子集 + 薄池噪声 |
@@ -246,14 +247,12 @@ Form 词汇 SSOT：[WHI-798 §4.6](./WHI-798-asset-category-inventory.md) — `b
 
 假设对 P0 中 8 个 underlying 的 `xstock` 各扫 3 prop × 3 tier × 2 side：
 
-\[
-8 \times 3 \times 3 \times 2 = 144 \text{ calls}
-\]
+`8 × 3 × 3 × 2 = 144` calls → **144 / 0.6 ≈ 240 s** ≫ 120 s interval → **必然 sweep overlap / `skip_count` / `quote_stale`**。
 
-仅 xStock 增量就 **144 / 0.6 = 240 s** ≫ 120 s interval → **必然 sweep overlap / `skip_count` / `quote_stale`**，且本轮证据是 **100% NO_ROUTES**。
+抽检的 AMZNx/NVDAx 已是 **NO_ROUTES**；未探测的厚 mint（SPYx/QQQx）**也不能**靠「家族模式」假设有路由——但把它们放进 poller 在出绿测之前同样是预算浪费。
 
 **结论**：P0 扩容 **只应增加 orderbook（WS）与 Kyber/RPC 路径上已验证的 bStock 行**；  
-**Sol xStocks：catalog + `no_quote`，零 Jupiter 请求**，直到 WHI-797 式复测出现 prop 路由。
+**Sol xStocks：catalog + `no_quote` / `unverified`，零 Jupiter 请求**，直到 **逐 mint** WHI-797 式复测出现 prop 路由。
 
 ### 6.3 Kyber / RPC
 
@@ -276,19 +275,19 @@ Form 词汇 SSOT：[WHI-798 §4.6](./WHI-798-asset-category-inventory.md) — `b
 
 | asset | perp exact (n/5) | bstock BN | pancake *B | tessera *B | ondo | xstock_cex | xstock mint | prop sol |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| CRCL | 5 | ✅ $22M | unverified | unverified | unverified | ✅ | ✅ thick | ⛔ |
-| GOOGL | 5 | ✅ | ✅ mid | unverified | thin pool | ✅ | ✅ | ⛔ |
-| AMD | 5† | ✅ $4.5M | thin | unverified | unverified | ⛔ | thin | ⛔ |
-| PLTR | 5 | ✅ | thin | unverified | unverified | ⛔ | mid | ⛔ |
-| META | 5 | ✅ | mid | unverified | thin | ✅ | mid | ⛔ |
-| AMZN | 5 | ✅ | mid | unverified | thin | ✅ | mid | ⛔ |
-| SPY | 4 + HL proxy | ✅ | ✅ thick | unverified | thin | ⛔ | ✅ thick | ⛔ |
-| MSTR | 5 | ✅ | thin | unverified | — | ⛔ | ✅ | ⛔ |
-| QQQ | 4 + HL proxy | ✅ Phase-1 | ✅ thick | ✅ | — | ⛔ | ✅ thick | ⛔ |
-| COIN | 5 | ✅ | unverified | unverified | thin | ✅ | mid | ⛔ |
-| HOOD | 5 | ✅ | mid | unverified | — | ✅ | mid | ⛔ |
-| ORCL | 4 (ApeX off) | ✅ | thin | unverified | — | ⛔ | thin | ⛔ |
-| AVGO | 5 (Lighter 0) | ✅ | thin | unverified | — | ⛔ | mid | ⛔ |
+| CRCL | 5 | ✅ $22M | unverified | unverified | unverified | ✅ | ✅ high liq | unverified prop |
+| GOOGL | 5 | ✅ | ✅ pancake pool | unverified | pool/unverified | ✅ | ✅ | unverified prop |
+| AMD | 5† | ✅ $4.5M | non-v3 / thin | unverified | unverified | ⛔ | low liq | unverified prop |
+| PLTR | 5 | ✅ | thin / non-v3 | unverified | unverified | ⛔ | mid | unverified prop |
+| META | 5 | ✅ | pool | unverified | thin/unverified | ✅ | mid | unverified prop |
+| AMZN | 5 | ✅ | pool | unverified | thin | ✅ | mid | **⛔ probed** |
+| SPY | 4 + HL proxy | ✅ | ✅ high vol pool | unverified | thin/unverified | ⛔ | ✅ high liq | unverified prop |
+| MSTR | 5 | ✅ | corrupt/thin TVL | unverified | unverified | ⛔ | ✅ | unverified prop |
+| QQQ | 4 + HL proxy | ✅ Phase-1 | ✅ high vol | ✅ | unverified | ⛔ | ✅ high liq | unverified prop |
+| COIN | 5 | ✅ | unverified | unverified | unverified | ✅ | mid | unverified prop |
+| HOOD | 5 | ✅ | pool | unverified | unverified | ✅ | mid | unverified prop |
+| ORCL | 4 (ApeX off) | ✅ | thin | unverified | unverified | ⛔ | low liq | unverified prop |
+| AVGO | 5 (Lighter 0) | ✅ | thin / non-v3 | unverified | unverified | ⛔ | mid | unverified prop |
 
 † Bybit wire = `AMDSTOCKUSDT`。
 

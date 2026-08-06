@@ -244,7 +244,7 @@ v1 从「预设 venue 集合的交集」出发，交集为空即降级——被�
 
 主题：成交集中在 **AI/半导体（NVDA、MU、SNDK、SKHY、NBIS）+ SpaceX + Tesla + Circle + QQQ**；同一 underlying 普遍有 3–4 个表示（SK Hynix 四重：SKHYB/SKHY/SKHYx/SKHYon，均 2026-07-10 IPO 日发行）。榜单会快速轮动（bStocks 上线不足 2 月即登顶），清单需周期性重扫。
 
-### 4.3 逐资产 venue 支持矩阵（tokenized 现货，live 验证 2026-08-03）
+### 4.3 逐资产 venue 支持矩阵（tokenized 现货，live 验证 2026-08-03；**AMD 行 2026-08-06 WHI-883 补丁**）
 
 图例：✅ live 验证有交易对 · ⛔ live 验证无 · ─ 不适用。venue 集合 = §2.1。
 （Binance spot = `*B`USDT 符号 status TRADING；Pancake = GeckoTerminal 有活跃 v3 池；Tessera BSC = KyberSwap `includedSources=tessera` 有直连报价；Bybit spot = `*X`USDT Trading；Sol xStocks mint 见 v1 数据 + samples TSV）
@@ -299,7 +299,7 @@ v1 从「预设 venue 集合的交集」出发，交集为空即降级——被�
 | **P1** | 跨发行方基差（同 underlying 不同表示） | NVDA（NVDAB/NVDAx/NVDAon）、TSLA（TSLAB/TSLAx/TSLAon） | 各表示所在 venue |
 | **P1** | xStocks 路径 | TSLAx、NVDAx、AAPLx、CRCLx… | Bybit `*X` spot + Solana（Jupiter 公共 DEX；无 prop） |
 | **P1-lite** | ETF：tokenized vs perp 跨形态 | QQQ（QQQB ↔ QQQ perp）、SPY（SPYB ↔ SPY perp） | BSC 三方 + BN/BY/Lighter/ApeX perp；HL 仅 proxy |
-| **P2** | 扩展 mega-cap | AMZN、GOOGL、META、COIN、HOOD、MSTR、CRCL、PLTR、AMD | 视表示可用性 |
+| **P2** | 扩展 mega-cap | AMZN、GOOGL、META、COIN、HOOD、MSTR、CRCL、PLTR、AMD | 视表示可用性；**执行优先级与 2026-08-06 live 证据见 [WHI-883](./WHI-883-high-volume-stock-underlying-survey.md) §5**（CRCL/GOOGL/AMD… 升 P0） |
 | **排除** | pre-IPO SPV（PreStocks 等） | — | 非发行方授权，SEC 点名 |
 
 **对 WHI-810 的直接影响**：v1 交接语「prop 不在架、tokenized 不含 Binance `*B`」作废；新 P0 以 bStocks 三方对比为核心，配套需要 KyberSwap adapter（与 WHI-806 共用）。
@@ -647,3 +647,4 @@ P2: JUP, venue-specific high-vol (HYPE, PUMP) — flagged
 | 2026-08-06 | **v3 / WHI-880**：underlying-first；§1.2 / §4.6 form 分类法；§6.2 改为 underlying×form×venue；§7.2 与下游交接更新；legacy id breaking rename 表；Q17/Q18 |
 | 2026-08-06 | Review r1：§ 编号修正（修订记录在 §11 后）；覆盖图例拆分；恢复 P1/P2 名单；修正 §6.2.1 与 §4.3 live 证据对齐 |
 | 2026-08-06 | Review r2：补 AAPL/MSFT `bstock`（及 AAPL `ondo`）📗/📌 行；交接交叉引用 §6.2.2 |
+| 2026-08-06 | **WHI-883**：companion survey 落地；§6.2.2 / §4.5 / §7.2 指针；§4.3 AMD 增 `AMDB` 行（08-06 live）；`samples/WHI-798-asset-venue-matrix.tsv` AMD 行同步。完整 underlying×form×venue 表见 [WHI-883](./WHI-883-high-volume-stock-underlying-survey.md) |

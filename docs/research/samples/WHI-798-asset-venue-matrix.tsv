@@ -1,6 +1,6 @@
 # WHI-798 asset × venue coverage matrix
-# snapshot_date_utc: 2026-08-03
-# present: yes | no | n/a | partial
+# snapshot_date_utc: 2026-08-03 (base); AMD bStock row amended 2026-08-06 via WHI-883
+# present: yes | no | n/a | partial | live_thin (WHI-883 extension for thin pools)
 # instrument: venue-native symbol / mint / address (representative)
 # notes: multipliers (1000/k), wraps, HIP-3 dex prefix
 # prop AMM pairs reuse WHI-797 onlyDirect findings
@@ -9,6 +9,7 @@
 # v2 (2026-08-03): Binance *B tokens = bStocks (BTech/Binance affiliate, ADGM-approved, live 2026-06-12).
 # v1's *B exclusion is REVERSED - bStocks are the highest-volume tokenized stock family and are in scope.
 # prop_amm_tessera_evm column (v2): Tessera on Base/BSC via KyberSwap includedSources=tessera (WHI-797 v2 s7.4).
+# Full expansion survey (13 underlyings × form): see WHI-883-underlying-form-venue-matrix.tsv
 section	logical	binance_spot	binance_perp	bybit_spot	bybit_perp	hl_main_perp	hl_spot_or_hip3	lighter_perp	apex	prop_amm_humidifi	prop_amm_tesserav	prop_amm_bisonfi	prop_amm_tessera_evm	uniswap_eth	aerodrome_base	pancake_bsc	instrument_notes
 bluechip	BTC	yes:BTCUSDT	yes:BTCUSDT	yes:BTCUSDT	yes:BTCUSDT	yes:BTC	yes:UBTC(@142)	yes:BTC	yes:BTC-USDT	yes:cbBTC/USDC	yes:cbBTC/USDC	yes:cbBTC/USDC	yes:base cbBTC/USDC + bsc BTCB/USDT	yes:WBTC	yes:cbBTC	yes:BTCB	wraps differ per chain; prop mint cbbtcf3aa214zXHbiAZQwf4122FBYbraNdFqgw4iMij
 bluechip	ETH	yes:ETHUSDT	yes:ETHUSDT	yes:ETHUSDT	yes:ETHUSDT	yes:ETH	yes:UETH(@151)	yes:ETH	yes:ETH-USDT	yes:WETH/USDC	yes:WETH/USDC	yes:WETH/USDC	yes:base WETH/USDC	yes:WETH	yes:WETH	yes:ETH	prop WETH mint 7vfCXTUXx5WJV5JADk17DUJ4ksgau7utNKj4b963voxs (Wormhole)
