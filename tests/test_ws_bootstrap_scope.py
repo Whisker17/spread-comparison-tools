@@ -11,8 +11,8 @@ from unittest.mock import MagicMock
 import pytest
 
 from spread_compare.perp_symbols import (
-    HL_EXACT_ASSETS,
     HL_PHASE1_ASSETS,
+    PERP_DEX_SERVED_ASSETS,
     resolve_hl_coin,
 )
 from spread_compare.ws_bootstrap import (
@@ -26,12 +26,12 @@ from spread_compare.ws_bootstrap import (
 def test_hl_coins_are_exact_product_markets_not_full_meta() -> None:
     # No adapter needed — pure product map. SPY/QQQ have no exact HL market.
     coins = _hl_coins()
-    expected = {
-        resolve_hl_coin(a).venue_symbol
-        for a in HL_PHASE1_ASSETS
-        if a.upper() in HL_EXACT_ASSETS
-    }
+    expected = {resolve_hl_coin(a).venue_symbol for a in HL_PHASE1_ASSETS}
     assert set(coins) == expected
+    assert "SPY" not in HL_PHASE1_ASSETS
+    assert "QQQ" not in HL_PHASE1_ASSETS
+    assert "SPY" in PERP_DEX_SERVED_ASSETS
+    assert "QQQ" in PERP_DEX_SERVED_ASSETS
     assert "xyz:SPY" not in coins
     assert "SPY" not in coins
     assert "xyz:QQQ" not in coins
@@ -50,11 +50,14 @@ def test_cex_ws_includes_p0_books_and_amd_bybit_wire() -> None:
     assert "AMDUSDT" in bn_fut
     assert "AMDSTOCKUSDT" in by_lin
     assert "AMDUSDT" not in by_lin
-    bn_spot = _cex_symbols("spot", venue="binance")
+    bn_spot = _cex_symbols("spot", venue="binance", tokenized_forms=("bstock",))
     assert "CRCLBUSDT" in bn_spot
     assert "SPYBUSDT" in bn_spot
+    # AMD/PLTR bstock is catalog-only (unverified) — not WS-subscribed.
+    assert "AMDBUSDT" not in bn_spot
+    assert "PLTRBUSDT" not in bn_spot
     by_spot = _cex_symbols(
-        "spot", venue="bybit", exclude_bstocks=True, include_xstock_cex=True
+        "spot", venue="bybit", tokenized_forms=("xstock_cex",)
     )
     assert "CRCLXUSDT" in by_spot
     assert "GOOGLXUSDT" in by_spot
@@ -102,4 +105,4 @@ def test_apex_symbols_filter_to_phase1(monkeypatch: pytest.MonkeyPatch) -> None:
     assert "BTCUSDT" in symbols
     assert "ETHUSDT" in symbols
     assert "RAREPERPUSDT" not in symbols
-    assert len(symbols) <= len(HL_PHASE1_ASSETS)
+    assert len(symbols) <= len(PERP_DEX_SERVED_ASSETS)

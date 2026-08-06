@@ -154,12 +154,20 @@ def test_whi884_p0_live_forms() -> None:
     # QQQ still keeps live bstock (Phase-1).
     assert "bstock" in {f.id for f in live_forms("QQQ")}
 
-    # Unverified forms stay catalogued, not live (no Sol xStock fan-out).
+    # AMZN xstock: prop NO_ROUTES → coverage=absent (still catalogued).
     amzn = get_asset("AMZN")
     assert amzn is not None and amzn.forms is not None
     xstock = next(f for f in amzn.forms if f.id == "xstock")
-    assert xstock.coverage == "unverified"
+    assert xstock.coverage == "absent"
     assert "xstock" not in {f.id for f in live_forms("AMZN")}
+
+    # AMD/PLTR bstock catalogued but not live fan-out (survey §5.2).
+    amd_bstock = get_form("AMD", "bstock")
+    assert amd_bstock is not None and amd_bstock.coverage == "unverified"
+    pltr_bstock = get_form("PLTR", "bstock")
+    assert pltr_bstock is not None and pltr_bstock.coverage == "unverified"
+    assert "bstock" not in {f.id for f in live_forms("AMD")}
+    assert "bstock" not in {f.id for f in live_forms("PLTR")}
 
 
 def test_tradeable_stables_subset_of_peg_set() -> None:

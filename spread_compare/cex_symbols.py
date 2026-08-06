@@ -192,14 +192,8 @@ def resolve_cex_multiplier(
     instrument_type: InstrumentType | CexBookSide = "spot",
     *,
     form: str | None = None,
-    venue: str | None = None,
 ) -> Decimal:
-    """Contract size in canonical 1× units; ``1`` when unknown or unscaled.
-
-    ``venue`` is accepted for call-site symmetry with :func:`resolve_cex_symbol`;
-    no venue currently scales differently for the same form.
-    """
-    _ = venue
+    """Contract size in canonical 1× units; ``1`` when unknown or unscaled."""
     entry = get_cex_symbol(asset, form=form)
     if entry is None:
         return Decimal(1)

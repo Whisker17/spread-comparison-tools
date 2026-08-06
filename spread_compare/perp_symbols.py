@@ -50,10 +50,8 @@ _SCALED_1000_OVERRIDES: Final[dict[str, PerpVenueSymbol]] = {
     "BONK": PerpVenueSymbol("1000BONK", Decimal(1000)),
 }
 
-# Product-surface logical assets for perp-DEX adapters / WS when meta is cold.
-# PEPE/BONK are multiplier infrastructure (P1 catalog); not in assets.ASSETS.
-# SPY/QQQ: Lighter + ApeX only (no exact HL — see WHI-883); HL WS skips them.
-HL_PHASE1_ASSETS: Final[tuple[str, ...]] = (
+# Crypto + others on every perp DEX (and HL main book).
+_PERP_DEX_CRYPTO: Final[tuple[str, ...]] = (
     "BTC",
     "ETH",
     "SOL",
@@ -65,6 +63,10 @@ HL_PHASE1_ASSETS: Final[tuple[str, ...]] = (
     "AVAX",
     "ADA",
     "BNB",
+)
+
+# Equity with exact HL ``xyz:`` markets (WHI-883 — never SPY/QQQ proxies).
+_PERP_DEX_EQUITY_HL_EXACT: Final[tuple[str, ...]] = (
     "TSLA",
     "NVDA",
     "AAPL",
@@ -76,41 +78,26 @@ HL_PHASE1_ASSETS: Final[tuple[str, ...]] = (
     "META",
     "AMZN",
     "MSTR",
-    "SPY",
-    "QQQ",
-    "PEPE",
-    "BONK",
 )
 
-# Logical assets with an exact HL market (main book or xyz: override).
-# SPY/QQQ are deliberately absent — only proxy index markets exist (WHI-883).
-HL_EXACT_ASSETS: Final[frozenset[str]] = frozenset(
-    {
-        "BTC",
-        "ETH",
-        "SOL",
-        "DOGE",
-        "WIF",
-        "XRP",
-        "SUI",
-        "LINK",
-        "AVAX",
-        "ADA",
-        "BNB",
-        "TSLA",
-        "NVDA",
-        "AAPL",
-        "MSFT",
-        "CRCL",
-        "GOOGL",
-        "AMD",
-        "PLTR",
-        "META",
-        "AMZN",
-        "MSTR",
-        "PEPE",
-        "BONK",
-    }
+# Equity listed on Lighter/ApeX (+ CEX) but **no** exact HL market (proxy only).
+_PERP_DEX_EQUITY_NO_HL: Final[tuple[str, ...]] = ("SPY", "QQQ")
+
+# Multiplier infrastructure (P1 catalog); not in assets.ASSETS.
+_PERP_DEX_MEME: Final[tuple[str, ...]] = ("PEPE", "BONK")
+
+# Hyperliquid cold ``supported_assets`` + HL WS: exact markets only.
+# Name kept for adapter call sites; scope is HL-exact product surface.
+HL_PHASE1_ASSETS: Final[tuple[str, ...]] = (
+    _PERP_DEX_CRYPTO + _PERP_DEX_EQUITY_HL_EXACT + _PERP_DEX_MEME
+)
+
+# Lighter / ApeX / WS product set — includes SPY/QQQ (no HL exact).
+PERP_DEX_SERVED_ASSETS: Final[tuple[str, ...]] = (
+    _PERP_DEX_CRYPTO
+    + _PERP_DEX_EQUITY_HL_EXACT
+    + _PERP_DEX_EQUITY_NO_HL
+    + _PERP_DEX_MEME
 )
 
 # HIP-3 sub-dex prefixes allowed beyond the main book (WHI-798 §8 Q10).

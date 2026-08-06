@@ -278,12 +278,6 @@ export const STOCK_FORMS_STATIC: Readonly<
         apex: "AMD-USDT",
       },
     },
-    {
-      id: "bstock",
-      form_class: "tokenized",
-      coverage: "live",
-      representations: { binance: "AMDBUSDT" },
-    },
   ],
   PLTR: [
     {
@@ -297,12 +291,6 @@ export const STOCK_FORMS_STATIC: Readonly<
         lighter: "PLTR",
         apex: "PLTR-USDT",
       },
-    },
-    {
-      id: "bstock",
-      form_class: "tokenized",
-      coverage: "live",
-      representations: { binance: "PLTRBUSDT" },
     },
   ],
   META: [
@@ -407,8 +395,8 @@ export const STOCK_ASSET_SUBTITLES: Readonly<Record<string, string>> = {
   SPCX: "SpaceX · bStocks (BSC)",
   CRCL: "Circle · equity perp + bStocks + xStocks CEX",
   GOOGL: "Alphabet · equity perp + bStocks + xStocks CEX",
-  AMD: "AMD · equity perp (Bybit AMDSTOCKUSDT) + bStocks",
-  PLTR: "Palantir · equity perp + bStocks",
+  AMD: "AMD · equity perp (Bybit AMDSTOCKUSDT)",
+  PLTR: "Palantir · equity perp",
   META: "Meta · equity perp + bStocks + xStocks CEX",
   AMZN: "Amazon · equity perp + bStocks + xStocks CEX",
   SPY: "SPDR S&P 500 · equity perp (no HL exact) + bStocks",

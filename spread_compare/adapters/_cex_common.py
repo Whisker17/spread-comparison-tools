@@ -521,7 +521,7 @@ class CexBaseAdapter(BaseAdapter, ABC):
 
         schedule = self.get_fees(asset_key, instrument_type=book_side)
         trading_fee = require_taker_bps(self.venue, schedule)
-        multiplier = resolve_cex_multiplier(asset_key, book_side, form=form, venue=self.venue)
+        multiplier = resolve_cex_multiplier(asset_key, book_side, form=form)
 
         q_star = notional_usd / mid.mid
         try:
@@ -651,7 +651,7 @@ class CexBaseAdapter(BaseAdapter, ABC):
 
         schedule = self.get_fees(asset_key, instrument_type=book_side)
         trading_fee = require_taker_bps(self.venue, schedule)
-        multiplier = resolve_cex_multiplier(asset_key, book_side, form=form, venue=self.venue)
+        multiplier = resolve_cex_multiplier(asset_key, book_side, form=form)
 
         # Depth for the largest tier — escalate until *every* requested side fills
         # q_max (or max depth). One-sided escalation would leave the opposite
@@ -746,7 +746,7 @@ class CexBaseAdapter(BaseAdapter, ABC):
                 f"{asset} not supported by {self.venue} as {book_side}"
                 + (f" form={form!r}" if form else "")
             )
-        multiplier = resolve_cex_multiplier(asset_key, book_side, form=form, venue=self.venue)
+        multiplier = resolve_cex_multiplier(asset_key, book_side, form=form)
         bids, asks, _from_ws, _age = await self._resolve_book(symbol, book_side)
         return build_top_of_book(
             venue=self.venue,

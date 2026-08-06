@@ -385,6 +385,8 @@ _STOCK_ROWS: Final[tuple[AssetInfo, ...]] = (
             _form(
                 "bstock",
                 {"binance": "AMDBUSDT"},
+                # Survey §5.2: catalog BN bStock but do not fan-out (thin AMM).
+                coverage="unverified",
             ),
             _form("ondo", {}, coverage="unverified"),
             _form("xstock", {}, coverage="unverified"),
@@ -408,6 +410,8 @@ _STOCK_ROWS: Final[tuple[AssetInfo, ...]] = (
             _form(
                 "bstock",
                 {"binance": "PLTRBUSDT"},
+                # Survey §5.2: catalog BN bStock but do not fan-out.
+                coverage="unverified",
             ),
             _form("ondo", {}, coverage="unverified"),
             _form("xstock", {}, coverage="unverified"),
@@ -464,8 +468,9 @@ _STOCK_ROWS: Final[tuple[AssetInfo, ...]] = (
                 {"bybit": "AMZNXUSDT"},
             ),
             _form("ondo", {}, coverage="unverified"),
-            # Prop routes probed NO_ROUTES (WHI-883); keep form, no fan-out.
-            _form("xstock", {}, coverage="unverified"),
+            # Prop routes probed NO_ROUTES (WHI-883 absent_no_route); form
+            # remains listed with coverage=absent (not silent drop).
+            _form("xstock", {}, coverage="absent"),
         ),
     ),
     AssetInfo(

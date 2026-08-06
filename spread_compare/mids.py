@@ -505,7 +505,7 @@ class MidService:
         symbol = resolve_cex_symbol(asset, "perp", form=form, venue="binance")
         if symbol is None:
             return None
-        mult = resolve_cex_multiplier(asset, "perp", form=form, venue="binance")
+        mult = resolve_cex_multiplier(asset, "perp", form=form)
         url = f"{_BINANCE_FAPI}/fapi/v1/premiumIndex"
         try:
             resp = await self._http().get(url, params={"symbol": symbol})
@@ -526,7 +526,7 @@ class MidService:
         symbol = resolve_cex_symbol(asset, "spot", form=form, venue="binance")
         if symbol is None:
             return None
-        mult = resolve_cex_multiplier(asset, "spot", form=form, venue="binance")
+        mult = resolve_cex_multiplier(asset, "spot", form=form)
         url = f"{_BINANCE_SPOT}/api/v3/ticker/bookTicker"
         try:
             resp = await self._http().get(url, params={"symbol": symbol})
@@ -548,7 +548,7 @@ class MidService:
         symbol = resolve_cex_symbol(asset, "spot", form=form, venue="bybit")
         if symbol is None:
             return None
-        mult = resolve_cex_multiplier(asset, "spot", form=form, venue="bybit")
+        mult = resolve_cex_multiplier(asset, "spot", form=form)
         url = f"{_BYBIT}/v5/market/tickers"
         try:
             resp = await self._http().get(
