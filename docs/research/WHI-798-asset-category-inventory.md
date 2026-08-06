@@ -5,13 +5,15 @@
 | Issue | [WHI-798](https://linear.app/whisker-personal/issue/WHI-798/调研确定各资产类别的资产清单) |
 | Milestone | M1 调研与口径定义 |
 | Blocks | WHI-809（Section: Crypto blue chips）、[WHI-810](https://linear.app/whisker-personal/issue/WHI-810)（Section: Stocks）、WHI-811（Section: Others） |
-| 调研日期 | 2026-08-03（UTC；v2 同日重做 Stocks 部分） |
+| 调研日期 | 2026-08-03（UTC；v2 同日重做 Stocks 部分；**v3 2026-08-06** underlying-first，见 [WHI-880](https://linear.app/whisker-personal/issue/WHI-880)） |
 | 方法 | 各 venue **公网 market-list API** live 探测 + 官方文档 + 复用 [WHI-797](./WHI-797-prop-amm-jupiter-quote-api.md)（v2 多链版）prop AMM 资产矩阵 |
 | 样本 | [`samples/WHI-798-asset-venue-matrix.tsv`](./samples/WHI-798-asset-venue-matrix.tsv) |
 
 > **v2 变更**：初版 Stocks 用「venue 交集优先」方法，得出「全 venue 交集为空 → Stocks 降级/收缩」的结论——方向反了。本版按 issue 要求改为 **asset-first**：先按链上成交量列全 tokenized stocks（不限发行形式：bStocks、xStocks、Ondo 等都算），再逐 venue 找支持并全部纳入矩阵。两个关键事实修正：
 > 1. 初版 §4.3.1 把 Binance `*B` 当作「非 xStocks 发行模型」排除——**错误**。`*B` = **bStocks**（BTech/Binance 系，2026-06-12 上线，ADGM 批准 1:1 托管），是**当前链上成交量最大的 tokenized stocks 家族**，必须纳入。
 > 2. 初版认为 prop AMM 与 Stocks 无交集——**错误**。Tessera 在 **BSC** 上的成交主力（采样 ~94%）就是 tokenized equities（QQQB 等），且可经 KyberSwap 隔离报价（WHI-797 v2 §7.4）。
+>
+> **v3 变更（[WHI-880](https://linear.app/whisker-personal/issue/WHI-880)，2026-08-06）**：v2 仍把 **同一 underlying 的不同发行表示**（`NVDAB` / `NVDAON` / `NVDA` perp）编成**互不相关的 catalog 行**，导致 reference mid 分叉、bps 跨 form 不可比。v3 改为 **underlying-first**：catalog 的 logical `asset` = 单一 underlying（`NVDA` / `QQQ` / `SPCX` / …）；每一种可交易形态是 **form** 维度（`perp` / `bstock` / `ondo` / `xstock` / `xstock_cex`）。行身份、表示映射与 mid 策略以 §4.6 / §6.2 v3 与 [WHI-799](./WHI-799-spread-fee-data-model.md) §3.3 v3 为准。**项目规则**：asset-first，**永不静默丢弃**某个 form——未验证的 form 标 `unverified` / `no_quote`，而不是从清单删掉。
 
 ---
 
@@ -27,23 +29,37 @@
 
 **推荐 dashboard P0**：`BTC`、`ETH`、`SOL` 三资产；报价路径用下文 **表示映射表**（§3.3），禁止把 `cbBTC` 与 `WBTC` 当同一 mint 硬编码。
 
-### 1.2 Stocks（tokenized stocks / equity perps）— **v2 重做：asset-first，交集不为空**
+### 1.2 Stocks — **v3：underlying-first（form 为维度）**
 
-**方法**：先按链上成交量列全 tokenized stocks（§4.2 top 榜，bStocks/xStocks/Ondo/Backpack/… 全算），再逐资产查 venue 支持（§4.3 矩阵）。
+**方法（v2 保留 + v3 重组）**：先按链上成交量列全 tokenized stocks（§4.2），再逐 underlying 扫 venue（§4.3）；**v3 起 catalog 只登记 underlying**，发行形态挂在 **form** 上（§4.6），不再为每个 token 开独立 logical asset。
 
-**核心发现（推翻 v1 结论）**：
+**核心发现（v2，仍成立）**：
 
 1. **链上成交量最大的 tokenized stocks 家族是 bStocks（BNB Chain，`*B` 后缀）**——SPCXB、QQQB、NVDAB、SKHYB、MUB、SNDKB 等，单资产 24h $4M–$23M 量级；xStocks（Solana）与 Ondo（`*on`）在其后。
-2. **BSC 上存在完整的「CEX 现货 × AMM DEX × Prop AMM」三方可比闭环**：同一 bStocks 资产在 **Binance spot**（`QQQBUSDT` 等 18 个 `*B` 符号全部 TRADING，live 验证）、**PancakeSwap v3**（QQQB/USDT 24h ~$23M 等）、**Tessera prop AMM**（KyberSwap `includedSources=tessera` 直连报价：QQQB/SPCXB/NVDAB/NVDAon ✅）三处同时可报价——**这正是本产品价差对比的最佳场景**，v1「Stocks 与 prop AMM 无交集」的结论仅对 Solana 成立。
-3. Equity perps 路径不变仍然成立（BN TradFi + BY + HL `xyz:` + Lighter + ApeX exact-ticker 交集：TSLA/AAPL/NVDA/MSFT/AMZN/GOOGL/META/COIN/HOOD/MSTR…；SPY/QQQ 在 HL 仅 proxy）。
-4. 同一 underlying 常有 **3–4 种链上表示**（NVIDIA = NVDAB + NVDAx + NVDAon + rNVDA；SK Hynix = SKHYB + SKHY + SKHYx + SKHYon）——矩阵按 **underlying × representation × venue** 组织，跨发行方基差本身就是可展示指标。
+2. **BSC 上存在完整的「CEX 现货 × AMM DEX × Prop AMM」三方可比闭环**：同一 bStocks **form** 在 **Binance spot**、**PancakeSwap v3**、**Tessera prop AMM** 三处同时可报价——产品主场景。
+3. Equity **perp form** 路径仍成立（BN TradFi + BY + HL `xyz:` + Lighter + ApeX exact-ticker：TSLA/AAPL/NVDA/MSFT…）。
+4. 同一 underlying 常有 **3–5 种 form**（NVIDIA = `bstock` NVDAB + `xstock` NVDAx + `ondo` NVDAon + `xstock_cex` NVDAX + `perp`）——跨 form 基差是可展示指标（`basis_bps`），**不得**混进 `spread_bps`（WHI-799 §3.3 v3）。
 
-**Phase 1 建议（v2）**：
+**v3 产品口径（WHI-880）**：
 
-1. **P0 tokenized 板（新增，最高优先）**：bStocks 三方对比 `Binance spot × PancakeSwap × Tessera(BSC)` —— 资产：**QQQB、SPCXB、NVDAB**（+NVDAon 作为 Ondo 表示）；全在 BSC 一条链，adapter 复用度最高。
-2. **P0 equity-perp 板（沿用 v1）**：TSLA、NVDA、AAPL、MSFT 五 venue exact-ticker。
-3. **P1**：xStocks 路径（Bybit `*X` spot ↔ Solana，11 个 `*X` 现货 live 确认，新增 SPCXX/MCDX）；跨发行方基差（NVDAB vs NVDAx vs NVDAon）。
-4. Solana 三家 prop AMM 对 xStocks 仍无报价（2026-08-03 复测 `dexes=HumidiFi/TesseraV/BisonFi` × TSLAx/NVDAx 全部 `NO_ROUTES_FOUND`）——Stocks × prop AMM 只在 **BSC（Tessera）** 成立。
+| 概念 | 定义 |
+| --- | --- |
+| **Logical asset** | 单一 underlying 权益/ETF/私募标的（`NVDA`、`QQQ`、`SPCX`、`TSLA`…） |
+| **Form** | 该 underlying 的一种可交易形态（稳定 id，§4.6） |
+| **Row identity** | `(venue, asset, form, instrument_type)` — 同一 venue 可挂多个 form（例：`tessera_bsc` 同时报 NVDAB 与 NVDAon） |
+| **Mid** | **每个 underlying 每个 snapshot 一个 reference mid**；所有 form 共用，使 bps 跨 form 可比 |
+
+**Phase 1 覆盖（v3 重组，不增 ticker）**：
+
+1. **Underlying 集合**：`NVDA`、`TSLA`、`AAPL`、`MSFT`、`QQQ`、`SPCX`（吸收旧 catalog 的 NVDAB/NVDAON/QQQB/SPCXB 与 equity_perp 行）。
+2. **Live forms（已在架 / 当前代码路径）**：
+   - `perp`：TSLA/NVDA/AAPL/MSFT × 五 orderbook venues
+   - `bstock`：QQQ/SPCX/NVDA × Binance spot + Pancake BSC + Tessera BSC
+   - `ondo`：NVDA × Pancake BSC + Tessera BSC（无 Binance spot）
+3. **Catalogued but not yet live-quoted（标 unverified / 可挂 `no_quote`，不得静默删除）**：
+   - `xstock`（Solana mint：NVDAx / TSLAx / …）
+   - `xstock_cex`（Bybit `*X` spot：NVDAX / TSLAX / SPCXX…）
+4. Solana prop AMM 对 xStocks 仍无路由（2026-08-03）——`xstock` 的 prop 列为 ⛔，不整 form 删除。
 
 ### 1.3 Others（高成交量交集）— **prop AMM 把交集压成 blue-chip 级**
 
@@ -287,6 +303,44 @@ v1 从「预设 venue 集合的交集」出发，交集为空即降级——被�
 
 **对 WHI-810 的直接影响**：v1 交接语「prop 不在架、tokenized 不含 Binance `*B`」作废；新 P0 以 bStocks 三方对比为核心，配套需要 KyberSwap adapter（与 WHI-806 共用）。
 
+### 4.6 Form 分类法与稳定 id（v3 / WHI-880）
+
+SSOT 落地位置：`spread_compare/assets.py`（实现 issue [WHI-881](https://linear.app/whisker-personal/issue/WHI-881)）。本表是 **form 词汇表**——新增发行家族时只允许扩展此表，禁止为同一 form 发明别名。
+
+| `form` id（稳定） | 发行家族 / 含义 | 典型命名 | 默认 `instrument_type`（venue 可覆盖） | 常见 venues |
+| --- | --- | --- | --- | --- |
+| `perp` | Exact-ticker 股票/ETF 永续 | `NVDAUSDT`、`xyz:NVDA` | `perp` | `binance`, `bybit`, `hyperliquid`, `lighter`, `apex` |
+| `bstock` | bStocks（BTech / Binance 系，BSC） | `NVDAB`、`QQQB`、`SPCXB` | `spot`（CEX）/ `amm_pool` / `prop_amm` | `binance` spot、`pancakeswap_bsc`、`tessera_bsc` |
+| `ondo` | Ondo Stocks | `NVDAon` | `amm_pool` / `prop_amm`（CEX 现货常无） | `pancakeswap_bsc`、`tessera_bsc`；（ETH Uniswap 可选） |
+| `xstock` | Backed xStocks **链上 mint**（主 Solana） | `NVDAx` mint `Xs…` | `amm_pool`（公共 DEX）；prop 当前 ⛔ | Solana AMM / 未来 prop |
+| `xstock_cex` | xStocks **CEX 现货**（Bybit `*X`） | `NVDAXUSDT` | `spot` | `bybit` spot |
+
+**Form class**（用于 §5.2 best 分组，见 WHI-799 §5.2 v3）：
+
+| `form_class` | 包含 form | 暴露性质 |
+| --- | --- | --- |
+| `perp` | `perp` | 资金费率 + 保证金；无托管正股/证书 |
+| `tokenized` | `bstock`, `ondo`, `xstock`, `xstock_cex` | 托管 / 证书 / 1:1 包装现货；无 funding |
+
+**规则**：
+
+1. `form` 是稳定 slug（小写 snake）；**不是** display label（label 仍走 `representations[venue]`）。
+2. 一个 `(venue, asset)` **可以**挂多个 form（`tessera_bsc` + `NVDA` → `bstock` 与 `ondo` 两行）。
+3. 未 live 验证的 form **仍写入 catalog**，`status`/`coverage` 用 `unverified` 或报价 `no_quote`——**禁止**因「暂不对比」而从 inventory 删除。
+4. Crypto blue chips / Others **不**强制 `form` 字段（隐式单 form；实现可省略或 null）——行为不变。
+
+**Legacy asset id 映射（breaking rename，pre-v1）**：
+
+| 旧 catalog id（废除） | 新 `asset` | 新 `form` |
+| --- | --- | --- |
+| `NVDAB` | `NVDA` | `bstock` |
+| `NVDAON` | `NVDA` | `ondo` |
+| `QQQB` | `QQQ` | `bstock` |
+| `SPCXB` | `SPCX` | `bstock` |
+| `TSLA` / `NVDA` / `AAPL` / `MSFT`（旧 category=`equity_perp`） | 同 id | `perp`（保留 underlying id；category 改为 `stock`） |
+
+旧 id **不再**作为 top-level asset；API 对旧 id 返回错误 + 迁移提示（WHI-799 §6.7）。**不做**静默 alias 双写。
+
 ---
 
 ## 5. Section C — Others
@@ -367,26 +421,49 @@ v1 从「预设 venue 集合的交集」出发，交集为空即降级——被�
 | ETH | ETHUSDT s+p | ETHUSDT s+p | ETH / UETH | ETH | ETH-USDT | WETH (Wormhole) | WETH | WETH | ETH |
 | SOL | SOLUSDT s+p | SOLUSDT s+p | SOL / USOL | SOL | SOL-USDT | wSOL | — | — | — |
 
-### 6.2 Stocks（v2：P0-A tokenized 三方 + P0-B equity-perp）
+### 6.2 Stocks（v3：underlying × form × venue）
 
-**P0-A tokenized（BSC 三方闭环）**：
+> v2 的「P0-A 独立 tokenized 资产 id + P0-B equity_perp 资产 id」作废为 **catalog 形状**；venue 覆盖事实不变。  
+> 行 = `(asset, form, venue)`；`instrument_type` 由 form 默认值或 venue 覆盖（WHI-799 §6.2）。  
+> 图例：✅ live 已报价路径 · 📌 catalogued / unverified（勿静默删除）· ⛔ live 验证无 · — 不适用。
 
-| Underlying | bStocks token | Binance spot | Pancake v3 | Tessera (prop, via KyberSwap) | 其他表示 |
-| --- | --- | --- | --- | --- | --- |
-| Invesco QQQ | QQQB `0x2058…efc7` | QQQBUSDT | ✅ 池 24h ~$23M | ✅ 直连 | QQQx (Sol)；QQQ perp（BN/BY/Lighter/ApeX） |
-| SpaceX | SPCXB `0xbe9d…03e1` | SPCXBUSDT | ✅ ~$10M | ✅ 直连 | SPCXX (Bybit spot)、SPCXx (Sol) |
-| NVIDIA | NVDAB `0x02fc…7436` | NVDABUSDT | ✅ ~$12M | ✅ 直连 | NVDAon `0xa9ee…6f75`（Tessera 亦直连）、NVDAx、NVDA perp |
+#### 6.2.1 Phase-1 underlyings（当前产品行，不含新增 ticker）
 
-**P0-B equity-perp（沿用）**：
+| asset | form | form_class | binance | bybit | hyperliquid | lighter | apex | pancakeswap_bsc | tessera_bsc | 备注 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| **NVDA** | `perp` | perp | ✅ NVDAUSDT p | ✅ NVDAUSDT p | ✅ xyz:NVDA | ✅ NVDA | ✅ NVDA-USDT | — | — | 五 venue exact-ticker |
+| **NVDA** | `bstock` | tokenized | ✅ NVDABUSDT s | — | — | — | — | ✅ NVDAB | ✅ NVDAB | BSC 三方闭环 |
+| **NVDA** | `ondo` | tokenized | — | — | — | — | — | ✅ NVDAon | ✅ NVDAon | 无 Binance spot |
+| **NVDA** | `xstock_cex` | tokenized | — | 📌 NVDAXUSDT s | — | — | — | — | — | catalogued；Bybit live 符号已确认 |
+| **NVDA** | `xstock` | tokenized | — | — | — | — | — | — | — | 📌 Sol mint NVDAx；Sol prop ⛔ |
+| **TSLA** | `perp` | perp | ✅ | ✅ | ✅ xyz:TSLA | ✅ | ✅ | — | — | |
+| **TSLA** | `bstock` | tokenized | 📌 TSLABUSDT | — | — | — | — | 📌 TSLAB | ⛔ Tessera 无池 | P1 扩展 |
+| **TSLA** | `xstock_cex` | tokenized | — | 📌 TSLAXUSDT | — | — | — | — | — | |
+| **TSLA** | `xstock` | tokenized | — | — | — | — | — | — | — | 📌 TSLAx mint；Sol prop ⛔ |
+| **TSLA** | `ondo` | tokenized | — | — | — | — | — | 📌 | 📌 | 未逐池 live 钉死 |
+| **AAPL** | `perp` | perp | ✅ | ✅ | ✅ xyz:AAPL | ✅ | ✅ | — | — | |
+| **AAPL** | `xstock_cex` | tokenized | — | 📌 AAPLXUSDT | — | — | — | — | — | |
+| **AAPL** | `xstock` | tokenized | — | — | — | — | — | — | — | 📌 AAPLx mint |
+| **MSFT** | `perp` | perp | ✅ | ✅ | ✅ xyz:MSFT | ✅ | ✅ | — | — | |
+| **MSFT** | `xstock` | tokenized | — | — | — | — | — | — | — | 📌 MSFTx mint；无 Bybit `*X` |
+| **QQQ** | `bstock` | tokenized | ✅ QQQBUSDT s | — | — | — | — | ✅ QQQB | ✅ QQQB | 旧 id `QQQB` |
+| **QQQ** | `perp` | perp | 📌 QQQUSDT p | 📌 | ⛔ proxy-only xyz:XYZ100 | 📌 | 📌 | — | — | HL **禁止**假装 exact `xyz:QQQ` |
+| **QQQ** | `xstock` | tokenized | — | — | — | — | — | — | — | 📌 QQQx mint |
+| **SPCX** | `bstock` | tokenized | ✅ SPCXBUSDT s | — | — | — | — | ✅ SPCXB | ✅ SPCXB | 旧 id `SPCXB`；**无公开 equity ref** |
+| **SPCX** | `xstock_cex` | tokenized | — | 📌 SPCXXUSDT | — | — | — | — | — | |
+| **SPCX** | `xstock` | tokenized | — | — | — | — | — | — | — | 📌 SPCXx mint |
+| **SPCX** | `perp` | perp | — | — | — | — | — | — | — | ⛔ 无私募 SpaceX exact perp（当前 venue 集） |
 
-| Logical | BN TradFi | BY perp | HL xyz | Lighter | ApeX | BY xStock | Sol xStock | PropAMM |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| TSLA | TSLAUSDT | TSLAUSDT | xyz:TSLA | TSLA | TSLA-USDT | TSLAX | TSLAx mint | —（Sol）/ ⛔ TSLAB（BSC Tessera 无池） |
-| AAPL | AAPLUSDT | AAPLUSDT | xyz:AAPL | AAPL | AAPL-USDT | AAPLX | AAPLx mint | — |
-| NVDA | NVDAUSDT | NVDAUSDT | xyz:NVDA | NVDA | NVDA-USDT | NVDAX | NVDAx mint | ✅ NVDAB/NVDAon（BSC Tessera） |
-| MSFT | MSFTUSDT | MSFTUSDT | xyz:MSFT | MSFT | MSFT-USDT | — | MSFTx mint | — |
-| SPY (P1-lite) | SPYUSDT | SPYUSDT | proxy:SP500 only | SPY | SPY-USDT | — | SPYx mint | — |
-| QQQ (P1-lite) | QQQUSDT | QQQUSDT | proxy:XYZ100 only | QQQ | QQQ-USDT | — | QQQx mint | ✅ QQQB（BSC Tessera） |
+**读法**：
+
+- 产品问题「NVIDIA 暴露在我的 size 上哪里最便宜」→ 查 `asset=NVDA` 一次，拿回所有 form 行，**共用一个 mid**（WHI-799 §3.3 v3）。
+- `tessera_bsc` 对 NVDA 贡献 **两行**（`bstock` + `ondo`），不再需要两个 logical asset id。
+- SPCX **没有** TradFi index / equity perp 中位数可用 → mid 固定走 bstock CEX TOB 链（WHI-799 §3.3.1）。
+
+#### 6.2.2 旧表对照（v2 兼容阅读）
+
+v2 的「P0-A tokenized 三方」= 上表 `QQQ/SPCX/NVDA` × `bstock`（+ `NVDA` × `ondo`）。  
+v2 的「P0-B equity-perp」= 上表 `TSLA/NVDA/AAPL/MSFT` × `perp`。
 
 ### 6.3 Others（P0 压缩 — 与 §7.3 一致）
 
@@ -415,22 +492,32 @@ P0: BTC, ETH, SOL
 - SOL 行隐藏或禁用 EVM AMM 列。  
 - 稳定币报价腿优先 **USDC**（perp 多为 USDT 结算 — UI 需标注 quote currency）。
 
-### 7.2 WHI-810 Stocks（v2）
+### 7.2 Stocks section（v3 / WHI-880 → 实现 WHI-881 + FE 跟随 issue）
 
 ```text
-P0-A (tokenized, BSC 三方: Binance spot × Pancake v3 × Tessera prop): QQQB, SPCXB, NVDAB (+NVDAon)
-P0-B (equity perps, exact ticker on all 5 venues): TSLA, NVDA, AAPL, MSFT
-P1: 跨发行方基差 (NVDAB/NVDAx/NVDAon; TSLAB/TSLAx/TSLAon)
-P1: xStocks (Bybit *X spot ↔ Solana; 11 个 *X live 含 SPCXX/MCDX)
-P1-lite (ETF 跨形态: tokenized ↔ perp; HL proxy-only xyz:SP500/XYZ100): QQQ(QQQB), SPY(SPYB)
-P2: AMZN, GOOGL, META, COIN, HOOD, MSTR, CRCL, PLTR, AMD (Bybit=AMDSTOCKUSDT)
+Logical assets (underlyings):
+  NVDA, TSLA, AAPL, MSFT, QQQ, SPCX
+
+Live forms (Phase 1 UI / backend):
+  NVDA:  perp + bstock + ondo
+  TSLA:  perp
+  AAPL:  perp
+  MSFT:  perp
+  QQQ:   bstock
+  SPCX:  bstock
+
+Catalogued-not-live (keep in catalog; quote as no_quote / unverified — do NOT drop):
+  NVDA/TSLA/AAPL/… × xstock | xstock_cex
+  TSLA/QQQ/… 扩展 bstock / ondo / perp 按 §6.2
+
+P1 survey (WHI-883): 更多 high-volume underlyings，必须沿用 form 分类法
 排除: pre-IPO SPV (PreStocks/Jarsy)
 ```
 
-- v1 的「tokenized 不含 Binance `*B`、prop 不在架」交接语**作废**（见 §4.0）。  
-- P0-A 需要 KyberSwap adapter（与 WHI-806 Tessera EVM 路径共用）。  
-- **勿**为 SPY/QQQ 实现不存在的 `xyz:SPY` / `xyz:QQQ` adapter。  
-- bStocks 有 rebase（分红/拆股）机制——价格对比需确认 rebase 当日语义（见 §8 Q14）。
+- **Dashboard 形状**：从「两个无关子板（tokenized 资产列表 vs equity_perp 资产列表）」改为 **按 underlying 一块板**，行 = venue×form（或 form 作列维度）；`frontend/src/config/sections/stocks.ts` 的 `TOKENIZED_STOCK_ASSETS` / `EQUITY_PERP_ASSETS` 拆分作废（FE 跟随后续 issue）。
+- **表示标签**仍必须展示（NVDAB vs NVDAon vs xyz:NVDA），来源 `GET /assets` nested forms。
+- **勿**为 SPY/QQQ 实现不存在的 `xyz:SPY` / `xyz:QQQ`。
+- bStocks rebase：见 §8 Q14 + WHI-799 §3.3。
 
 ### 7.3 WHI-811 Others
 
@@ -465,6 +552,8 @@ P2: JUP, venue-specific high-vol (HYPE, PUMP) — flagged
 | Q14 | **bStocks rebase 机制**（分红/拆股按 rebase 调整余额）对价差计算的影响：rebase 当日 CEX 价与链上池价的跳变语义需对齐 | WHI-810 P0-A |
 | Q15 | Tessera BSC 池集随库存策略变动（stocks 池为 2026-06 后新增），P0-A 资产需周期性可用性重扫 + 告警 | WHI-810 / 监控 |
 | Q16 | BSC 上 Binance Wallet 专属订单流（~95%）不经 KyberSwap——Kyber 报价对「Tessera 实际成交价」的代表性需在 M2 用 `TesseraTrade` 事件对账验证 | 数据质量 |
+| Q17（v3） | ~~同一 underlying 是否拆多 logical asset~~ **已拍板（WHI-880）**：一个 underlying = 一个 asset；form 为维度；legacy id breaking rename | WHI-881 |
+| Q18（v3） | 新 form 家族（Backpack 裸 ticker、Dinari、rToken…）是否扩展 form 表 | 仅当进入本产品 venue 集时加 form id；默认 `unverified` 挂起 |
 
 ---
 
@@ -498,8 +587,17 @@ P2: JUP, venue-specific high-vol (HYPE, PUMP) — flagged
 | 路径 | 说明 |
 | --- | --- |
 | `docs/research/WHI-798-asset-category-inventory.md` | 本文 |
-| `docs/research/samples/WHI-798-asset-venue-matrix.tsv` | 资产×venue 符号/mint 矩阵（机器可读） |
+| `docs/research/samples/WHI-798-asset-venue-matrix.tsv` | 资产×venue 符号/mint 矩阵（机器可读；**v3 未强制改 TSV**——新列 `form` 随 WHI-881/扩表再版） |
 | `README.md` | Research 表增加 WHI-798 行 |
+
+---
+
+## 12. 修订记录
+
+| 日期 | 变更 |
+| --- | --- |
+| 2026-08-03 | 初版 + v2 asset-first Stocks 重做（bStocks / Tessera BSC） |
+| 2026-08-06 | **v3 / WHI-880**：underlying-first；§1.2 / §4.6 form 分类法；§6.2 改为 underlying×form×venue；§7.2 与下游交接更新；legacy id breaking rename 表；Q17/Q18 |
 
 ---
 
@@ -508,6 +606,8 @@ P2: JUP, venue-specific high-vol (HYPE, PUMP) — flagged
 | Issue | 交接 |
 | --- | --- |
 | WHI-809 | 只做 BTC/ETH/SOL；用 §3.3 映射；SOL 不含 EVM AMM；**v2：BTC/ETH 的 prop AMM 报价点扩展到 Tessera Base/BSC** |
-| WHI-810 | **v2：P0-A = bStocks 三方（QQQB/SPCXB/NVDAB × Binance spot × Pancake × Tessera）**；P0-B exact perp = TSLA/NVDA/AAPL/MSFT；SPY/QQQ 走跨形态 P1-lite（HL proxy）；Bybit AMD=`AMDSTOCKUSDT`；~~tokenized 不含 Binance `*B`、prop 不在架~~ 作废 |
+| WHI-810 / FE stocks | **v3**：section 以 underlying 列表驱动；forms 来自 `GET /assets`；旧 `TOKENIZED_STOCK_ASSETS`/`EQUITY_PERP_ASSETS` 双板作废（FE issue 跟 WHI-881） |
+| WHI-881 | **实现** underlying-first catalog + `Quote.form` + 共享 mid + API（本文件 §4.6/§6.2 + WHI-799 §3.3/§5.2/§6 为 SSOT） |
+| WHI-883 | 高成交量 stock underlying 扩表 survey — **必须**采用 §4.6 form 分类法 |
 | WHI-811 | P0 八个非 meme L1/大盘；P1 缩放 meme；**不要**对 Solana prop 扫 meme；v2：Base Tessera 增量资产 AERO/VIRTUAL/EURC 可选入观察仓 |
-| WHI-806 | 资产侧：Solana 三 pair 之外，**新增 Tessera EVM（KyberSwap）**：Base WETH/cbBTC/AERO/VIRTUAL/EURC vs USDC；BSC BTCB + QQQB/SPCXB/NVDAB/NVDAon vs USDT |
+| WHI-806 | 资产侧：Solana 三 pair 之外，**新增 Tessera EVM（KyberSwap）**：Base WETH/cbBTC/AERO/VIRTUAL/EURC vs USDC；BSC BTCB + **forms** `bstock`/`ondo` under QQQ/SPCX/NVDA vs USDT |
