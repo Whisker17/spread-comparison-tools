@@ -25,6 +25,7 @@ _APPROX_MID: dict[str, Decimal] = {
     "SOL": Decimal("80"),
     "DOGE": Decimal("0.15"),
     "TSLA": Decimal("250"),
+    "CRCL": Decimal("100"),
 }
 
 
@@ -169,6 +170,33 @@ async def test_live_tsla_hip3_and_perp_venues() -> None:
             quote = await adapter.get_quote("TSLA", "buy", notional, mid=mid)
             assert quote.status == "ok", (
                 f"{adapter.venue} TSLA: {quote.status} {quote.error_message}"
+            )
+        finally:
+            await adapter.aclose()
+
+
+@pytest.mark.live
+@pytest.mark.asyncio
+async def test_live_whi884_crcl_perp_dex_venues() -> None:
+    """WHI-884: CRCL exact equity perp on HL / Lighter / ApeX."""
+    notional = Decimal("1000")
+    mid = _mid("CRCL")
+    hl = HyperliquidAdapter()
+    try:
+        await hl.startup()
+        quote = await hl.get_quote("CRCL", "buy", notional, mid=mid)
+        assert quote.status == "ok", f"HL CRCL: {quote.status} {quote.error_message}"
+        assert quote.venue_symbol == "xyz:CRCL"
+    finally:
+        await hl.aclose()
+
+    for adapter_cls in (LighterAdapter, ApexAdapter):
+        adapter = adapter_cls()
+        try:
+            await adapter.startup()
+            quote = await adapter.get_quote("CRCL", "buy", notional, mid=mid)
+            assert quote.status == "ok", (
+                f"{adapter.venue} CRCL: {quote.status} {quote.error_message}"
             )
         finally:
             await adapter.aclose()

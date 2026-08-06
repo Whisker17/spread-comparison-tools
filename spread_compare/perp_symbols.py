@@ -27,6 +27,14 @@ _HL_OVERRIDES: Final[dict[str, PerpVenueSymbol]] = {
     "NVDA": PerpVenueSymbol("xyz:NVDA"),
     "AAPL": PerpVenueSymbol("xyz:AAPL"),
     "MSFT": PerpVenueSymbol("xyz:MSFT"),
+    # WHI-884 / WHI-883 P0 exact HIP-3 equities (never SPY/QQQ — proxy only).
+    "CRCL": PerpVenueSymbol("xyz:CRCL"),
+    "GOOGL": PerpVenueSymbol("xyz:GOOGL"),
+    "AMD": PerpVenueSymbol("xyz:AMD"),
+    "PLTR": PerpVenueSymbol("xyz:PLTR"),
+    "META": PerpVenueSymbol("xyz:META"),
+    "AMZN": PerpVenueSymbol("xyz:AMZN"),
+    "MSTR": PerpVenueSymbol("xyz:MSTR"),
     "PEPE": PerpVenueSymbol("kPEPE", Decimal(1000)),
     "BONK": PerpVenueSymbol("kBONK", Decimal(1000)),
 }
@@ -42,8 +50,9 @@ _SCALED_1000_OVERRIDES: Final[dict[str, PerpVenueSymbol]] = {
     "BONK": PerpVenueSymbol("1000BONK", Decimal(1000)),
 }
 
-# Phase-1 logical assets that adapters advertise when meta is not yet loaded.
+# Product-surface logical assets for perp-DEX adapters / WS when meta is cold.
 # PEPE/BONK are multiplier infrastructure (P1 catalog); not in assets.ASSETS.
+# SPY/QQQ: Lighter + ApeX only (no exact HL — see WHI-883); HL WS skips them.
 HL_PHASE1_ASSETS: Final[tuple[str, ...]] = (
     "BTC",
     "ETH",
@@ -60,8 +69,48 @@ HL_PHASE1_ASSETS: Final[tuple[str, ...]] = (
     "NVDA",
     "AAPL",
     "MSFT",
+    "CRCL",
+    "GOOGL",
+    "AMD",
+    "PLTR",
+    "META",
+    "AMZN",
+    "MSTR",
+    "SPY",
+    "QQQ",
     "PEPE",
     "BONK",
+)
+
+# Logical assets with an exact HL market (main book or xyz: override).
+# SPY/QQQ are deliberately absent — only proxy index markets exist (WHI-883).
+HL_EXACT_ASSETS: Final[frozenset[str]] = frozenset(
+    {
+        "BTC",
+        "ETH",
+        "SOL",
+        "DOGE",
+        "WIF",
+        "XRP",
+        "SUI",
+        "LINK",
+        "AVAX",
+        "ADA",
+        "BNB",
+        "TSLA",
+        "NVDA",
+        "AAPL",
+        "MSFT",
+        "CRCL",
+        "GOOGL",
+        "AMD",
+        "PLTR",
+        "META",
+        "AMZN",
+        "MSTR",
+        "PEPE",
+        "BONK",
+    }
 )
 
 # HIP-3 sub-dex prefixes allowed beyond the main book (WHI-798 §8 Q10).

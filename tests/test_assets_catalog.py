@@ -31,7 +31,22 @@ def test_phase1_catalog_three_categories() -> None:
     for a in rows:
         by_cat.setdefault(a.category, []).append(a.id)
     assert by_cat["crypto_blue_chip"] == ["BTC", "ETH", "SOL"]
-    assert by_cat["stock"] == ["NVDA", "TSLA", "AAPL", "MSFT", "QQQ", "SPCX"]
+    assert by_cat["stock"] == [
+        "NVDA",
+        "TSLA",
+        "AAPL",
+        "MSFT",
+        "QQQ",
+        "SPCX",
+        "CRCL",
+        "GOOGL",
+        "AMD",
+        "PLTR",
+        "META",
+        "AMZN",
+        "SPY",
+        "MSTR",
+    ]
     assert by_cat["other"] == [
         "DOGE",
         "WIF",
@@ -42,7 +57,8 @@ def test_phase1_catalog_three_categories() -> None:
         "ADA",
         "BNB",
     ]
-    assert len(rows) == 17
+    # 3 blue chips + 14 stocks + 8 others
+    assert len(rows) == 25
     assert set(ASSETS) == {a.id for a in rows}
     assert STOCK_ASSETS == frozenset(by_cat["stock"])
 
@@ -109,8 +125,41 @@ def test_form_class_of() -> None:
 
 
 def test_stock_perp_underlyings_mid_seed() -> None:
-    for asset in ("TSLA", "NVDA", "AAPL", "MSFT"):
+    for asset in ("TSLA", "NVDA", "AAPL", "MSFT", "CRCL", "GOOGL", "AMD", "SPY"):
         assert asset in STOCK_PERP_UNDERLYINGS
+
+
+def test_whi884_p0_live_forms() -> None:
+    """WHI-884 P0 underlyings expose verified venues as coverage=live."""
+    # CRCL: 5 exact perps + BN bstock + Bybit *X.
+    crcl_live = {f.id: f for f in live_forms("CRCL")}
+    assert set(crcl_live) == {"perp", "bstock", "xstock_cex"}
+    assert crcl_live["perp"].representations["hyperliquid"] == "xyz:CRCL"
+    assert crcl_live["bstock"].representations == {"binance": "CRCLBUSDT"}
+    assert crcl_live["xstock_cex"].representations == {"bybit": "CRCLXUSDT"}
+
+    # AMD Bybit wire is AMDSTOCKUSDT (not AMDUSDT).
+    amd_perp = get_form("AMD", "perp")
+    assert amd_perp is not None and amd_perp.coverage == "live"
+    assert amd_perp.representations["bybit"] == "AMDSTOCKUSDT"
+    assert amd_perp.representations["binance"] == "AMDUSDT"
+
+    # SPY / QQQ: no HL exact in live map.
+    spy_perp = get_form("SPY", "perp")
+    assert spy_perp is not None and spy_perp.coverage == "live"
+    assert "hyperliquid" not in spy_perp.representations
+    qqq_perp = get_form("QQQ", "perp")
+    assert qqq_perp is not None and qqq_perp.coverage == "live"
+    assert "hyperliquid" not in qqq_perp.representations
+    # QQQ still keeps live bstock (Phase-1).
+    assert "bstock" in {f.id for f in live_forms("QQQ")}
+
+    # Unverified forms stay catalogued, not live (no Sol xStock fan-out).
+    amzn = get_asset("AMZN")
+    assert amzn is not None and amzn.forms is not None
+    xstock = next(f for f in amzn.forms if f.id == "xstock")
+    assert xstock.coverage == "unverified"
+    assert "xstock" not in {f.id for f in live_forms("AMZN")}
 
 
 def test_tradeable_stables_subset_of_peg_set() -> None:

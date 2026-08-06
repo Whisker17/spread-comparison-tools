@@ -113,11 +113,16 @@ class DefaultMarkProvider:
         # Prefer perp wire form when listed (e.g. 1000PEPEUSDT); scale to 1×.
         # Stocks: form=perp symbols (WHI-881).
         form = "perp" if is_stock_asset(asset_key) else None
-        perp_sym = resolve_cex_symbol(asset_key, "perp", form=form)
+        bn_sym = resolve_cex_symbol(
+            asset_key, "perp", form=form, venue="binance"
+        )
+        by_sym = resolve_cex_symbol(
+            asset_key, "perp", form=form, venue="bybit"
+        )
         mult = resolve_cex_multiplier(asset_key, "perp", form=form)
         labeled = (
-            ("binance", self._binance_mark_scaled(perp_sym, mult)),
-            ("bybit", self._bybit_mark_scaled(perp_sym, mult)),
+            ("binance", self._binance_mark_scaled(bn_sym, mult)),
+            ("bybit", self._bybit_mark_scaled(by_sym, mult)),
             ("hyperliquid", self._hyperliquid_mark(asset_key)),
             ("lighter", self._lighter_mark(asset_key)),
             ("apex", self._apex_mark(asset_key)),
@@ -497,10 +502,10 @@ class MidService:
     async def _try_binance_usdm_index(self, asset: str) -> _SourceResult | None:
         # Equity index path: stock underlyings use form=perp wire symbols.
         form = "perp" if is_stock_asset(asset) else None
-        symbol = resolve_cex_symbol(asset, "perp", form=form)
+        symbol = resolve_cex_symbol(asset, "perp", form=form, venue="binance")
         if symbol is None:
             return None
-        mult = resolve_cex_multiplier(asset, "perp", form=form)
+        mult = resolve_cex_multiplier(asset, "perp", form=form, venue="binance")
         url = f"{_BINANCE_FAPI}/fapi/v1/premiumIndex"
         try:
             resp = await self._http().get(url, params={"symbol": symbol})
@@ -518,10 +523,10 @@ class MidService:
     async def _try_binance_spot_tob(
         self, asset: str, *, form: str | None = None
     ) -> _SourceResult | None:
-        symbol = resolve_cex_symbol(asset, "spot", form=form)
+        symbol = resolve_cex_symbol(asset, "spot", form=form, venue="binance")
         if symbol is None:
             return None
-        mult = resolve_cex_multiplier(asset, "spot", form=form)
+        mult = resolve_cex_multiplier(asset, "spot", form=form, venue="binance")
         url = f"{_BINANCE_SPOT}/api/v3/ticker/bookTicker"
         try:
             resp = await self._http().get(url, params={"symbol": symbol})
@@ -540,10 +545,10 @@ class MidService:
     async def _try_bybit_spot_tob(
         self, asset: str, *, form: str | None = None
     ) -> _SourceResult | None:
-        symbol = resolve_cex_symbol(asset, "spot", form=form)
+        symbol = resolve_cex_symbol(asset, "spot", form=form, venue="bybit")
         if symbol is None:
             return None
-        mult = resolve_cex_multiplier(asset, "spot", form=form)
+        mult = resolve_cex_multiplier(asset, "spot", form=form, venue="bybit")
         url = f"{_BYBIT}/v5/market/tickers"
         try:
             resp = await self._http().get(

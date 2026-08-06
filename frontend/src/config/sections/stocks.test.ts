@@ -69,11 +69,14 @@ function pair(
 }
 
 describe("stocks section config (WHI-882 underlying-first)", () => {
-  it("lists Phase-1 underlyings (no legacy token ids)", () => {
+  it("lists catalog underlyings including WHI-884 P0 (no legacy token ids)", () => {
     expect(stocksBoard.assets).toEqual([...STOCK_UNDERLYINGS]);
     expect(stocksBoard.assets).toContain("NVDA");
     expect(stocksBoard.assets).toContain("QQQ");
     expect(stocksBoard.assets).toContain("SPCX");
+    expect(stocksBoard.assets).toContain("CRCL");
+    expect(stocksBoard.assets).toContain("AMD");
+    expect(stocksBoard.assets).toContain("SPY");
     expect(stocksBoard.assets).not.toContain("NVDAB");
     expect(stocksBoard.assets).not.toContain("NVDAON");
     expect(stocksBoard.assets).not.toContain("QQQB");
@@ -81,6 +84,23 @@ describe("stocks section config (WHI-882 underlying-first)", () => {
 
   it("does not pin board-level instrumentType (form_class drives CEX)", () => {
     expect(stocksBoard.instrumentType).toBeUndefined();
+  });
+
+  it("CRCL / AMD / SPY static live forms match WHI-884 survey fan-out", () => {
+    const crcl = resolveStockForms("CRCL", null);
+    expect(crcl.map((f) => f.id).sort()).toEqual(
+      ["bstock", "perp", "xstock_cex"].sort(),
+    );
+    const amd = resolveStockForms("AMD", null);
+    const amdPerp = amd.find((f) => f.id === "perp")!;
+    expect(amdPerp.representations.bybit).toBe("AMDSTOCKUSDT");
+    expect(amdPerp.representations.binance).toBe("AMDUSDT");
+    const spy = resolveStockForms("SPY", null);
+    const spyPerp = spy.find((f) => f.id === "perp")!;
+    expect(spyPerp.representations.hyperliquid).toBeUndefined();
+    expect(spyPerp.representations.lighter).toBe("SPY");
+    const qqq = resolveStockForms("QQQ", null);
+    expect(qqq.map((f) => f.id).sort()).toEqual(["bstock", "perp"].sort());
   });
 
   it("NVDA static live forms cover perp + bstock + ondo", () => {

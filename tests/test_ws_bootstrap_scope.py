@@ -10,22 +10,56 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from spread_compare.perp_symbols import HL_PHASE1_ASSETS, resolve_hl_coin
+from spread_compare.perp_symbols import (
+    HL_EXACT_ASSETS,
+    HL_PHASE1_ASSETS,
+    resolve_hl_coin,
+)
 from spread_compare.ws_bootstrap import (
     _apex_cross_symbols,
+    _cex_symbols,
     _hl_coins,
     _lighter_markets,
 )
 
 
-def test_hl_coins_are_phase1_only_not_full_meta() -> None:
-    # No adapter needed — pure phase-1 map.
+def test_hl_coins_are_exact_product_markets_not_full_meta() -> None:
+    # No adapter needed — pure product map. SPY/QQQ have no exact HL market.
     coins = _hl_coins()
-    expected = {resolve_hl_coin(a).venue_symbol for a in HL_PHASE1_ASSETS}
+    expected = {
+        resolve_hl_coin(a).venue_symbol
+        for a in HL_PHASE1_ASSETS
+        if a.upper() in HL_EXACT_ASSETS
+    }
     assert set(coins) == expected
+    assert "xyz:SPY" not in coins
+    assert "SPY" not in coins
+    assert "xyz:QQQ" not in coins
+    assert "QQQ" not in coins
+    assert "xyz:CRCL" in coins
+    assert "xyz:AMD" in coins
     # Bound well below the 300+ full-meta count that shipped broken.
     assert len(coins) <= len(HL_PHASE1_ASSETS)
     assert len(coins) < 50
+
+
+def test_cex_ws_includes_p0_books_and_amd_bybit_wire() -> None:
+    bn_fut = _cex_symbols("perp", venue="binance")
+    by_lin = _cex_symbols("perp", venue="bybit")
+    assert "CRCLUSDT" in bn_fut
+    assert "AMDUSDT" in bn_fut
+    assert "AMDSTOCKUSDT" in by_lin
+    assert "AMDUSDT" not in by_lin
+    bn_spot = _cex_symbols("spot", venue="binance")
+    assert "CRCLBUSDT" in bn_spot
+    assert "SPYBUSDT" in bn_spot
+    by_spot = _cex_symbols(
+        "spot", venue="bybit", exclude_bstocks=True, include_xstock_cex=True
+    )
+    assert "CRCLXUSDT" in by_spot
+    assert "GOOGLXUSDT" in by_spot
+    # bStocks never on Bybit spot subscribe.
+    assert "CRCLBUSDT" not in by_spot
 
 
 def test_lighter_markets_filter_to_phase1(monkeypatch: pytest.MonkeyPatch) -> None:

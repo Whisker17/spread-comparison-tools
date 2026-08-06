@@ -487,7 +487,7 @@ class CexBaseAdapter(BaseAdapter, ABC):
                 status="error",
             )
 
-        symbol = resolve_cex_symbol(asset_key, book_side, form=form)
+        symbol = resolve_cex_symbol(asset_key, book_side, form=form, venue=self.venue)
         # Equity perps have no CEX spot book — when the caller omitted
         # instrument_type and form, fall through to the only listed book (WHI-826).
         if (
@@ -495,10 +495,10 @@ class CexBaseAdapter(BaseAdapter, ABC):
             and not explicit_itype
             and form is None
             and book_side == "spot"
-            and resolve_cex_symbol(asset_key, "perp", form=form) is not None
+            and resolve_cex_symbol(asset_key, "perp", form=form, venue=self.venue) is not None
         ):
             book_side = "perp"
-            symbol = resolve_cex_symbol(asset_key, "perp", form=form)
+            symbol = resolve_cex_symbol(asset_key, "perp", form=form, venue=self.venue)
         if symbol is None or not self._venue_lists_asset(
             asset_key, book_side, form=form
         ):
@@ -521,7 +521,7 @@ class CexBaseAdapter(BaseAdapter, ABC):
 
         schedule = self.get_fees(asset_key, instrument_type=book_side)
         trading_fee = require_taker_bps(self.venue, schedule)
-        multiplier = resolve_cex_multiplier(asset_key, book_side, form=form)
+        multiplier = resolve_cex_multiplier(asset_key, book_side, form=form, venue=self.venue)
 
         q_star = notional_usd / mid.mid
         try:
@@ -615,16 +615,16 @@ class CexBaseAdapter(BaseAdapter, ABC):
                 for side in sides
             ]
 
-        symbol = resolve_cex_symbol(asset_key, book_side, form=form)
+        symbol = resolve_cex_symbol(asset_key, book_side, form=form, venue=self.venue)
         if (
             symbol is None
             and not explicit_itype
             and form is None
             and book_side == "spot"
-            and resolve_cex_symbol(asset_key, "perp", form=form) is not None
+            and resolve_cex_symbol(asset_key, "perp", form=form, venue=self.venue) is not None
         ):
             book_side = "perp"
-            symbol = resolve_cex_symbol(asset_key, "perp", form=form)
+            symbol = resolve_cex_symbol(asset_key, "perp", form=form, venue=self.venue)
         if symbol is None or not self._venue_lists_asset(
             asset_key, book_side, form=form
         ):
@@ -651,7 +651,7 @@ class CexBaseAdapter(BaseAdapter, ABC):
 
         schedule = self.get_fees(asset_key, instrument_type=book_side)
         trading_fee = require_taker_bps(self.venue, schedule)
-        multiplier = resolve_cex_multiplier(asset_key, book_side, form=form)
+        multiplier = resolve_cex_multiplier(asset_key, book_side, form=form, venue=self.venue)
 
         # Depth for the largest tier — escalate until *every* requested side fills
         # q_max (or max depth). One-sided escalation would leave the opposite
@@ -740,13 +740,13 @@ class CexBaseAdapter(BaseAdapter, ABC):
     ) -> TopOfBook | None:
         asset_key = asset.upper()
         book_side: CexBookSide = instrument_type or "spot"
-        symbol = resolve_cex_symbol(asset_key, book_side, form=form)
+        symbol = resolve_cex_symbol(asset_key, book_side, form=form, venue=self.venue)
         if symbol is None:
             raise UnsupportedAssetError(
                 f"{asset} not supported by {self.venue} as {book_side}"
                 + (f" form={form!r}" if form else "")
             )
-        multiplier = resolve_cex_multiplier(asset_key, book_side, form=form)
+        multiplier = resolve_cex_multiplier(asset_key, book_side, form=form, venue=self.venue)
         bids, asks, _from_ws, _age = await self._resolve_book(symbol, book_side)
         return build_top_of_book(
             venue=self.venue,

@@ -58,3 +58,27 @@ def test_others_present() -> None:
 def test_unknown_returns_none() -> None:
     assert resolve_cex_symbol("NOTACOIN", "spot") is None
     assert resolve_cex_multiplier("NOTACOIN", "perp") == Decimal(1)
+
+
+def test_whi884_p0_equity_perps_and_bstocks() -> None:
+    for asset in ("CRCL", "GOOGL", "PLTR", "META", "AMZN", "SPY", "MSTR"):
+        assert resolve_cex_symbol(asset, "perp", form="perp") == f"{asset}USDT"
+        assert asset in supported_cex_assets("perp", form="perp")
+    assert resolve_cex_symbol("CRCL", "spot", form="bstock") == "CRCLBUSDT"
+    assert resolve_cex_symbol("SPY", "spot", form="bstock") == "SPYBUSDT"
+    assert resolve_cex_symbol("GOOGL", "spot", form="xstock_cex") == "GOOGLXUSDT"
+    assert "CRCL" in supported_cex_assets("spot", form="bstock")
+    assert "GOOGL" in supported_cex_assets("spot", form="xstock_cex")
+
+
+def test_amd_bybit_venue_override() -> None:
+    """Bybit linear is AMDSTOCKUSDT; Binance TradFi stays AMDUSDT (WHI-883)."""
+    assert resolve_cex_symbol("AMD", "perp", form="perp") == "AMDUSDT"
+    assert (
+        resolve_cex_symbol("AMD", "perp", form="perp", venue="binance") == "AMDUSDT"
+    )
+    assert (
+        resolve_cex_symbol("AMD", "perp", form="perp", venue="bybit")
+        == "AMDSTOCKUSDT"
+    )
+    assert resolve_cex_symbol("AMD", "spot", form="bstock") == "AMDBUSDT"

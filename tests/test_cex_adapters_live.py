@@ -126,6 +126,94 @@ async def test_live_doge_and_qqq_bstock_cex() -> None:
 
 
 @pytest.mark.live
+@pytest.mark.asyncio
+async def test_live_whi884_crcl_perp_and_amd_bybit_wire() -> None:
+    """WHI-884: one new equity perp per CEX + Bybit AMDSTOCKUSDT quirk."""
+    notional = Decimal("1000")
+    # CRCL perp on both CEX venues.
+    for slug in _VENUES:
+        adapter = get(slug)
+        assert isinstance(adapter, BaseAdapter)
+        await adapter.startup()
+        try:
+            seed = ReferenceMid(
+                snapshot_id="live-seed",
+                asset="CRCL",
+                mid=Decimal("100"),
+                mid_source="binance_usdm_index",
+                timestamp=datetime.now(tz=UTC),
+            )
+            tob = await adapter.get_orderbook_spread(
+                "CRCL", mid=seed, instrument_type="perp", form="perp"
+            )
+            assert tob is not None, f"{slug} CRCL TOB missing"
+            mid = ReferenceMid(
+                snapshot_id=f"live-crcl-{slug}",
+                asset="CRCL",
+                mid=tob.mid_local,
+                mid_source="binance_usdm_index",
+                timestamp=datetime.now(tz=UTC),
+            )
+            quote = await adapter.get_quote(
+                "CRCL",
+                "buy",
+                notional,
+                mid=mid,
+                instrument_type="perp",
+                form="perp",
+            )
+            assert quote.status == "ok", (
+                f"{slug} CRCL perp: {quote.status} {quote.error_message}"
+            )
+            assert quote.form == "perp"
+            if slug == "binance":
+                assert quote.venue_symbol == "CRCLUSDT"
+            else:
+                assert quote.venue_symbol == "CRCLUSDT"
+        finally:
+            await adapter.aclose()
+
+    # AMD: Binance AMDUSDT, Bybit AMDSTOCKUSDT.
+    for slug, expected_sym in (("binance", "AMDUSDT"), ("bybit", "AMDSTOCKUSDT")):
+        adapter = get(slug)
+        assert isinstance(adapter, BaseAdapter)
+        await adapter.startup()
+        try:
+            seed = ReferenceMid(
+                snapshot_id="live-seed",
+                asset="AMD",
+                mid=Decimal("150"),
+                mid_source="binance_usdm_index",
+                timestamp=datetime.now(tz=UTC),
+            )
+            tob = await adapter.get_orderbook_spread(
+                "AMD", mid=seed, instrument_type="perp", form="perp"
+            )
+            assert tob is not None, f"{slug} AMD TOB missing"
+            mid = ReferenceMid(
+                snapshot_id=f"live-amd-{slug}",
+                asset="AMD",
+                mid=tob.mid_local,
+                mid_source="binance_usdm_index",
+                timestamp=datetime.now(tz=UTC),
+            )
+            quote = await adapter.get_quote(
+                "AMD",
+                "buy",
+                notional,
+                mid=mid,
+                instrument_type="perp",
+                form="perp",
+            )
+            assert quote.status == "ok", (
+                f"{slug} AMD perp: {quote.status} {quote.error_message}"
+            )
+            assert quote.venue_symbol == expected_sym
+        finally:
+            await adapter.aclose()
+
+
+@pytest.mark.live
 @pytest.mark.parametrize("slug", _VENUES)
 @pytest.mark.asyncio
 async def test_live_quotes_all_tiers_sides_instruments(slug: str) -> None:

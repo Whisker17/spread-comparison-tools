@@ -14,6 +14,7 @@ from spread_compare.adapters.registry import get as get_adapter
 from spread_compare.cex_symbols import resolve_cex_symbol, supported_cex_assets
 from spread_compare.mids import MidService
 from spread_compare.perp_symbols import (
+    HL_EXACT_ASSETS,
     HL_PHASE1_ASSETS,
     resolve_apex_base,
     resolve_hl_coin,
@@ -64,10 +65,12 @@ async def start_ws_ingest(
     registry.set_max_book_age_sec(ws_settings.max_book_age_sec)
     manager = WsFeedManager(ws_settings, registry=registry)
 
-    binance_spot = _cex_symbols("spot")
-    binance_fut = _cex_symbols("perp")
-    bybit_spot = _cex_symbols("spot", exclude_bstocks=True)
-    bybit_linear = _cex_symbols("perp")
+    binance_spot = _cex_symbols("spot", venue="binance")
+    binance_fut = _cex_symbols("perp", venue="binance")
+    bybit_spot = _cex_symbols(
+        "spot", venue="bybit", exclude_bstocks=True, include_xstock_cex=True
+    )
+    bybit_linear = _cex_symbols("perp", venue="bybit")
     hl_coins = _hl_coins()
     lighter_markets = _lighter_markets()
     apex_symbols = _apex_cross_symbols()
@@ -125,26 +128,58 @@ async def stop_ws_ingest(
     set_ws_feed_manager(None)
 
 
-def _cex_symbols(book_side: str, *, exclude_bstocks: bool = False) -> list[str]:
+def _cex_symbols(
+    book_side: str,
+    *,
+    venue: str,
+    exclude_bstocks: bool = False,
+    include_xstock_cex: bool = False,
+) -> list[str]:
     """CEX wire symbols for WS subscribe (crypto + form-aware stock books).
 
+    ``venue`` selects venue-specific wire overrides (e.g. Bybit AMDSTOCKUSDT).
     ``exclude_bstocks=True`` (Bybit spot): skip form=bstock *B symbols; Bybit
-    uses *X xStocks instead (out of phase-1 WS unless listed as xstock_cex).
+    uses *X xStocks instead. ``include_xstock_cex`` adds live Bybit *X books.
     """
+    from spread_compare.assets import is_stock_asset
+
     out: list[str] = []
     for asset in supported_cex_assets(book_side):  # type: ignore[arg-type]
-        sym = resolve_cex_symbol(asset, book_side)  # type: ignore[arg-type]
+        # Stock underlyings require form for resolution (WHI-881). Crypto stays form=None.
+        if is_stock_asset(asset):
+            if book_side != "perp":
+                continue
+            form: str | None = "perp"
+        else:
+            form = None
+        sym = resolve_cex_symbol(
+            asset, book_side, form=form, venue=venue  # type: ignore[arg-type]
+        )
         if sym:
             out.append(sym)
     if book_side == "spot" and not exclude_bstocks:
-        # Binance bStocks: only Phase-1 live form coverage (WHI-881 / WHI-798 §6.2).
+        # Binance bStocks: only live form coverage (WHI-881 / WHI-884).
         from spread_compare.assets import get_form
 
         for asset in supported_cex_assets("spot", form="bstock"):
             form_row = get_form(asset, "bstock")
             if form_row is None or form_row.coverage != "live":
                 continue
-            sym = resolve_cex_symbol(asset, "spot", form="bstock")
+            sym = resolve_cex_symbol(
+                asset, "spot", form="bstock", venue=venue
+            )
+            if sym:
+                out.append(sym)
+    if book_side == "spot" and include_xstock_cex:
+        from spread_compare.assets import get_form
+
+        for asset in supported_cex_assets("spot", form="xstock_cex"):
+            form_row = get_form(asset, "xstock_cex")
+            if form_row is None or form_row.coverage != "live":
+                continue
+            sym = resolve_cex_symbol(
+                asset, "spot", form="xstock_cex", venue=venue
+            )
             if sym:
                 out.append(sym)
     # Prefer blue chips first for connection subscribe order.
@@ -154,13 +189,16 @@ def _cex_symbols(book_side: str, *, exclude_bstocks: bool = False) -> list[str]:
 
 
 def _hl_coins() -> list[str]:
-    """Hyperliquid coins for WS — phase-1 product set only (WHI-855).
+    """Hyperliquid coins for WS — exact product markets only (WHI-855 / WHI-884).
 
     Previously used the adapter's full meta universe (300+ coins), so reconnect
-    re-subscribed hundreds of markets the dashboard never quotes.
+    re-subscribed hundreds of markets the dashboard never quotes. SPY/QQQ have
+    only proxy HL index markets and must not be subscribed as exact tickers.
     """
     coins: list[str] = []
     for asset in _WS_SERVED_PERP_ASSETS:
+        if asset.upper() not in HL_EXACT_ASSETS:
+            continue
         try:
             coins.append(resolve_hl_coin(asset).venue_symbol)
         except Exception:  # noqa: BLE001
