@@ -1,0 +1,245 @@
+{
+  "AMZNB": {
+    "name": "AMZNB / USDT 0.25%",
+    "addr": "0x7530beb7bde5843f668cf31b996fa1f748c9b6b1",
+    "vol": 9731.3155157027,
+    "tvl": "44648.2287",
+    "dex": "pancakeswap-v3-bsc",
+    "net": null,
+    "score": 1000000009731.3156,
+    "base": "273.088276869861",
+    "id": "bsc_0x7530beb7bde5843f668cf31b996fa1f748c9b6b1"
+  },
+  "GOOGLB": {
+    "name": "googlb / USDT 0.25%",
+    "addr": "0x89001d846f7ca36ee089f73eefc25657e1798144",
+    "vol": 72717.3652871559,
+    "tvl": "109723.0158",
+    "dex": "pancakeswap-v3-bsc",
+    "net": null,
+    "score": 1000000072717.3652,
+    "base": "361.366873580704",
+    "id": "bsc_0x89001d846f7ca36ee089f73eefc25657e1798144"
+  },
+  "METAB": {
+    "name": "metab / USDT 0.25%",
+    "addr": "0xc2151a561e928d16576d75ea88544543ac63d80b",
+    "vol": 9574.4163007692,
+    "tvl": "45852.5043",
+    "dex": "pancakeswap-v3-bsc",
+    "net": null,
+    "score": 1000000009574.4163,
+    "base": "589.429930446622",
+    "id": "bsc_0xc2151a561e928d16576d75ea88544543ac63d80b"
+  },
+  "AMDB": {
+    "name": "AMDB / USDT 0.081%",
+    "addr": "0xc02c97e897267ea363d3d22113e3d076f62c40d1c4725ee24c52d00121547d3d",
+    "vol": 0.09332830171,
+    "tvl": "0.00658006312191068",
+    "dex": "pancakeswap-infinity-clmm",
+    "net": null,
+    "score": 1000000000000.0934,
+    "base": "475.455784825089",
+    "id": "bsc_0xc02c97e897267ea363d3d22113e3d076f62c40d1c4725ee24c52d00121547d3d"
+  },
+  "PLTRB": {
+    "name": "PLTRB / WBNB",
+    "addr": "0xe0af5420ebc825d60df5bf7e1141dde172368860",
+    "vol": 0.0,
+    "tvl": "0.1746",
+    "dex": "pancakeswap_v2",
+    "net": null,
+    "score": 1000000000000.0,
+    "base": "0.00000000000001077527634",
+    "id": "bsc_0xe0af5420ebc825d60df5bf7e1141dde172368860"
+  },
+  "COINB": null,
+  "SPYB": {
+    "name": "spyb / USDT 0.01%",
+    "addr": "0x7aa6d92fc369a8c1edc631a3aac44efb0808ddbf",
+    "vol": 10220214.4207579,
+    "tvl": "791541.7241",
+    "dex": "pancakeswap-v3-bsc",
+    "net": null,
+    "score": 1000010220214.4208,
+    "base": "768.560658341328",
+    "id": "bsc_0x7aa6d92fc369a8c1edc631a3aac44efb0808ddbf"
+  },
+  "NVDAon": {
+    "name": "NVDAon / USDT 0.01%",
+    "addr": "0x127f40cb7efe232b8fc2bad7dacf89cc5a229e30",
+    "vol": 34959.1639465235,
+    "tvl": "3991.5908",
+    "dex": "pancakeswap-v3-bsc",
+    "net": null,
+    "score": 1000000034959.164,
+    "base": "220.132325571304",
+    "id": "bsc_0x127f40cb7efe232b8fc2bad7dacf89cc5a229e30"
+  },
+  "NVDAB": {
+    "name": "NVDAB / GPU 0.01%",
+    "addr": "0x2748bee73a41cf356a9445203f266ff1ae0ec035",
+    "vol": 13472383.375575,
+    "tvl": "61762.9519",
+    "dex": "pancakeswap-v3-bsc",
+    "net": null,
+    "score": 1000013472383.3756,
+    "base": "219.813187153178",
+    "id": "bsc_0x2748bee73a41cf356a9445203f266ff1ae0ec035"
+  },
+  "HOODB": {
+    "name": "hoodb / USDT 0.25%",
+    "addr": "0xfeef70ff6f58f0a900e28a77e5a8945afb343923",
+    "vol": 133486.893423186,
+    "tvl": "51455.2616",
+    "dex": "pancakeswap-v3-bsc",
+    "id": "bsc_0xfeef70ff6f58f0a900e28a77e5a8945afb343923",
+    "score": 1100000133486.8933
+  },
+  "MSTRB": {
+    "name": "MSTRB / USDT 2%",
+    "addr": "0x3b8ff73d1bc5a29b11e073d386e34862559568ce98e2f6e2d27f55c645033363",
+    "vol": 157.3026820179,
+    "tvl": "-3.38898971373332",
+    "dex": "uniswap-v4-bsc",
+    "id": "bsc_0x3b8ff73d1bc5a29b11e073d386e34862559568ce98e2f6e2d27f55c645033363",
+    "score": 100000000157.30269
+  },
+  "AVGOB": {
+    "name": "AVGOB / WBNB",
+    "addr": "0x3ea169c878d73e12c1fb67b8827a9a74c4b6fc6d",
+    "vol": 0.0,
+    "tvl": "0.2347",
+    "dex": "pancakeswap_v2",
+    "id": "bsc_0x3ea169c878d73e12c1fb67b8827a9a74c4b6fc6d",
+    "score": 1100000000000.0
+  },
+  "ORCLB": {
+    "name": "orclb / USDT 0.05%",
+    "addr": "0xd5558acff19b7b0c96bdc8fb22c66c06ee17eeaa",
+    "vol": 1845.3215510642,
+    "tvl": "2070.6956",
+    "dex": "pancakeswap-v3-bsc",
+    "id": "bsc_0xd5558acff19b7b0c96bdc8fb22c66c06ee17eeaa",
+    "score": 1100000001845.3215
+  },
+  "QQQB": {
+    "name": "QQQB / USDT 0.01%",
+    "addr": "0xe531fcb1f5a195de7608b9f4f9518544c2cdb693",
+    "vol": 72384228.7334357,
+    "tvl": "2039444.1685",
+    "dex": "pancakeswap-v3-bsc",
+    "id": "bsc_0xe531fcb1f5a195de7608b9f4f9518544c2cdb693",
+    "score": 1100072384228.7334
+  },
+  "CRCLB": null,
+  "TSLAB": {
+    "name": "TSLAB / USDT 0.25%",
+    "addr": "0xb0f5e5400e8f0f7c242f2b7740c004f020579c41",
+    "vol": 458681.467727163,
+    "tvl": "219585.5957",
+    "dex": "pancakeswap-v3-bsc",
+    "id": "bsc_0xb0f5e5400e8f0f7c242f2b7740c004f020579c41",
+    "score": 1100000458681.4678
+  },
+  "AAPLB": {
+    "name": "AAPLB / USDT 0.25%",
+    "addr": "0xe9b9998b2ec5430d2246c7f1f8d9f298c97d7365",
+    "vol": 443977.489750007,
+    "tvl": "293776.0136",
+    "dex": "pancakeswap-v3-bsc",
+    "id": "bsc_0xe9b9998b2ec5430d2246c7f1f8d9f298c97d7365",
+    "score": 1100000443977.4897
+  },
+  "MSFTB": {
+    "name": "msftb / USDT 0.25%",
+    "addr": "0x5018b018ceb7645c927c5cf246786f89ebcbe7ea",
+    "vol": 136635.95897557,
+    "tvl": "67470.3865",
+    "dex": "pancakeswap-v3-bsc",
+    "id": "bsc_0x5018b018ceb7645c927c5cf246786f89ebcbe7ea",
+    "score": 1100000136635.959
+  },
+  "AMZNon": {
+    "name": "AMZNon / WBNB",
+    "addr": "0x8617ba6deee616694601adc41ab7ffe0e610907e",
+    "vol": 153.8720619236,
+    "tvl": "5882.203",
+    "dex": "pancakeswap_v2",
+    "id": "bsc_0x8617ba6deee616694601adc41ab7ffe0e610907e",
+    "score": 1100000000153.872
+  },
+  "GOOGLon": {
+    "name": "GOOGLon / USDT 1%",
+    "addr": "0x6731932c92e882cc22a10749324c70a7d6adde60",
+    "vol": 806.3974269177,
+    "tvl": "2194.0976",
+    "dex": "pancakeswap-v3-bsc",
+    "id": "bsc_0x6731932c92e882cc22a10749324c70a7d6adde60",
+    "score": 1100000000806.3975
+  },
+  "METAon": {
+    "name": "METAon / USDT 45%",
+    "addr": "0xa00db4210e573410994faf5f45d83ac74e0d982d50dcf51b0e8c78f0ce9a7c6a",
+    "vol": 0.617788334,
+    "tvl": "153.8965",
+    "dex": "uniswap-v4-bsc",
+    "id": "bsc_0xa00db4210e573410994faf5f45d83ac74e0d982d50dcf51b0e8c78f0ce9a7c6a",
+    "score": 100000000000.61778
+  },
+  "TSLAon": {
+    "name": "TSLAon / BNB 0.205%",
+    "addr": "0xb45506b034b106cf3c023eef192eb7176a41f75a0324ce167fa0d17c8d272c8b",
+    "vol": 59.1975642299,
+    "tvl": "742.2614",
+    "dex": "pancakeswap-infinity-clmm",
+    "id": "bsc_0xb45506b034b106cf3c023eef192eb7176a41f75a0324ce167fa0d17c8d272c8b",
+    "score": 1100000000059.1975
+  },
+  "AAPLon": {
+    "name": "AAPLon / USDT 0.218%",
+    "addr": "0x2cf94f4671c376e2aef86f98ae5a85d7b6a941f1930e329737c155bde2fc227c",
+    "vol": 528.0602827241,
+    "tvl": "3283.6936",
+    "dex": "pancakeswap-infinity-clmm",
+    "id": "bsc_0x2cf94f4671c376e2aef86f98ae5a85d7b6a941f1930e329737c155bde2fc227c",
+    "score": 1100000000528.0603
+  },
+  "SPYon": {
+    "name": "SPYon / USDT 0.25%",
+    "addr": "0x3b31ad84092cefefc71f71a8f84aace37aca3ee1",
+    "vol": 648.9980415337,
+    "tvl": "1061.2336",
+    "dex": "pancakeswap-v3-bsc",
+    "id": "bsc_0x3b31ad84092cefefc71f71a8f84aace37aca3ee1",
+    "score": 1100000000648.998
+  },
+  "CRCLon": {
+    "name": "\u6bd4\u7279\u5e01 / CRCLon 0.25%",
+    "addr": "0xc1d141d6a9f8e8eb7b9ce1aecd4a8932f047c075",
+    "vol": 1452.1639941691,
+    "tvl": "2913.4561",
+    "dex": "pancakeswap-v3-bsc",
+    "id": "bsc_0xc1d141d6a9f8e8eb7b9ce1aecd4a8932f047c075",
+    "score": 1100000001452.164
+  },
+  "PLTRon": {
+    "name": "PLTRon / USDC",
+    "addr": "BXumCSjLezCmYBttoyAs1saaTNFCEbzaH8nBP3A5V52",
+    "vol": 1.4461253267,
+    "tvl": null,
+    "dex": "manifest",
+    "id": "solana_BXumCSjLezCmYBttoyAs1saaTNFCEbzaH8nBP3A5V52",
+    "score": 1.4461253267
+  },
+  "COINon": {
+    "name": "\u6bd4\u7279\u5e01 / COINon 0.25%",
+    "addr": "0x7de5f4a237315a7c8fd31974bb6603c1d965e9ac",
+    "vol": 23.8880039128,
+    "tvl": "1241.2535",
+    "dex": "pancakeswap-v3-bsc",
+    "id": "bsc_0x7de5f4a237315a7c8fd31974bb6603c1d965e9ac",
+    "score": 1100000000023.888
+  }
+}

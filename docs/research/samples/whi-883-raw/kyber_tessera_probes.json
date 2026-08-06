@@ -1,0 +1,11 @@
+{
+  "date_utc": "2026-08-06",
+  "probes": [
+    {
+      "token": "QQQB",
+      "address": "0x205812cdbed920aff76c6580abd681a46d11efc7",
+      "result": "route_ok",
+      "note": "amountIn 100 USDT"
+    }
+  ]
+}
