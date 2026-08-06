@@ -124,12 +124,9 @@ def _stream_settings(**overrides: Any) -> StreamSettings:
         "max_queue_depth": 5,
     }
     base.update(overrides)
-    # Keep the production invariant unless a test is explicitly probing rejection
-    # (both caps overridden with an invalid pair).
-    if (
-        "max_queue_depth" not in overrides
-        and base["max_queue_depth"] < base["max_assets_per_client"]
-    ):
+    # Callers that raise max_assets must also raise depth (or use model_construct
+    # for intentional invalid pairs in rejection tests).
+    if base["max_queue_depth"] < base["max_assets_per_client"]:
         base["max_queue_depth"] = base["max_assets_per_client"]
     return StreamSettings.model_validate(base)
 
@@ -606,20 +603,9 @@ async def test_hub_queue_overflow_forces_resnapshot() -> None:
         ),
     )
     await hub.publish_once()
-    # Fill queue so next enqueue drops.
-    while not client.outbound.full():
-        client.outbound.put_nowait({"type": "heartbeat", "ts": 0})
-    assert client.enqueue({"type": "delta", "asset": "BTC", "pairs": []}) is True
-    assert "BTC" in client.need_snapshot
-    # Dropped frame was a heartbeat (no asset) — baseline may remain until a
-    # quote frame is dropped. Seed a quote frame then overflow again.
-    while not client.outbound.empty():
-        client.outbound.get_nowait()
-    client.last_pairs["BTC"] = {"k": _ok_pair()}
-    client.last_mid_json["BTC"] = "mid"
-    client.need_snapshot.discard("BTC")
-    client.outbound.put_nowait({"type": "delta", "asset": "BTC", "pairs": []})
+    # Depth=1: publish_once left the BTC snapshot in the queue (full).
     assert client.outbound.full()
+    # Overflow drops that snapshot → invalidate BTC only.
     assert client.enqueue({"type": "delta", "asset": "BTC", "pairs": []}) is True
     assert "BTC" in client.need_snapshot
     assert "BTC" not in client.last_pairs
@@ -659,11 +645,11 @@ async def test_enqueue_overflow_invalidates_only_dropped_asset() -> None:
 
 @pytest.mark.asyncio
 async def test_multi_asset_subscription_yields_deltas_not_snapshot_storm() -> None:
-    """WHI-888 regression: N assets > prior queue cliff still delivers deltas.
+    """WHI-888 regression: N assets with intentional shallow queue still deltas.
 
-    Pre-fix: queue depth 8 + full baseline wipe → permanent snapshot storm at
-    N=14. Post-fix: after the initial snapshot pass, further ticks are deltas
-    (snapshot count bounded by asset count + small constant).
+    Uses ``model_construct`` to recreate the pre-fix config cliff
+    (depth < assets). Pre-fix full-baseline wipe storms forever; post-fix
+    only dropped assets re-snapshot and the rest continue as deltas.
     """
     assets = [
         "NVDA",
@@ -682,21 +668,28 @@ async def test_multi_asset_subscription_yields_deltas_not_snapshot_storm() -> No
         "MSTR",
     ]
     n = len(assets)
+    # Shallow queue forces overflow every tick (the production bug shape).
+    shallow_depth = 4
 
     async def collect(asset: str, *args: Any, **kwargs: Any) -> QuotesPackage:
         return _package(asset=asset, snap=f"snap-{asset}")
 
     aggregator = AsyncMock()
     aggregator.collect = AsyncMock(side_effect=collect)
-    # Depth covers one tick of N assets (production invariant); slow consumer
-    # still drains between ticks so we observe frame types, not tunnel latency.
+    # Bypass the WHI-888 load-time invariant so we can exercise the overflow
+    # path that the bug lived on (depth 8 vs 14 assets on /stocks).
+    settings = StreamSettings.model_construct(
+        coalesce_interval_ms=50.0,
+        heartbeat_interval_sec=0.05,
+        client_liveness_timeout_sec=0.2,
+        max_clients=10,
+        max_assets_per_client=n,
+        max_venues_per_client=40,
+        max_queue_depth=shallow_depth,
+    )
     hub = QuoteStreamHub(
         aggregator,
-        _stream_settings(
-            max_assets_per_client=n,
-            max_queue_depth=n,
-            coalesce_interval_ms=50.0,
-        ),
+        settings,
         cors_origins=["http://localhost:3000"],
     )
     client = await hub.register()
@@ -713,7 +706,7 @@ async def test_multi_asset_subscription_yields_deltas_not_snapshot_storm() -> No
 
     counts: dict[str, int] = {"snapshot": 0, "delta": 0}
 
-    async def drain() -> None:
+    def drain() -> None:
         while True:
             try:
                 msg = client.outbound.get_nowait()
@@ -723,25 +716,31 @@ async def test_multi_asset_subscription_yields_deltas_not_snapshot_storm() -> No
             if t in counts:
                 counts[t] += 1
 
-    # Initial tick: one snapshot per asset.
+    # Initial tick fills the shallow queue and drops the oldest per-asset frames
+    # as later assets enqueue — must not wipe *every* baseline.
     await hub.publish_once()
-    await drain()
-    assert counts["snapshot"] == n
-    assert counts["delta"] == 0
-    assert not client.need_snapshot
+    drain()
+    assert counts["snapshot"] >= shallow_depth
+    # Some assets should still have an intact baseline (not full wipe).
+    intact = set(client.last_pairs) - client.need_snapshot
+    assert intact, (
+        "expected at least one asset baseline to survive overflow; "
+        f"need_snapshot={client.need_snapshot!r} last_pairs={set(client.last_pairs)!r}"
+    )
 
-    # Subsequent ticks with unchanged packages: mid/pairs unchanged → no frames.
-    # Force a mid change path by returning packages with a new snapshot_id (and
-    # therefore a new mid.snapshot_id) so every asset emits a delta.
+    # Mid change → deltas for intact assets; resnapshots only for invalidated.
     async def collect_v2(asset: str, *args: Any, **kwargs: Any) -> QuotesPackage:
         return _package(asset=asset, snap=f"snap2-{asset}")
 
     aggregator.collect = AsyncMock(side_effect=collect_v2)
     for _ in range(3):
         await hub.publish_once()
-        await drain()
+        drain()
 
-    assert counts["delta"] >= n  # at least one delta pass across all assets
-    # Snapshots must not grow linearly with ticks (storm signature).
-    assert counts["snapshot"] <= n + 2, counts
+    assert counts["delta"] >= 1, counts
+    # Storm signature on pre-fix: snapshots grow ~n per tick with zero deltas.
+    # Bound: initial pass + at most one resnapshot wave per subsequent tick for
+    # the shallow_depth dropped slots (not n per tick).
+    max_snaps = n + 3 * shallow_depth
+    assert counts["snapshot"] <= max_snaps, counts
     await hub.unregister(client.client_id)

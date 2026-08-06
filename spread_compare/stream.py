@@ -283,22 +283,43 @@ class StreamClient:
     need_snapshot: set[str] = field(default_factory=set)
     closed: bool = False
 
-    def _invalidate_frame_baseline(self, frame: dict[str, Any] | None) -> None:
+    def _frame_asset(self, frame: dict[str, Any] | None) -> str | None:
+        if frame is None:
+            return None
+        asset = frame.get("asset")
+        if not isinstance(asset, str) or not asset:
+            return None
+        return asset
+
+    def _invalidate_frame_baseline(self, frame: dict[str, Any] | None) -> str | None:
         """Drop delta baseline for the asset carried by a lost frame (WHI-888).
 
         Overflow must not wipe every subscribed asset — that turns a single
         dropped frame into a permanent full-snapshot storm when the subscription
         is wider than the residual queue room. Heartbeats / frames without
         ``asset`` leave baselines intact.
+
+        Returns the asset that was invalidated, or None when the frame carries
+        no asset key (caller may log that value).
         """
-        if frame is None:
-            return
-        asset = frame.get("asset")
-        if not isinstance(asset, str) or not asset:
-            return
+        asset = self._frame_asset(frame)
+        if asset is None:
+            return None
         self.need_snapshot.add(asset)
         self.last_pairs.pop(asset, None)
         self.last_mid_json.pop(asset, None)
+        return asset
+
+    def commit_baseline(
+        self,
+        asset: str,
+        pairs: Mapping[str, SizeQuotePair],
+        mid_json: str,
+    ) -> None:
+        """Record the last-sent package for delta diffing after a successful enqueue."""
+        self.last_pairs[asset] = dict(pairs)
+        self.last_mid_json[asset] = mid_json
+        self.need_snapshot.discard(asset)
 
     def enqueue(
         self, message: dict[str, Any], *, important: bool = True
@@ -323,12 +344,12 @@ class StreamClient:
                 dropped = self.outbound.get_nowait()
             except asyncio.QueueEmpty:
                 dropped = None
-            self._invalidate_frame_baseline(dropped)
+            invalidated = self._invalidate_frame_baseline(dropped)
             logger.warning(
                 "stream client %s queue full; dropping oldest frame + "
                 "forcing resnapshot for asset=%s",
                 self.client_id,
-                dropped.get("asset") if dropped else None,
+                invalidated,
             )
         try:
             self.outbound.put_nowait(message)
@@ -338,12 +359,12 @@ class StreamClient:
                 return False
             # Could not free a slot (maxsize=0 race) or another producer won —
             # the new frame never left; invalidate only its asset.
-            self._invalidate_frame_baseline(message)
+            invalidated = self._invalidate_frame_baseline(message)
             logger.warning(
                 "stream client %s still full after drop; forcing resnapshot "
                 "for asset=%s",
                 self.client_id,
-                message.get("asset"),
+                invalidated,
             )
             return False
 
@@ -604,6 +625,8 @@ class QuoteStreamHub:
         self, client: StreamClient, asset: str, package: QuotesPackage
     ) -> None:
         want_snap = asset in client.need_snapshot or asset not in client.last_pairs
+        pair_map = {pair_identity_key(p): p for p in package.pairs}
+        mid_json = package.mid.model_dump_json()
         if want_snap:
             queued = client.enqueue(
                 {
@@ -615,16 +638,11 @@ class QuoteStreamHub:
             # Only commit the delta baseline when the frame is actually queued;
             # a failed enqueue already marked this asset for resnapshot.
             if queued:
-                client.last_pairs[asset] = {
-                    pair_identity_key(p): p for p in package.pairs
-                }
-                client.last_mid_json[asset] = package.mid.model_dump_json()
-                client.need_snapshot.discard(asset)
+                client.commit_baseline(asset, pair_map, mid_json)
             return
 
         prev = client.last_pairs.get(asset, {})
         changed, removed = diff_pairs(prev, package.pairs)
-        mid_json = package.mid.model_dump_json()
         mid_changed = client.last_mid_json.get(asset) != mid_json
         if not changed and not removed and not mid_changed:
             return
@@ -640,10 +658,7 @@ class QuoteStreamHub:
             }
         )
         if queued:
-            client.last_pairs[asset] = {
-                pair_identity_key(p): p for p in package.pairs
-            }
-            client.last_mid_json[asset] = mid_json
+            client.commit_baseline(asset, pair_map, mid_json)
 
     async def _tick_loop(self) -> None:
         interval = self._settings.coalesce_interval_ms / 1000.0
