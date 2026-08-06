@@ -660,13 +660,15 @@ async def test_deliver_same_asset_overflow_keeps_need_snapshot() -> None:
     """
     pair = _ok_pair(asset="BTC", snap="snap-1", total_cost="20")
     pair2 = _ok_pair(asset="BTC", snap="snap-2", total_cost="25")
+    packages = iter(
+        [
+            _package(asset="BTC", pairs=[pair], snap="snap-1"),
+            _package(asset="BTC", pairs=[pair2], snap="snap-2"),
+        ]
+    )
 
     async def collect(asset: str, *args: Any, **kwargs: Any) -> QuotesPackage:
-        # Second collect returns a changed package so the delta path fires.
-        if getattr(collect, "n", 0) == 0:
-            collect.n = 1  # type: ignore[attr-defined]
-            return _package(asset=asset, pairs=[pair], snap="snap-1")
-        return _package(asset=asset, pairs=[pair2], snap="snap-2")
+        return next(packages)
 
     aggregator = AsyncMock()
     aggregator.collect = AsyncMock(side_effect=collect)
