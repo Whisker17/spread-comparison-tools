@@ -140,14 +140,19 @@ export function AssetSpreadBlock({
 
   // Row keys may be `venue|form` (stocks) — strip form for the venue filter.
   // Drop synthetic / unknown slugs (catalog summary rows are label-only, WHI-892).
+  // Empty list must not become `undefined` (undefined = all venues upstream).
   const venueSlugsForRequest = useMemo(() => {
     if (venues.length === 0) return undefined;
     const slugs = new Set(
       venues
         .map((k) => parseRowKey(k).venue)
-        .filter((v) => v.length > 0 && v in VENUE_META),
+        .filter((v) => v.length > 0 && VENUE_META[v] !== undefined),
     );
-    return slugs.size > 0 ? [...slugs] : undefined;
+    // No real venues among row keys → pin to empty sentinel venue so
+    // `_resolve_venues([])` is never hit via omit; HTTP path still needs a
+    // defined list. Prefer skip: return a list that matches no adapter.
+    if (slugs.size === 0) return ["__none__"];
+    return [...slugs];
   }, [venues]);
 
   // WHI-848: when a page-level QuotesStreamProvider is present, read pushed

@@ -110,11 +110,20 @@ export function isBestEligibleCoverage(coverage: FormCoverage): boolean {
   return coverage === "live";
 }
 
-/** Human chrome for form coverage on row labels. */
+/** Human chrome for form coverage on row labels (SSOT for coverage copy). */
 export function coverageBadgeLabel(coverage: FormCoverage): string | null {
   if (coverage === "unverified") return "unverified";
   if (coverage === "absent") return "no route";
   return null;
+}
+
+/** Representation text for venue-less summary rows (SSOT with badge labels). */
+export function coverageSummaryRepresentation(
+  coverage: FormCoverage,
+): string {
+  if (coverage === "absent") return "no route (surveyed)";
+  if (coverage === "unverified") return "not verified";
+  return "—";
 }
 
 /**
@@ -580,8 +589,7 @@ export function buildStockMatrixRows(
         venue: CATALOG_SUMMARY_VENUE,
         form: form.id,
         formClass: form.form_class,
-        representation:
-          form.coverage === "absent" ? "no route (surveyed)" : "not verified",
+        representation: coverageSummaryRepresentation(form.coverage),
         coverage: form.coverage,
         isCatalogSummary: true,
       });
@@ -618,7 +626,7 @@ export function venuesFromForms(forms: readonly StockFormDef[]): string[] {
   const set = new Set<string>();
   for (const form of forms) {
     for (const v of Object.keys(form.representations)) {
-      if (v !== CATALOG_SUMMARY_VENUE) set.add(v);
+      set.add(v);
     }
   }
   return [...set].sort();

@@ -78,20 +78,27 @@ function StocksSectionInner() {
   const streamFilters = useMemo<StreamFilter[]>(() => {
     // One filter per underlying so `forms=` never includes a form absent from
     // that asset's catalog (global union → resolve_forms_filter ValueError /
-    // collect_failed — WHI-892 review). Omit forms → backend live default also
-    // works, but per-asset filters keep venue allow-lists tight.
+    // collect_failed — WHI-892 review).
     // WHI-864: subscribe only the visible tier.
     // Default fan-out = live only (WHI-799 §6.1.1); non-live rows are chrome.
-    return STOCK_UNDERLYINGS.map((underlying) => {
+    // Skip underlyings with zero live venue-bearing forms — an empty
+    // `venues: []` is treated as "all venues" server-side (aggregator
+    // `_resolve_venues`), which would invert the allow-list.
+    const filters: StreamFilter[] = [];
+    for (const underlying of STOCK_UNDERLYINGS) {
       const forms = formsByUnderlying.get(underlying) ?? [];
       const liveForms = forms.filter((f) => f.coverage === "live");
-      return {
+      const formIds = liveQuoteableFormIds(forms);
+      const venues = venuesFromForms(liveForms);
+      if (formIds.length === 0 || venues.length === 0) continue;
+      filters.push({
         assets: [underlying],
         notionals: [notional],
-        venues: venuesFromForms(liveForms),
-        forms: liveQuoteableFormIds(forms),
-      };
-    });
+        venues,
+        forms: formIds,
+      });
+    }
+    return filters;
   }, [notional, formsByUnderlying]);
 
   return (

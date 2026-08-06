@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import spread_compare.adapters  # noqa: F401 — ensure registration
 from spread_compare.adapters import get as get_adapter
+from spread_compare.adapters.amm_pancakeswap import PancakeSwapBscAdapter
+from spread_compare.adapters.prop_kyberswap import TesseraBscAdapter
 from spread_compare.assets import (
     ASSETS,
     CRYPTO_BLUE_CHIPS,
@@ -24,6 +26,13 @@ from spread_compare.assets import (
     live_forms,
     resolve_forms_filter,
     venues_for_form,
+)
+from spread_compare.cex_symbols import resolve_cex_symbol
+from spread_compare.perp_symbols import (
+    UnsupportedPerpSymbolError,
+    resolve_apex_base,
+    resolve_hl_coin,
+    resolve_lighter_symbol,
 )
 
 
@@ -230,9 +239,6 @@ def test_catalog_bsc_stock_venues_no_phantoms() -> None:
     catalog representation on a non-mapped form of a supported underlying
     (e.g. TSLA/xstock → pancakeswap_bsc) cannot pass silently.
     """
-    from spread_compare.adapters.amm_pancakeswap import PancakeSwapBscAdapter
-    from spread_compare.adapters.prop_kyberswap import TesseraBscAdapter
-
     bsc_venues = frozenset({"pancakeswap_bsc", "tessera_bsc"})
     for asset in list_assets():
         if asset.category != "stock" or asset.forms is None:
@@ -262,16 +268,6 @@ def test_catalog_stock_venues_adapter_resolvable() -> None:
     ``supported_assets`` before startup meta load — e.g. Lighter/ApeX). A
     phantom is a catalog label the static maps cannot turn into a wire id.
     """
-    from spread_compare.adapters.amm_pancakeswap import PancakeSwapBscAdapter
-    from spread_compare.adapters.prop_kyberswap import TesseraBscAdapter
-    from spread_compare.cex_symbols import resolve_cex_symbol
-    from spread_compare.perp_symbols import (
-        UnsupportedPerpSymbolError,
-        resolve_apex_base,
-        resolve_hl_coin,
-        resolve_lighter_symbol,
-    )
-
     cex = frozenset({"binance", "bybit"})
     for asset in list_assets():
         if asset.category != "stock" or asset.forms is None:
